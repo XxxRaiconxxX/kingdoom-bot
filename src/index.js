@@ -250,7 +250,6 @@ client.on('message', async (msg) => {
         'item',
         'mision',
         'evento',
-        'daily',
         'reino',
         'resumen',
         'ayuda',

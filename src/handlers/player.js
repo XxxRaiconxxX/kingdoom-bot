@@ -1,5 +1,4 @@
 import {
-  claimDailyReward,
   getActiveEvents,
   getActiveMissions,
   getGoldLeaderboard,
@@ -7,7 +6,6 @@ import {
   getMarketItemDetails,
   getPlayer,
   getRealmSnapshot,
-  hasClaimedDailyReward,
   searchMarketItems,
 } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
@@ -17,18 +15,12 @@ Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y 
 Eres conciso en WhatsApp (maximo 4 lineas). Nunca rompas el personaje.
 Fecha actual: ${new Date().toLocaleDateString('es-PY')}`;
 
-const DAILY_MIN_GOLD = 25;
-const DAILY_MAX_GOLD = 80;
 const chatHistory = new Map();
 
 setInterval(() => {
   chatHistory.clear();
   console.log('[player] chatHistory limpiado');
 }, 1000 * 60 * 60 * 6);
-
-function pickDailyReward() {
-  return DAILY_MIN_GOLD + Math.floor(Math.random() * (DAILY_MAX_GOLD - DAILY_MIN_GOLD + 1));
-}
 
 function clipText(value, max = 140) {
   const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -181,26 +173,6 @@ export async function handlePlayerMessage(msg) {
     return `🎭 *${event.title}*\n${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*\nCierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro\n${clipText(event.description || event.long_description || event.rewards, 140)}`;
   }
 
-  if (text === '!daily') {
-    try {
-      const existingClaim = await hasClaimedDailyReward(player.id);
-      if (existingClaim) {
-        return `⏳ *Tu recompensa diaria ya fue reclamada hoy.*\n\nVuelve tras el proximo alba de Asuncion, aventurero.`;
-      }
-
-      const reward = pickDailyReward();
-      const claimed = await claimDailyReward(player.id, reward);
-
-      if (!claimed) {
-        return `⏳ *Tu recompensa diaria ya fue reclamada hoy.*\n\nVuelve tras el proximo alba de Asuncion, aventurero.`;
-      }
-
-      return `🌅 *EL HERALDO TE BENDECICE*\n\nHas recibido *${reward.toLocaleString('es-PY')} oro* por acudir hoy al reino.\n🪙 Nuevo impulso para tu travesia.`;
-    } catch (error) {
-      console.error('[daily]', error.message);
-      return `🌅 El cofre diario no pudo abrirse ahora mismo. Intenta de nuevo en un momento.`;
-    }
-  }
 
   if (text === '!reino' || text === '!resumen') {
     const snapshot = await getRealmSnapshot();
@@ -208,7 +180,7 @@ export async function handlePlayerMessage(msg) {
   }
 
   if (text === '!ayuda') {
-    return `📜 *Comandos del Reino:*\n\n🪙 !oro\n🛡️ !perfil\n🏆 !ranking\n👑 !ricos\n🏪 !mercado [nombre]\n🗡️ !item <nombre>\n📜 !mision [nombre]\n🎭 !evento [nombre]\n🌅 !daily\n🎲 !dados <monto>\n🔮 !oraculo <pregunta>\n❓ !ayuda`;
+    return `📜 *Comandos del Reino:*\n\n🪙 !oro\n🛡️ !perfil\n🏆 !ranking\n👑 !ricos\n🏪 !mercado [nombre]\n🗡️ !item <nombre>\n📜 !mision [nombre]\n🎭 !evento [nombre]\n🎲 !dados <monto>\n🔮 !oraculo <pregunta>\n❓ !ayuda`;
   }
 
   if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);
