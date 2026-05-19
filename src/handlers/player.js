@@ -1,64 +1,122 @@
-import { getPlayer, getLeaderboard, getMarketItems } from '../supabase.js';
+import {
+  getGoldLeaderboard,
+  getLeaderboard,
+  getPlayer,
+  getRealmSnapshot,
+  searchMarketItems,
+} from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 
-const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom — Reino de las Sombras.
-Hablas con tono medieval, misterioso y épico. Usás emojis de espadas, coronas y fuego.
-Eres conciso en WhatsApp (máximo 4 líneas). Nunca rompas el personaje.
+const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
+Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
+Eres conciso en WhatsApp (maximo 4 lineas). Nunca rompas el personaje.
 Fecha actual: ${new Date().toLocaleDateString('es-PY')}`;
 
-// Historial de conversación por jugador (en memoria)
 const chatHistory = new Map();
 
-// ✅ Limpieza cada 6 horas para evitar memory leak
 setInterval(() => {
   chatHistory.clear();
   console.log('[player] chatHistory limpiado');
 }, 1000 * 60 * 60 * 6);
+
+function formatMarketItem(item) {
+  const rarity = item.rarity ? ` - ${String(item.rarity).toUpperCase()}` : '';
+  const price = Number(item.price ?? 0).toLocaleString('es-PY');
+  return `• *${item.name}*${rarity} - 🪙 ${price} oro`;
+}
 
 export async function handlePlayerMessage(msg) {
   const chatId = msg.from;
   const player = await getPlayer(chatId);
 
   if (!player) {
-    return `⚔️ *Viajero desconocido*, no estás registrado en el reino.\n\nEscribí *!registrar TuNombre* para unirte a Kingdoom.`;
+    return `⚔️ *Viajero desconocido*, no estas registrado en el reino.\n\nEscribi *!registrar TuNombre* para unirte a Kingdoom.`;
   }
 
-  const text = msg.body.toLowerCase().trim();
+  const rawText = msg.body.trim();
+  const text = rawText.toLowerCase();
 
-  // Comandos directos (sin IA, respuesta instantánea)
   if (text === '!oro' || text === '!gold') {
-    return `👑 *${player.username}*, tu fortuna actual:\n\n🪙 *${player.gold.toLocaleString()} oro*\n\n_"El oro es el aliento del reino..."_`;
+    return `👑 *${player.username}*, tu fortuna actual:\n\n🪙 *${player.gold.toLocaleString('es-PY')} oro*\n\n_"El oro es el aliento del reino..."_`;
+  }
+
+  if (text === '!perfil' || text === '!estado') {
+    return `🛡️ *PERFIL DEL AVENTURERO*\n\n` +
+      `👤 *${player.username}*\n` +
+      `🪙 Oro total: *${player.gold.toLocaleString('es-PY')}*\n` +
+      `🏆 Oro semanal: *${(player.weekly_gold ?? 0).toLocaleString('es-PY')}*`;
   }
 
   if (text === '!ranking' || text === '!top') {
     const board = await getLeaderboard();
-    if (!board.length) return `📊 Aún no hay guerreros en el ranking.`;
-    const lines = board.map((p, i) => {
-      const medal = ['🥇', '🥈', '🥉'][i] || `${i + 1}.`;
-      return `${medal} *${p.username}* — ${p.weekly_gold.toLocaleString()} oro`;
+    if (!board.length) return `📊 Aun no hay guerreros en el ranking.`;
+
+    const lines = board.map((entry, index) => {
+      const medal = ['🥇', '🥈', '🥉'][index] || `${index + 1}.`;
+      return `${medal} *${entry.username}* - ${entry.weekly_gold.toLocaleString('es-PY')} oro`;
     }).join('\n');
+
     return `⚔️ *RANKING SEMANAL DEL REINO* ⚔️\n\n${lines}`;
   }
 
-  if (text === '!mercado') {
-    const items = await getMarketItems();
-    if (!items.length) return `🏪 El mercado está vacío hoy, viajero.`;
-    const lines = items.map(i => `• *${i.name}* — 🪙 ${i.price} oro`).join('\n');
-    return `🏪 *MERCADO DE KINGDOOM*\n\n${lines}`;
+  if (text === '!ricos' || text === '!fortunas') {
+    const board = await getGoldLeaderboard();
+    if (!board.length) return `👑 Nadie ha amasado fortuna todavia.`;
+
+    const lines = board.map((entry, index) => {
+      const medal = ['🥇', '🥈', '🥉'][index] || `${index + 1}.`;
+      return `${medal} *${entry.username}* - ${entry.gold.toLocaleString('es-PY')} oro`;
+    }).join('\n');
+
+    return `👑 *GRANDES FORTUNAS DEL REINO*\n\n${lines}`;
+  }
+
+  if (text.startsWith('!mercado')) {
+    const query = rawText.replace(/^!mercado\s*/i, '').trim();
+    const items = await searchMarketItems(query);
+
+    if (!items.length) {
+      return query
+        ? `🏪 No halle articulos para *${query}* en el mercado del reino.`
+        : `🏪 El mercado esta vacio hoy, viajero.`;
+    }
+
+    const maxItems = query ? 8 : 12;
+    const lines = items.slice(0, maxItems).map(formatMarketItem).join('\n');
+
+    return query
+      ? `🔎 *MERCADO: ${query.toUpperCase()}*\n\n${lines}`
+      : `🏪 *MERCADO DE KINGDOOM*\n\n${lines}`;
+  }
+
+  if (text === '!reino' || text === '!resumen') {
+    const snapshot = await getRealmSnapshot();
+    return `🏰 *ESTADO DEL REINO*\n\n` +
+      `👥 Aventureros: *${snapshot.totalPlayers}*\n` +
+      `🏪 Mercado activo: *${snapshot.availableItems}* articulos\n` +
+      `👑 Mas rico: *${snapshot.richest?.username ?? '-'}* (${(snapshot.richest?.gold ?? 0).toLocaleString('es-PY')} oro)\n` +
+      `🏆 Lider semanal: *${snapshot.weeklyChampion?.username ?? '-'}* (${(snapshot.weeklyChampion?.weekly_gold ?? 0).toLocaleString('es-PY')} oro)`;
   }
 
   if (text === '!ayuda') {
-    return `📜 *Comandos del Reino:*\n\n🪙 !oro — Ver tu oro\n🏆 !ranking — Top 10 semanal\n🏪 !mercado — Ítems disponibles\n🎲 !dados <monto> — Apostar oro\n🔮 !oraculo <pregunta> — El oráculo responde\n❓ !ayuda — Esta lista\n\n_O simplemente habla conmigo..._`;
+    return `📜 *Comandos del Reino:*\n\n` +
+      `🪙 !oro - Ver tu oro\n` +
+      `🛡️ !perfil - Ver tu estado\n` +
+      `🏆 !ranking - Top semanal\n` +
+      `👑 !ricos - Top por oro total\n` +
+      `🏪 !mercado [nombre] - Ver o buscar items\n` +
+      `🏰 !reino - Resumen del reino\n` +
+      `🎲 !dados <monto> - Apostar oro\n` +
+      `🔮 !oraculo <pregunta> - El oraculo responde\n` +
+      `❓ !ayuda - Esta lista`;
   }
 
-  // IA para todo lo demás
   if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);
   const history = chatHistory.get(chatId);
 
   const contextMsg = `[Jugador: ${player.username} | Oro: ${player.gold}]\n\nMensaje: ${msg.body}`;
   history.push({ role: 'user', content: contextMsg });
 
-  // Mantener solo los últimos 16 mensajes
   if (history.length > 16) history.splice(0, 2);
 
   try {
@@ -67,7 +125,7 @@ export async function handlePlayerMessage(msg) {
     return reply;
   } catch (err) {
     console.error('[handlePlayerMessage IA]', err.message);
-    history.pop(); // revertir el push si falló
-    return `🔥 El oráculo no responde en este momento. Intentá de nuevo.`;
+    history.pop();
+    return `🔥 El oraculo no responde en este momento. Intenta de nuevo.`;
   }
 }
