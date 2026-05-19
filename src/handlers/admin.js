@@ -5,7 +5,7 @@ export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
-  const sender = msg.from;
+  const sender = msg.author || msg.from;
 
   const isSenderOwner = isOwner(sender);
 

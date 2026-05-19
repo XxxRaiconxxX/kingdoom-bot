@@ -63,8 +63,8 @@ function formatEventRow(event) {
 }
 
 export async function handlePlayerMessage(msg) {
-  const chatId = msg.from;
-  const player = await getPlayer(chatId);
+  const sender = msg.author || msg.from;
+  const player = await getPlayer(sender);
 
   if (!player) {
     return `⚔️ *Viajero desconocido*, no estas registrado en el reino.\n\nEscribe *!registrar TuNombre* para unirte a Kingdoom.`;

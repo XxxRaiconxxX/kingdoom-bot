@@ -54,12 +54,13 @@ export function saveAdmins(adminsList) {
 }
 
 export function isOwner(whatsappNumber) {
-  return normalizePhone(whatsappNumber) === OWNER_NUMBER;
+  const phone = normalizePhone(whatsappNumber);
+  return phone === '595987273405' || phone === '5959987273405';
 }
 
 export function isAdminUser(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
-  if (phone === OWNER_NUMBER) return true;
+  if (phone === '595987273405' || phone === '5959987273405') return true;
   const list = loadAdmins();
   return list.includes(phone);
 }

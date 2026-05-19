@@ -7,7 +7,7 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleDados, handleOraculo } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer } from './supabase.js';
+import { registerPlayer, getPlayer } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
 
@@ -220,11 +220,18 @@ client.on('message', async (msg) => {
   if (msg.fromMe || msg.isStatus) return;
 
   const text = msg.body.trim();
-  const { command, body } = parseCommand(text);
-  const isAdmin = isAdminUser(msg.from);
+  const { command, body, hasPrefix } = parseCommand(text);
+  const sender = msg.author || msg.from;
+  const isAdmin = isAdminUser(sender);
   let reply = '';
 
   try {
+    if (!isAdmin) {
+      const player = await getPlayer(sender);
+      if (!player && !hasPrefix) {
+        return; // Silently ignore generic messages from unregistered users
+      }
+    }
     if (isAdmin && ['grant', 'broadcast', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin'].includes(command)) {
       reply = await handleAdminCommand(
         { ...msg, body: ensurePrefixedBody(command, text, body) },
