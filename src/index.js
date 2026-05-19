@@ -221,17 +221,13 @@ client.on('message', async (msg) => {
 
   const text = msg.body.trim();
   const { command, body, hasPrefix } = parseCommand(text);
+  if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
+
   const sender = msg.author || msg.from;
   const isAdmin = isAdminUser(sender);
   let reply = '';
 
   try {
-    if (!isAdmin) {
-      const player = await getPlayer(sender);
-      if (!player && !hasPrefix) {
-        return; // Silently ignore generic messages from unregistered users
-      }
-    }
     if (isAdmin && ['grant', 'broadcast', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin'].includes(command)) {
       reply = await handleAdminCommand(
         { ...msg, body: ensurePrefixedBody(command, text, body) },
