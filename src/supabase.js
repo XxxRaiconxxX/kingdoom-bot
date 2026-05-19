@@ -249,31 +249,31 @@ export async function hasClaimedDailyReward(playerId) {
   return data ?? null;
 }
 
-export async function registerPlayer(whatsappNumber, username) {
+export async function registerPlayer(whatsappNumber, username, initialGold = 2500) {
   const phone = normalizePhone(whatsappNumber);
 
   if (!username || username.trim().length < 2) {
-    return `❌ Indica un nombre valido. Ejemplo: *!registrar Aragorn*`;
+    return `❌ Indica un nombre valido.`;
   }
 
   const existing = await getPlayer(whatsappNumber);
   if (existing) {
-    return `⚔️ Ya estas registrado en el reino como *${existing.username}*.`;
+    return `⚔️ Ya esta registrado en el reino como *${existing.username}* (Número: ${phone}).`;
   }
 
   const { error } = await supabase.from('players').insert([
     {
       phone,
       username: username.trim(),
-      gold: 100,
+      gold: initialGold,
       weekly_gold: 0,
     },
   ]);
 
   if (error) {
     console.error('[registerPlayer]', error.message);
-    return `⚔️ Hubo un error al forjar tu identidad en el reino. Intenta de nuevo.`;
+    return `⚔️ Hubo un error al forjar su identidad en el reino. Intenta de nuevo.`;
   }
 
-  return `✅ *Bienvenido a Kingdoom, ${username.trim()}!*\n\nSe te han otorgado 🪙 *100 de oro* para comenzar tu viaje.\n\nEscribe *!ayuda* para ver que puedes hacer.`;
+  return `✅ *BIENVENIDO A KINGDOOM*\n\n👤 Aventurero: *${username.trim()}*\n📞 Celular: *${phone}*\n🪙 Oro inicial: *${initialGold.toLocaleString('es-PY')}*\n\nEscribe *!ayuda* para comenzar tu viaje.`;
 }

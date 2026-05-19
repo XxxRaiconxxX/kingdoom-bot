@@ -9,10 +9,10 @@ import { handleDados, handleOraculo } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer } from './supabase.js';
 import { startScheduler } from './scheduler.js';
+import { isAdminUser } from './adminStore.js';
 
 const { Client, LocalAuth } = pkg;
 
-const ADMIN = process.env.ADMIN_NUMBER;
 const PORT = process.env.PORT || 3000;
 
 let latestQrDataUrl = '';
@@ -221,17 +221,17 @@ client.on('message', async (msg) => {
 
   const text = msg.body.trim();
   const { command, body } = parseCommand(text);
-  const isAdmin = msg.from === ADMIN;
+  const isAdmin = isAdminUser(msg.from);
   let reply = '';
 
   try {
-    if (isAdmin && ['grant', 'broadcast', 'stats', 'ban'].includes(command)) {
+    if (isAdmin && ['grant', 'broadcast', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin'].includes(command)) {
       reply = await handleAdminCommand(
         { ...msg, body: ensurePrefixedBody(command, text, body) },
         client
       );
     } else if (command === 'registrar') {
-      reply = await registerPlayer(msg.from, body);
+      reply = `❌ El comando *!registrar* está restringido únicamente a los Administradores del Reino.`;
     } else if (command === 'dados') {
       reply = await handleDados({ ...msg, body: ensurePrefixedBody(command, text, body) });
     } else if (command === 'oraculo') {
