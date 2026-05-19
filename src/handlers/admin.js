@@ -1,4 +1,4 @@
-import { supabase, updateGold, registerPlayer } from '../supabase.js';
+import { supabase, updateGold, registerPlayer, getRealmCensus } from '../supabase.js';
 import { isOwner, addAdmin, removeAdmin } from '../adminStore.js';
 
 export async function handleAdminCommand(msg, client) {
@@ -21,6 +21,7 @@ export async function handleAdminCommand(msg, client) {
       return `👑 *MENÚ DEL SOBERANO (OWNER):*\n\n` +
              `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
+             `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `➕ *!add admin <numero>*\n` +
              `➖ *!remove admin <numero>*\n` +
              `📢 *!broadcast <mensaje>*\n` +
@@ -31,6 +32,7 @@ export async function handleAdminCommand(msg, client) {
       return `🛡️ *MENÚ DE ADMINISTRADOR:*\n\n` +
              `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
+             `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
@@ -227,6 +229,55 @@ export async function handleAdminCommand(msg, client) {
       .eq('phone', phone);
 
     return error ? `❌ Error al banear.` : `🔨 Jugador *${phone}* baneado del reino.`;
+  }
+
+  // 8. !censo o !fichas
+  if (cmd === '!censo' || cmd === '!fichas') {
+    try {
+      const { players, sheets } = await getRealmCensus();
+      
+      let response = `📊 *CENSO GENERAL DE AVENTUREROS* 🏰\n\n`;
+      response += `👥 *Aventureros Registrados:* ${players.length}\n`;
+      
+      const linkedPlayers = players.filter(p => p.phone);
+      response += `🔗 *Vinculados a WhatsApp:* ${linkedPlayers.length} (${Math.round((linkedPlayers.length / (players.length || 1)) * 100)}%)\n`;
+      response += `🎭 *PJs Creados:* ${sheets.length} en total\n\n`;
+      response += `⚔️ *REGISTRO DE FICHAS Y VINCULACIONES:*\n\n`;
+
+      players.forEach((player, idx) => {
+        // Encontrar fichas del jugador
+        const playerSheets = sheets.filter(s => {
+          const sheetPlayerId = String(s.playerId || s.player_id || '').trim();
+          return sheetPlayerId === String(player.id).trim();
+        });
+
+        const numPjs = playerSheets.length;
+        const linkedStatus = player.phone ? `✅ WhatsApp: +${player.phone}` : `❌ WhatsApp: No vinculado`;
+        
+        response += `${idx + 1}. *[${player.username}]*\n`;
+        response += `   🔗 ${linkedStatus}\n`;
+        
+        if (numPjs > 0) {
+          response += `   🎭 PJs (${numPjs}):\n`;
+          playerSheets.forEach((s, sIdx) => {
+            response += `   - ${s.name} (PJ ${sIdx + 1})\n`;
+          });
+        } else {
+          // Calcular días transcurridos sin crear ficha
+          const createdDate = new Date(player.created_at || Date.now());
+          const diffTime = Math.abs(Date.now() - createdDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          response += `   ⏳ Sin Ficha (Pendiente) — Hace ${diffDays} día(s) ⚠️\n`;
+        }
+        response += `\n`;
+      });
+
+      return response.trim();
+    } catch (err) {
+      console.error(err);
+      return `❌ Error al obtener el censo del reino.`;
+    }
   }
 
   return `❓ Comando admin no reconocido. Escribe *!admin* para ver la lista de comandos.`;

@@ -369,3 +369,29 @@ export async function registerPlayer(whatsappNumber, username, initialGold = 250
 
   return `✅ *BIENVENIDO A KINGDOOM*\n\n👤 Aventurero: *${username.trim()}*\n📞 Celular: *${phone}*\n🪙 Oro inicial: *${initialGold.toLocaleString('es-PY')}*\n\nEscribe *!ayuda* para comenzar tu viaje.`;
 }
+
+/**
+ * Obtiene el censo de todos los jugadores y sus fichas para reportes de administración.
+ */
+export async function getRealmCensus() {
+  const { data: players, error: playErr } = await supabase
+    .from('players')
+    .select('id, username, phone, created_at')
+    .order('username', { ascending: true });
+
+  if (playErr) {
+    console.error('[getRealmCensus] players error:', playErr.message);
+    throw new Error('Error al obtener censo de jugadores.');
+  }
+
+  const { data: sheets, error: sheetErr } = await supabase
+    .from('character_sheets')
+    .select('playerId, player_id, name');
+
+  if (sheetErr) {
+    console.error('[getRealmCensus] sheets error:', sheetErr.message);
+    throw new Error('Error al obtener censo de personajes.');
+  }
+
+  return { players: players ?? [], sheets: sheets ?? [] };
+}
