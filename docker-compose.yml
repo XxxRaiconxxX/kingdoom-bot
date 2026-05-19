@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  kingdoom-bot:
+    build: .
+    container_name: kingdoom-whatsapp-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./wwebjs_auth:/app/.wwebjs_auth   # sesión WhatsApp persistente
+    network_mode: host                    # accede a anti-api en 192.168.1.10:3000
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
