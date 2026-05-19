@@ -227,18 +227,24 @@ client.on('message', async (msg) => {
   const isAdmin = isAdminUser(sender);
   let reply = '';
 
+  const wrapMsg = (originalMsg, newBody) => {
+    const wrapped = Object.create(originalMsg);
+    wrapped.body = newBody;
+    return wrapped;
+  };
+
   try {
     if (isAdmin && ['grant', 'broadcast', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin'].includes(command)) {
       reply = await handleAdminCommand(
-        { ...msg, body: ensurePrefixedBody(command, text, body) },
+        wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client
       );
     } else if (command === 'registrar') {
       reply = `❌ El comando *!registrar* está restringido únicamente a los Administradores del Reino.`;
     } else if (command === 'dados') {
-      reply = await handleDados({ ...msg, body: ensurePrefixedBody(command, text, body) });
+      reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === 'oraculo') {
-      reply = await handleOraculo({ ...msg, body: ensurePrefixedBody(command, text, body) });
+      reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (
       [
         'oro',
@@ -260,10 +266,7 @@ client.on('message', async (msg) => {
         'help',
       ].includes(command)
     ) {
-      reply = await handlePlayerMessage({
-        ...msg,
-        body: ensurePrefixedBody(command, text, body),
-      });
+      reply = await handlePlayerMessage(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else {
       reply = await handlePlayerMessage(msg);
     }
