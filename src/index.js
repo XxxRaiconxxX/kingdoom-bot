@@ -6,6 +6,7 @@ import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleDados, handleOraculo } from './handlers/games.js';
+import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 
@@ -15,6 +16,7 @@ const ADMIN = process.env.ADMIN_NUMBER;
 const PORT = process.env.PORT || 3000;
 
 let latestQrDataUrl = '';
+const welcomeConfig = buildWelcomeConfig();
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -204,6 +206,14 @@ client.on('ready', () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
   startScheduler(client);
+});
+
+client.on('group_join', async (notification) => {
+  try {
+    await handleGroupWelcome(notification, client, welcomeConfig);
+  } catch (error) {
+    console.error('[group_join]', error.message);
+  }
 });
 
 client.on('message', async (msg) => {
