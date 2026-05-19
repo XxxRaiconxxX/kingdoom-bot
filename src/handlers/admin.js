@@ -106,6 +106,11 @@ export async function handleAdminCommand(msg, client) {
       }
     } else {
       // Caso 2: Sin responder -> !registrar <celular> <nombre> [oro]
+      if (parts.length < 3) {
+        return `❌ *Error de registro:*\n` +
+               `*Opción A (Copiado/Respondiendo):* Cita el mensaje del jugador con: \`!registrar <nombre> [oro]\`\n` +
+               `*Opción B (Directo/Manual):* Escribe de forma directa: \`!registrar <celular> <nombre> [oro]\``;
+      }
       targetPhone = parts[1];
       username = parts[2];
       if (parts[3]) {
