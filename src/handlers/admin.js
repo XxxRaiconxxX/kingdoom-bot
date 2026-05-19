@@ -149,13 +149,24 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
-  // 4. !grant <numero> <monto>
+  // 4. !grant
   if (cmd === '!grant') {
-    const phone = extractPhone(parts[1]);
-    const amount = parseInt(parts[2]);
+    let phone = '';
+    let amount = 0;
+
+    if (msg.hasQuotedMsg) {
+      const quoted = await msg.getQuotedMessage();
+      phone = extractPhone(quoted.author || quoted.from);
+      amount = parseInt(parts[1]);
+    } else {
+      phone = extractPhone(parts[1]);
+      amount = parseInt(parts[2]);
+    }
 
     if (!phone || isNaN(amount) || amount === 0) {
-      return `❌ Uso correcto: *!grant 595991234567 500*`;
+      return `❌ *Uso correcto de !grant:*\n` +
+             `*Opción A (Respondiendo):* Responde al mensaje del jugador con: \`!grant <monto>\`\n` +
+             `*Opción B (Directo):* Escribe de forma directa: \`!grant <celular> <monto>\``;
     }
 
     const { data: player, error } = await supabase
@@ -164,7 +175,7 @@ export async function handleAdminCommand(msg, client) {
       .eq('phone', phone)
       .maybeSingle();
 
-    if (error || !player) return `❌ Jugador con número *${phone}* no encontrado.`;
+    if (error || !player) return `❌ Jugador con número *${phone}* no encontrado en el reino.`;
 
     try {
       await updateGold(player.id, amount);
@@ -222,8 +233,19 @@ export async function handleAdminCommand(msg, client) {
 
   // 7. !ban
   if (cmd === '!ban') {
-    const phone = extractPhone(parts[1]);
-    if (!phone) return `❌ Uso correcto: *!ban 595991234567*`;
+    let phone = '';
+    if (msg.hasQuotedMsg) {
+      const quoted = await msg.getQuotedMessage();
+      phone = extractPhone(quoted.author || quoted.from);
+    } else {
+      phone = extractPhone(parts[1]);
+    }
+
+    if (!phone) {
+      return `❌ *Uso correcto de !ban:*\n` +
+             `*Opción A (Respondiendo):* Responde al mensaje del jugador con: \`!ban\`\n` +
+             `*Opción B (Directo):* Escribe de forma directa: \`!ban <celular>\``;
+    }
 
     const { error } = await supabase
       .from('players')
