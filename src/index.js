@@ -9,7 +9,8 @@ http.createServer((req, res) => {
   console.log(`📡 Servidor web activo en puerto ${PORT}`);
 });
 
-import { Client, LocalAuth } from 'whatsapp-web.js';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth } = pkg;
 import qrcode from 'qrcode-terminal';
 import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
