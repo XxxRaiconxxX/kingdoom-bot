@@ -22,6 +22,7 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
+             `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `➕ *!add admin <numero>*\n` +
              `➖ *!remove admin <numero>*\n` +
              `📢 *!broadcast <mensaje>*\n` +
@@ -33,6 +34,7 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
+             `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
@@ -277,6 +279,89 @@ export async function handleAdminCommand(msg, client) {
     } catch (err) {
       console.error(err);
       return `❌ Error al obtener el censo del reino.`;
+    }
+  }
+
+  // 9. !pendientes
+  if (cmd === '!pendientes') {
+    const chat = await msg.getChat();
+    if (!chat.isGroup) {
+      return `❌ Este comando solo se puede ejecutar dentro de un grupo de WhatsApp.`;
+    }
+
+    try {
+      const { players, sheets } = await getRealmCensus();
+      
+      const groupParticipants = chat.participants; 
+      const registeredPhones = new Set(
+        players.map(p => String(p.phone || '').trim().replace(/\D/g, ''))
+      );
+
+      const unregisteredMembers = [];
+      const registeredWithoutPj = [];
+      const mentions = [];
+
+      for (const participant of groupParticipants) {
+        const phone = participant.id.user;
+        const jid = participant.id._serialized;
+        
+        // Excluir al propio bot del listado
+        if (jid === client.info.wid._serialized) continue;
+
+        if (!registeredPhones.has(phone)) {
+          unregisteredMembers.push(participant);
+          mentions.push(jid);
+        } else {
+          // Si está registrado, verificar si tiene ficha
+          const playerObj = players.find(p => String(p.phone || '').trim().replace(/\D/g, '') === phone);
+          if (playerObj) {
+            const hasSheets = sheets.some(s => {
+              const sheetPlayerId = String(s.playerId || s.player_id || '').trim();
+              return sheetPlayerId === String(playerObj.id).trim();
+            });
+            if (!hasSheets) {
+              registeredWithoutPj.push({ player: playerObj, participant });
+              mentions.push(jid);
+            }
+          }
+        }
+      }
+
+      let response = `📋 *REPORTE DE PENDIENTES DEL REINO* 🏰\n\n`;
+      response += `👥 *Miembros del Grupo:* ${groupParticipants.length}\n`;
+      response += `🔴 *Sin Registro:* ${unregisteredMembers.length} personas\n`;
+      response += `🟡 *Registrados sin Ficha:* ${registeredWithoutPj.length} personas\n\n`;
+
+      if (unregisteredMembers.length > 0) {
+        response += `🔴 *SIN REGISTRO / NUEVOS (No vinculados):*\n`;
+        unregisteredMembers.forEach(member => {
+          response += `- @${member.id.user}\n`;
+        });
+        response += `\n`;
+      }
+
+      if (registeredWithoutPj.length > 0) {
+        response += `🟡 *CON CUENTA PERO SIN FICHA (Pendientes):*\n`;
+        registeredWithoutPj.forEach(item => {
+          response += `- @${item.participant.id.user} (User: *${item.player.username}*)\n`;
+        });
+        response += `\n`;
+      }
+
+      if (unregisteredMembers.length === 0 && registeredWithoutPj.length === 0) {
+        response += `🎉 *¡Increíble! Todos los miembros del grupo están registrados y tienen sus fichas completadas.*`;
+        await client.sendMessage(msg.from, response);
+        return;
+      }
+
+      response += `📢 *Por favor, completen su ficha web medieval y vinculen su cuenta usando !verificar.*`;
+
+      // Enviar el mensaje mencionando a los usuarios para que les llegue la notificación
+      await client.sendMessage(msg.from, response, { mentions });
+      return; 
+    } catch (err) {
+      console.error(err);
+      return `❌ Error al procesar el reporte de pendientes.`;
     }
   }
 
