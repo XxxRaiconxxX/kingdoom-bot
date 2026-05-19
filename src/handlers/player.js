@@ -72,8 +72,13 @@ export async function handlePlayerMessage(msg) {
 
   // 1. !ayuda (Permite que dueños, admins o usuarios no registrados puedan verlo)
   if (text === '!ayuda') {
-    const isSenderAdmin = isAdminUser(sender);
     const isSenderOwner = isOwner(sender);
+    let isSenderAdmin = isAdminUser(sender);
+
+    const player = await getPlayer(sender);
+    if (player && player.is_admin === true) {
+      isSenderAdmin = true;
+    }
 
     let helpMsg = `📜 *Comandos del Reino:*\n\n` +
                   `🪙 *!oro*\n` +
@@ -116,7 +121,6 @@ export async function handlePlayerMessage(msg) {
     helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
 
     // Si el usuario no está registrado en la base de datos de jugadores
-    const player = await getPlayer(sender);
     if (!player) {
       if (isSenderOwner || isSenderAdmin) {
         helpMsg += `\n\n⚠️ *Nota:* Aún no tienes personaje forjado en el reino. Regístrate usando:\n*!registrar <tu_nombre> [oro]*`;

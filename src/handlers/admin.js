@@ -55,6 +55,9 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Uso correcto: *!add admin 595991234567* o responde a un mensaje con *!add admin*`;
     }
     const success = addAdmin(target);
+    if (success) {
+      await supabase.from('players').update({ is_admin: true }).eq('phone', target);
+    }
     return success 
       ? `👑 *Soberanía concedida:* El número *${target}* ahora es Administrador del Reino.`
       : `❌ Error al guardar la lista de administradores.`;
@@ -77,6 +80,9 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Uso correcto: *!remove admin 595991234567* o responde a un mensaje con *!remove admin*`;
     }
     const success = removeAdmin(target);
+    if (success) {
+      await supabase.from('players').update({ is_admin: false }).eq('phone', target);
+    }
     return success 
       ? `🛡️ *Soberanía revocada:* El número *${target}* ha dejado de ser Administrador.`
       : `❌ Error al guardar la lista de administradores.`;

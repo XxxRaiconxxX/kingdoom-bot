@@ -224,7 +224,19 @@ client.on('message', async (msg) => {
   if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
 
   const sender = msg.author || msg.from;
-  const isAdmin = isAdminUser(sender);
+  
+  const checkIsAdmin = async (user) => {
+    if (isAdminUser(user)) return true;
+    try {
+      const player = await getPlayer(user);
+      return player?.is_admin === true;
+    } catch (err) {
+      console.error('[checkIsAdmin] Error checking DB:', err);
+      return false;
+    }
+  };
+
+  const isAdmin = await checkIsAdmin(sender);
   let reply = '';
 
   const wrapMsg = (originalMsg, newBody) => {
