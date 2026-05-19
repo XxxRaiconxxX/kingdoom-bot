@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
+import { normalizePhone } from './adminStore.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
 
@@ -15,10 +16,6 @@ export const supabase = createClient(
     },
   }
 );
-
-function normalizePhone(whatsappNumber) {
-  return String(whatsappNumber ?? '').replace('@c.us', '').trim();
-}
 
 function normalizeText(value) {
   return String(value ?? '')

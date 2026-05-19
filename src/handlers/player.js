@@ -66,14 +66,71 @@ function formatEventRow(event) {
 export async function handlePlayerMessage(msg) {
   const sender = msg.author || msg.from;
   const chatId = msg.from;
+  const rawText = msg.body.trim();
+  const text = rawText.toLowerCase();
+
+  // 1. !ayuda (Permite que dueños, admins o usuarios no registrados puedan verlo)
+  if (text === '!ayuda') {
+    const isSenderAdmin = isAdminUser(sender);
+    const isSenderOwner = isOwner(sender);
+
+    let helpMsg = `📜 *Comandos del Reino:*\n\n` +
+                  `🪙 *!oro*\n` +
+                  `🛡️ *!perfil*\n` +
+                  `🏆 *!ranking*\n` +
+                  `👑 *!ricos*\n` +
+                  `🏪 *!mercado [nombre]*\n` +
+                  `🗡️ *!item <nombre>*\n` +
+                  `📜 *!mision [nombre]*\n` +
+                  `🎭 *!evento [nombre]*\n` +
+                  `🎲 *!dados <monto>*\n` +
+                  `🔮 *!oraculo <pregunta>*\n` +
+                  `❓ *!ayuda*`;
+
+    if (isSenderOwner) {
+      helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
+                 `➕ *!add admin <numero>*\n` +
+                 `➖ *!remove admin <numero>*\n` +
+                 `👥 *!registrar <nombre> [oro]*\n` +
+                 `📢 *!broadcast <mensaje>*\n` +
+                 `🪙 *!grant <celular> <monto>*\n` +
+                 `🔨 *!ban <celular>*\n` +
+                 `📊 *!stats*\n` +
+                 `🛡️ *!admin* (menú soberano)`;
+    } else if (isSenderAdmin) {
+      helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
+                 `👥 *!registrar <nombre> [oro]*\n` +
+                 `📢 *!broadcast <mensaje>*\n` +
+                 `🪙 *!grant <celular> <monto>*\n` +
+                 `🔨 *!ban <celular>*\n` +
+                 `📊 *!stats*\n` +
+                 `🛡️ *!admin* (menú admin)`;
+    }
+
+    let identityName = 'Jugador';
+    if (isSenderOwner) identityName = '👑 Señor Owner';
+    else if (isSenderAdmin) identityName = '🛡️ Administrador';
+
+    helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
+
+    // Si el usuario no está registrado en la base de datos de jugadores
+    const player = await getPlayer(sender);
+    if (!player) {
+      if (isSenderOwner || isSenderAdmin) {
+        helpMsg += `\n\n⚠️ *Nota:* Aún no tienes personaje forjado en el reino. Regístrate usando:\n*!registrar <tu_nombre> [oro]*`;
+      } else {
+        helpMsg += `\n\n⚠️ *Nota:* Aún no estás registrado en el reino. Pídele a un administrador que te registre con *!registrar* para unirte.`;
+      }
+    }
+
+    return helpMsg;
+  }
+
   const player = await getPlayer(sender);
 
   if (!player) {
     return `⚔️ *Viajero desconocido*, no estas registrado en el reino.\n\nEscribe *!registrar TuNombre* para unirte a Kingdoom.`;
   }
-
-  const rawText = msg.body.trim();
-  const text = rawText.toLowerCase();
 
   if (text === '!oro' || text === '!gold') {
     return `👑 *${player.username}*, tu fortuna actual:\n\n🪙 *${player.gold.toLocaleString('es-PY')} oro*\n\n_"El oro es el aliento del reino..."_`;
@@ -179,52 +236,6 @@ export async function handlePlayerMessage(msg) {
   if (text === '!reino' || text === '!resumen') {
     const snapshot = await getRealmSnapshot();
     return `🏰 *ESTADO DEL REINO*\n\n👥 Aventureros: *${snapshot.totalPlayers}*\n🏪 Mercado activo: *${snapshot.availableItems}* articulos\n👑 Mas rico: *${snapshot.richest?.username ?? '-'}* (${(snapshot.richest?.gold ?? 0).toLocaleString('es-PY')} oro)\n🏆 Lider semanal: *${snapshot.weeklyChampion?.username ?? '-'}* (${(snapshot.weeklyChampion?.weekly_gold ?? 0).toLocaleString('es-PY')} oro)`;
-  }
-
-  if (text === '!ayuda') {
-    const isSenderAdmin = isAdminUser(sender);
-    const isSenderOwner = isOwner(sender);
-
-    let helpMsg = `📜 *Comandos del Reino:*\n\n` +
-                  `🪙 *!oro*\n` +
-                  `🛡️ *!perfil*\n` +
-                  `🏆 *!ranking*\n` +
-                  `👑 *!ricos*\n` +
-                  `🏪 *!mercado [nombre]*\n` +
-                  `🗡️ *!item <nombre>*\n` +
-                  `📜 *!mision [nombre]*\n` +
-                  `🎭 *!evento [nombre]*\n` +
-                  `🎲 *!dados <monto>*\n` +
-                  `🔮 *!oraculo <pregunta>*\n` +
-                  `❓ *!ayuda*`;
-
-    if (isSenderOwner) {
-      helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
-                 `➕ *!add admin <numero>*\n` +
-                 `➖ *!remove admin <numero>*\n` +
-                 `👥 *!registrar <nombre> [oro]*\n` +
-                 `📢 *!broadcast <mensaje>*\n` +
-                 `🪙 *!grant <celular> <monto>*\n` +
-                 `🔨 *!ban <celular>*\n` +
-                 `📊 *!stats*\n` +
-                 `🛡️ *!admin* (menú soberano)`;
-    } else if (isSenderAdmin) {
-      helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
-                 `👥 *!registrar <nombre> [oro]*\n` +
-                 `📢 *!broadcast <mensaje>*\n` +
-                 `🪙 *!grant <celular> <monto>*\n` +
-                 `🔨 *!ban <celular>*\n` +
-                 `📊 *!stats*\n` +
-                 `🛡️ *!admin* (menú admin)`;
-    }
-
-    let identityName = 'Jugador';
-    if (isSenderOwner) identityName = '👑 Señor Owner';
-    else if (isSenderAdmin) identityName = '🛡️ Administrador';
-
-    helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
-
-    return helpMsg;
   }
 
   if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);

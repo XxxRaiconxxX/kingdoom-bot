@@ -8,7 +8,32 @@ const ADMINS_FILE = '/app/.wwebjs_auth/admins.json';
 let adminsCache = null;
 
 export function normalizePhone(phone) {
-  return String(phone ?? '').replace('@c.us', '').replace(/\D/g, '').trim();
+  let cleaned = String(phone || '')
+    .replace(/@c\.us$/, '')
+    .replace(/@g\.us$/, '')
+    .replace(/\D/g, '')
+    .trim();
+
+  // 1. Paraguayan number normalization (e.g. 5959987273405 -> 595987273405)
+  if (cleaned.startsWith('5959') && cleaned.length === 13) {
+    cleaned = '595' + cleaned.substring(4);
+  }
+
+  // 2. Mexican number normalization (e.g. 526645891712 -> 5216645891712)
+  if (cleaned.startsWith('52') && !cleaned.startsWith('521') && cleaned.length === 12) {
+    cleaned = '521' + cleaned.substring(2);
+  }
+
+  // 3. Argentine number normalization (e.g. 54341... -> 549341...)
+  if (cleaned.startsWith('54') && !cleaned.startsWith('549')) {
+    let rest = cleaned.substring(2);
+    if (rest.startsWith('15')) {
+      rest = rest.substring(2);
+    }
+    cleaned = '549' + rest;
+  }
+
+  return cleaned;
 }
 
 export function loadAdmins() {
