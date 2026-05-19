@@ -61,6 +61,101 @@ export async function getPlayer(whatsappNumber) {
   return data ?? null;
 }
 
+export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
+  const phone = normalizePhone(whatsappNumber);
+  const normalizedKey = String(searchKey ?? '').trim();
+
+  if (!normalizedKey) {
+    return {
+      success: false,
+      message: '⚠️ Debes ingresar tu nombre de usuario o el código ID de tu perfil de la página web.\nEjemplo: `!verificar Zoelfrost` o `!verificar 2354`'
+    };
+  }
+
+  // 1. Check if this WhatsApp is already linked to some player
+  const { data: alreadyLinked, error: linkErr } = await supabase
+    .from('players')
+    .select('*')
+    .eq('phone', phone)
+    .maybeSingle();
+
+  if (alreadyLinked) {
+    return {
+      success: false,
+      message: `❌ Tu WhatsApp ya está vinculado al aventurero *${alreadyLinked.username}*.\nSi deseas cambiar de cuenta, pídele ayuda al Soberano.`
+    };
+  }
+
+  // 2. Search for the target player
+  // First attempt: search by exact username (case-insensitive)
+  let { data: targetPlayer, error: userErr } = await supabase
+    .from('players')
+    .select('*')
+    .ilike('username', normalizedKey)
+    .maybeSingle();
+
+  // Second attempt: search by UUID prefix
+  if (!targetPlayer && normalizedKey.length >= 4) {
+    const { data: allPlayers, error: allErr } = await supabase
+      .from('players')
+      .select('*');
+
+    if (allPlayers) {
+      const matches = allPlayers.filter(p => 
+        p.id.toLowerCase().startsWith(normalizedKey.toLowerCase())
+      );
+      if (matches.length === 1) {
+        targetPlayer = matches[0];
+      } else if (matches.length > 1) {
+        return {
+          success: false,
+          message: `⚠️ Se encontraron múltiples aventureros que coinciden con el código *${normalizedKey}*. Por favor escribe un código más completo.`
+        };
+      }
+    }
+  }
+
+  if (!targetPlayer) {
+    return {
+      success: false,
+      message: `❌ No se encontró ningún aventurero con el usuario o código *${normalizedKey}* en los registros del Reino.`
+    };
+  }
+
+  // 3. Check if the target player already has a phone linked
+  if (targetPlayer.phone) {
+    if (normalizePhone(targetPlayer.phone) === phone) {
+      return {
+        success: true,
+        message: `🛡️ Tu cuenta ya está vinculada de manera segura con el aventurero *${targetPlayer.username}*.`
+      };
+    }
+    return {
+      success: false,
+      message: `❌ El aventurero *${targetPlayer.username}* ya está vinculado a otro número de WhatsApp.`
+    };
+  }
+
+  // 4. Link by updating phone column
+  const { error: updateErr } = await supabase
+    .from('players')
+    .update({ phone })
+    .eq('id', targetPlayer.id);
+
+  if (updateErr) {
+    console.error('[verifyAndLinkPlayer] update error:', updateErr.message);
+    return {
+      success: false,
+      message: '⚔️ El Archivista del Reino tuvo un problema al sellar tu vinculación. Inténtalo más tarde.'
+    };
+  }
+
+  return {
+    success: true,
+    message: `🎉 ¡Vinculación exitosa!\n\n🛡️ El aventurero *${targetPlayer.username}* ahora está vinculado a tu WhatsApp.\n💰 Oro actual: *${targetPlayer.gold}*\n\n¡Ya puedes usar todos los comandos del bot con tu cuenta de la página web!`
+  };
+}
+
 export async function getLeaderboard() {
   const { data, error } = await supabase
     .from('players')

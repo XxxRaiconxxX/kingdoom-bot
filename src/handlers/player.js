@@ -7,6 +7,7 @@ import {
   getPlayer,
   getRealmSnapshot,
   searchMarketItems,
+  verifyAndLinkPlayer,
 } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
@@ -77,6 +78,7 @@ export async function handlePlayerMessage(msg) {
     let helpMsg = `📜 *Comandos del Reino:*\n\n` +
                   `🪙 *!oro*\n` +
                   `🛡️ *!perfil*\n` +
+                  `🔗 *!verificar <usuario_o_id>*\n` +
                   `🏆 *!ranking*\n` +
                   `👑 *!ricos*\n` +
                   `🏪 *!mercado [nombre]*\n` +
@@ -124,6 +126,12 @@ export async function handlePlayerMessage(msg) {
     }
 
     return helpMsg;
+  }
+
+  if (text.startsWith('!verificar')) {
+    const query = rawText.replace(/^!verificar\s*/i, '').trim();
+    const result = await verifyAndLinkPlayer(sender, query);
+    return result.message;
   }
 
   const player = await getPlayer(sender);

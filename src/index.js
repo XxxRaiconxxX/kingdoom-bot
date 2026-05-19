@@ -245,6 +245,7 @@ client.on('message', async (msg) => {
         'gold',
         'perfil',
         'estado',
+        'verificar',
         'ranking',
         'top',
         'ricos',
