@@ -9,6 +9,7 @@ import {
   searchMarketItems,
 } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
+import { isAdminUser, isOwner } from '../adminStore.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -64,6 +65,7 @@ function formatEventRow(event) {
 
 export async function handlePlayerMessage(msg) {
   const sender = msg.author || msg.from;
+  const chatId = msg.from;
   const player = await getPlayer(sender);
 
   if (!player) {
@@ -180,7 +182,43 @@ export async function handlePlayerMessage(msg) {
   }
 
   if (text === '!ayuda') {
-    return `📜 *Comandos del Reino:*\n\n🪙 !oro\n🛡️ !perfil\n🏆 !ranking\n👑 !ricos\n🏪 !mercado [nombre]\n🗡️ !item <nombre>\n📜 !mision [nombre]\n🎭 !evento [nombre]\n🎲 !dados <monto>\n🔮 !oraculo <pregunta>\n❓ !ayuda`;
+    const isSenderAdmin = isAdminUser(sender);
+    const isSenderOwner = isOwner(sender);
+
+    let helpMsg = `📜 *Comandos del Reino:*\n\n` +
+                  `🪙 *!oro*\n` +
+                  `🛡️ *!perfil*\n` +
+                  `🏆 *!ranking*\n` +
+                  `👑 *!ricos*\n` +
+                  `🏪 *!mercado [nombre]*\n` +
+                  `🗡️ *!item <nombre>*\n` +
+                  `📜 *!mision [nombre]*\n` +
+                  `🎭 *!evento [nombre]*\n` +
+                  `🎲 *!dados <monto>*\n` +
+                  `🔮 *!oraculo <pregunta>*\n` +
+                  `❓ *!ayuda*`;
+
+    if (isSenderOwner) {
+      helpMsg += `\n\n👑 *Comandos del Soberano (Owner):*\n` +
+                 `➕ *!add admin <numero>*\n` +
+                 `➖ *!remove admin <numero>*\n` +
+                 `👥 *!registrar <nombre> [oro]*\n` +
+                 `📢 *!broadcast <mensaje>*\n` +
+                 `🪙 *!grant <celular> <monto>*\n` +
+                 `🔨 *!ban <celular>*\n` +
+                 `📊 *!stats*\n` +
+                 `🛡️ *!admin* (menú soberano)`;
+    } else if (isSenderAdmin) {
+      helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
+                 `👥 *!registrar <nombre> [oro]*\n` +
+                 `📢 *!broadcast <mensaje>*\n` +
+                 `🪙 *!grant <celular> <monto>*\n` +
+                 `🔨 *!ban <celular>*\n` +
+                 `📊 *!stats*\n` +
+                 `🛡️ *!admin* (menú admin)`;
+    }
+
+    return helpMsg;
   }
 
   if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);

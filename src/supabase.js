@@ -17,7 +17,7 @@ export const supabase = createClient(
 );
 
 function normalizePhone(whatsappNumber) {
-  return whatsappNumber.replace('@c.us', '');
+  return String(whatsappNumber ?? '').replace('@c.us', '').trim();
 }
 
 function normalizeText(value) {
