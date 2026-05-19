@@ -148,7 +148,6 @@ const client = new Client({
       '--disable-gpu',
       '--no-first-run',
       '--no-zygote',
-      '--single-process',
       '--disable-extensions',
       '--disable-accelerated-2d-canvas'
     ]
