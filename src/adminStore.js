@@ -60,6 +60,7 @@ export function isOwner(whatsappNumber) {
   
   return phone === '595987273405' || 
          phone === '5959987273405' || 
+         phone === '275162062668001' || 
          (envOwner && phone === envOwner) || 
          (envAdmin && phone === envAdmin);
 }
