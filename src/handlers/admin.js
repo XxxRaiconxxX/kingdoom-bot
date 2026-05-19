@@ -46,7 +46,7 @@ export async function handleAdminCommand(msg, client) {
     let target = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      target = extractPhone(quoted.from);
+      target = extractPhone(quoted.author || quoted.from);
     } else {
       target = extractPhone(parts[2]);
     }
@@ -71,7 +71,7 @@ export async function handleAdminCommand(msg, client) {
     let target = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      target = extractPhone(quoted.from);
+      target = extractPhone(quoted.author || quoted.from);
     } else {
       target = extractPhone(parts[2]);
     }
@@ -97,7 +97,7 @@ export async function handleAdminCommand(msg, client) {
     if (msg.hasQuotedMsg) {
       // Caso 1: Respondiendo a un mensaje -> !registrar <nombre> [oro]
       const quoted = await msg.getQuotedMessage();
-      targetPhone = quoted.from;
+      targetPhone = quoted.author || quoted.from;
       
       username = parts[1];
       if (parts[2]) {
