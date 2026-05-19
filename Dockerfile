@@ -14,7 +14,5 @@ COPY package*.json ./
 RUN npm install
 COPY src/ ./src/
 
-# Persistencia de sesión WhatsApp
-VOLUME ["/app/.wwebjs_auth"]
-
+# Persistencia de sesión WhatsApp se maneja vía Railway Volumes
 CMD ["node", "src/index.js"]
