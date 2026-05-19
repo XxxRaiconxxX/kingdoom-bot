@@ -9,7 +9,7 @@ import {
   searchMarketItems,
 } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
-import { isAdminUser, isOwner } from '../adminStore.js';
+import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -199,7 +199,7 @@ export async function handlePlayerMessage(msg) {
                   `❓ *!ayuda*`;
 
     if (isSenderOwner) {
-      helpMsg += `\n\n👑 *Comandos del Soberano (Owner):*\n` +
+      helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
                  `➕ *!add admin <numero>*\n` +
                  `➖ *!remove admin <numero>*\n` +
                  `👥 *!registrar <nombre> [oro]*\n` +
@@ -217,6 +217,12 @@ export async function handlePlayerMessage(msg) {
                  `📊 *!stats*\n` +
                  `🛡️ *!admin* (menú admin)`;
     }
+
+    let identityName = 'Jugador';
+    if (isSenderOwner) identityName = '👑 Señor Owner';
+    else if (isSenderAdmin) identityName = '🛡️ Administrador';
+
+    helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
 
     return helpMsg;
   }

@@ -7,7 +7,7 @@ const ADMINS_FILE = '/app/.wwebjs_auth/admins.json';
 // In-memory cache of admin numbers (excluding @c.us)
 let adminsCache = null;
 
-function normalizePhone(phone) {
+export function normalizePhone(phone) {
   return String(phone ?? '').replace('@c.us', '').replace(/\D/g, '').trim();
 }
 
@@ -55,12 +55,18 @@ export function saveAdmins(adminsList) {
 
 export function isOwner(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
-  return phone === '595987273405' || phone === '5959987273405';
+  const envOwner = process.env.OWNER_NUMBER ? normalizePhone(process.env.OWNER_NUMBER) : null;
+  const envAdmin = process.env.ADMIN_NUMBER ? normalizePhone(process.env.ADMIN_NUMBER) : null;
+  
+  return phone === '595987273405' || 
+         phone === '5959987273405' || 
+         (envOwner && phone === envOwner) || 
+         (envAdmin && phone === envAdmin);
 }
 
 export function isAdminUser(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
-  if (phone === '595987273405' || phone === '5959987273405') return true;
+  if (isOwner(whatsappNumber)) return true;
   const list = loadAdmins();
   return list.includes(phone);
 }
