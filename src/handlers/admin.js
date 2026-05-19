@@ -43,9 +43,16 @@ export async function handleAdminCommand(msg, client) {
     if (!isSenderOwner) {
       return `❌ Solo el Soberano del Reino puede otorgar funciones administrativas.`;
     }
-    const target = extractPhone(parts[2]);
+    let target = '';
+    if (msg.hasQuotedMsg) {
+      const quoted = await msg.getQuotedMessage();
+      target = extractPhone(quoted.from);
+    } else {
+      target = extractPhone(parts[2]);
+    }
+
     if (!target) {
-      return `❌ Uso correcto: *!add admin 595991234567*`;
+      return `❌ Uso correcto: *!add admin 595991234567* o responde a un mensaje con *!add admin*`;
     }
     const success = addAdmin(target);
     return success 
@@ -58,9 +65,16 @@ export async function handleAdminCommand(msg, client) {
     if (!isSenderOwner) {
       return `❌ Solo el Soberano del Reino puede revocar funciones administrativas.`;
     }
-    const target = extractPhone(parts[2]);
+    let target = '';
+    if (msg.hasQuotedMsg) {
+      const quoted = await msg.getQuotedMessage();
+      target = extractPhone(quoted.from);
+    } else {
+      target = extractPhone(parts[2]);
+    }
+
     if (!target) {
-      return `❌ Uso correcto: *!remove admin 595991234567*`;
+      return `❌ Uso correcto: *!remove admin 595991234567* o responde a un mensaje con *!remove admin*`;
     }
     const success = removeAdmin(target);
     return success 
