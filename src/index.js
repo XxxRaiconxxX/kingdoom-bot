@@ -1,3 +1,14 @@
+import http from 'http';
+
+// Servidor web básico para Render (Port Check y Uptime)
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end('🏰 ¡El Archivista confirma que Kingdoom Bot está activo!\n');
+}).listen(PORT, () => {
+  console.log(`📡 Servidor web activo en puerto ${PORT}`);
+});
+
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import 'dotenv/config';
