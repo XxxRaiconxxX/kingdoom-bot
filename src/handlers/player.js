@@ -1,9 +1,11 @@
 import {
   getActiveEvents,
   getActiveMissions,
+  getEventDetails,
   getGoldLeaderboard,
   getLeaderboard,
   getMarketItemDetails,
+  getMissionDetails,
   getPlayer,
   getRealmSnapshot,
   searchMarketItems,
