@@ -198,26 +198,45 @@ export async function handleAdminCommand(msg, client) {
 
     const { data: players, error } = await supabase
       .from('players')
-      .select('phone')
+      .select('phone, username')
       .not('phone', 'is', null);
 
     if (error || !players?.length) return `❌ No hay jugadores registrados.`;
 
     let sent = 0;
     let failed = 0;
+    const failedNames = [];
+
     for (const p of players) {
+      const jid = `${p.phone}@c.us`;
       try {
+        // Verificar que el número esté registrado en WhatsApp antes de enviar
+        const isRegistered = await client.isRegisteredUser(jid);
+        if (!isRegistered) {
+          console.log(`[broadcast] Número no registrado en WA: ${p.phone} (${p.username})`);
+          failed++;
+          failedNames.push(`${p.username || p.phone} (no WA)`);
+          continue;
+        }
+
         await client.sendMessage(
-          `${p.phone}@c.us`,
+          jid,
           `📢 *ANUNCIO DEL REINO*\n\n${message}`
         );
         sent++;
         await new Promise(r => setTimeout(r, 1000)); // anti-spam
-      } catch {
+      } catch (err) {
+        console.error(`[broadcast] Error al enviar a ${p.phone} (${p.username}):`, err?.message || err);
         failed++;
+        failedNames.push(p.username || p.phone);
       }
     }
-    return `✅ Broadcast enviado: *${sent}* exitosos, *${failed}* fallidos.`;
+
+    let response = `✅ Broadcast enviado: *${sent}* exitosos, *${failed}* fallidos.`;
+    if (failedNames.length > 0) {
+      response += `\n⚠️ Fallaron: ${failedNames.join(', ')}`;
+    }
+    return response;
   }
 
   // 6. !stats
