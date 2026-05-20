@@ -23,11 +23,11 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
-             `➕ *!add admin <numero>*\n` +
-             `➖ *!remove admin <numero>*\n` +
+             `➕ *!add admin <nombre/celular>*\n` +
+             `➖ *!remove admin <nombre/celular>*\n` +
              `🪙 *!grant <nombre/celular> <monto>*\n` +
              `💸 *!quitar <nombre/celular> <monto>*\n` +
-             `🔨 *!ban <celular>*\n` +
+             `🔨 *!ban <nombre/celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
     } else {
@@ -38,59 +38,89 @@ export async function handleAdminCommand(msg, client) {
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `🪙 *!grant <nombre/celular> <monto>*\n` +
              `💸 *!quitar <nombre/celular> <monto>*\n` +
-             `🔨 *!ban <celular>*\n` +
+             `🔨 *!ban <nombre/celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
     }
   }
 
-  // 1. !add admin <numero> (Owner only!)
+  // 1. !add admin <nombre/celular> (Owner only!)
   if (cmd === '!add' && parts[1]?.toLowerCase() === 'admin') {
     if (!isSenderOwner) {
       return `❌ Solo el Soberano del Reino puede otorgar funciones administrativas.`;
     }
-    let target = '';
+    let identifier = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      target = extractPhone(quoted.author || quoted.from);
+      identifier = extractPhone(quoted.author || quoted.from);
     } else {
-      target = extractPhone(parts[2]);
+      identifier = parts.slice(2).join(' ').trim();
     }
 
-    if (!target) {
-      return `❌ Uso correcto: *!add admin 595991234567* o responde a un mensaje con *!add admin*`;
+    if (!identifier) {
+      return `❌ Uso correcto: *!add admin <nombre/celular>* o responde a un mensaje.`;
     }
-    const success = addAdmin(target);
-    if (success) {
-      await supabase.from('players').update({ is_admin: true }).eq('phone', target);
+
+    const isPhone = /^[\d\+\s]+$/.test(identifier);
+    let query = supabase.from('players').select('phone, username');
+    if (isPhone) {
+      query = query.eq('phone', extractPhone(identifier));
+    } else {
+      query = query.ilike('username', identifier);
+    }
+    const { data: player } = await query.maybeSingle();
+
+    let targetPhone = player ? player.phone : extractPhone(identifier);
+    let targetName = player ? player.username : targetPhone;
+
+    if (!targetPhone) return `❌ No se pudo determinar el celular de *${identifier}*.`;
+
+    const success = addAdmin(targetPhone);
+    if (success && player) {
+      await supabase.from('players').update({ is_admin: true }).eq('phone', targetPhone);
     }
     return success 
-      ? `👑 *Soberanía concedida:* El número *${target}* ahora es Administrador del Reino.`
+      ? `👑 *Soberanía concedida:* *${targetName}* ahora es Administrador del Reino.`
       : `❌ Error al guardar la lista de administradores.`;
   }
 
-  // 2. !remove admin <numero> (Owner only!)
+  // 2. !remove admin <nombre/celular> (Owner only!)
   if (cmd === '!remove' && parts[1]?.toLowerCase() === 'admin') {
     if (!isSenderOwner) {
       return `❌ Solo el Soberano del Reino puede revocar funciones administrativas.`;
     }
-    let target = '';
+    let identifier = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      target = extractPhone(quoted.author || quoted.from);
+      identifier = extractPhone(quoted.author || quoted.from);
     } else {
-      target = extractPhone(parts[2]);
+      identifier = parts.slice(2).join(' ').trim();
     }
 
-    if (!target) {
-      return `❌ Uso correcto: *!remove admin 595991234567* o responde a un mensaje con *!remove admin*`;
+    if (!identifier) {
+      return `❌ Uso correcto: *!remove admin <nombre/celular>* o responde a un mensaje.`;
     }
-    const success = removeAdmin(target);
-    if (success) {
-      await supabase.from('players').update({ is_admin: false }).eq('phone', target);
+
+    const isPhone = /^[\d\+\s]+$/.test(identifier);
+    let query = supabase.from('players').select('phone, username');
+    if (isPhone) {
+      query = query.eq('phone', extractPhone(identifier));
+    } else {
+      query = query.ilike('username', identifier);
+    }
+    const { data: player } = await query.maybeSingle();
+
+    let targetPhone = player ? player.phone : extractPhone(identifier);
+    let targetName = player ? player.username : targetPhone;
+
+    if (!targetPhone) return `❌ No se pudo determinar el celular de *${identifier}*.`;
+
+    const success = removeAdmin(targetPhone);
+    if (success && player) {
+      await supabase.from('players').update({ is_admin: false }).eq('phone', targetPhone);
     }
     return success 
-      ? `🛡️ *Soberanía revocada:* El número *${target}* ha dejado de ser Administrador.`
+      ? `🛡️ *Soberanía revocada:* *${targetName}* ha dejado de ser Administrador.`
       : `❌ Error al guardar la lista de administradores.`;
   }
 
@@ -223,35 +253,37 @@ export async function handleAdminCommand(msg, client) {
 
   // 7. !ban
   if (cmd === '!ban') {
-    let phone = '';
+    let identifier = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      phone = extractPhone(quoted.author || quoted.from);
+      identifier = extractPhone(quoted.author || quoted.from);
     } else {
-      phone = extractPhone(parts[1]);
+      identifier = parts.slice(1).join(' ').trim();
     }
 
-    if (!phone) {
+    if (!identifier) {
       return `❌ *Uso correcto de !ban:*\n` +
-             `*Opción A (Respondiendo):* Responde al mensaje del jugador con: \`!ban\`\n` +
-             `*Opción B (Directo):* Escribe de forma directa: \`!ban <celular>\``;
+             `*Respondiendo:* \`!ban\`\n` +
+             `*Directo:* \`!ban <nombre_o_celular>\``;
     }
 
-    // First verify player exists
-    const { data: target } = await supabase
-      .from('players')
-      .select('username')
-      .eq('phone', phone)
-      .maybeSingle();
+    const isPhone = /^[\d\+\s]+$/.test(identifier);
+    let query = supabase.from('players').select('id, phone, username');
+    if (isPhone) {
+      query = query.eq('phone', extractPhone(identifier));
+    } else {
+      query = query.ilike('username', identifier);
+    }
+    const { data: target } = await query.maybeSingle();
 
-    if (!target) return `❌ No existe ningún jugador con el número *${phone}* en el reino.`;
+    if (!target) return `❌ No existe ningún jugador con el nombre/número *${identifier}* en el reino.`;
 
     const { error } = await supabase
       .from('players')
       .update({ banned: true })
-      .eq('phone', phone);
+      .eq('id', target.id);
 
-    return error ? `❌ Error al banear.` : `🔨 *${target.username}* (${phone}) ha sido desterrado del reino.`;
+    return error ? `❌ Error al banear a *${target.username}*.` : `🔨 *${target.username}* (${target.phone}) ha sido desterrado del reino.`;
   }
 
   // 8. !censo o !fichas
