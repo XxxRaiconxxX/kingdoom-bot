@@ -246,7 +246,7 @@ client.on('message', async (msg) => {
   };
 
   try {
-    if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'groupid'].includes(command)) {
+    if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'groupid', 'staff', 'bitacora'].includes(command)) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client
@@ -263,6 +263,8 @@ client.on('message', async (msg) => {
         'gold',
         'perfil',
         'estado',
+        'vinculo',
+        'nuevo',
         'verificar',
         'ranking',
         'top',

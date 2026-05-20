@@ -1,12 +1,21 @@
-import { supabase, updateGold, registerPlayer, getRealmCensus } from '../supabase.js';
+import {
+  supabase,
+  updateGold,
+  registerPlayer,
+  getRealmCensus,
+  getStaffSnapshot,
+} from '../supabase.js';
 import { isOwner, addAdmin, removeAdmin } from '../adminStore.js';
 import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
+import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
+import { resolvePlayerTarget } from '../targetResolver.js';
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
   const sender = msg.author || msg.from;
+  const actorPhone = sender.replace(/@c\.us$/, '').replace(/\D/g, '');
 
   const isSenderOwner = isOwner(sender);
 
@@ -16,32 +25,14 @@ export async function handleAdminCommand(msg, client) {
     return input.replace('@c.us', '').replace(/\D/g, '').trim();
   };
 
-  // Helper to find a player by phone, exact username, or UUID prefix (ID)
-  const findAdminTarget = async (identifier) => {
-    const isPhone = /^[\d\+\s]+$/.test(identifier);
-    if (isPhone) {
-      const phone = extractPhone(identifier);
-      const { data } = await supabase.from('players').select('*').eq('phone', phone).maybeSingle();
-      return { player: data, isPhone: true, phone };
+  const actorPlayer = await supabase.from('players').select('username').eq('phone', actorPhone).maybeSingle();
+  const actorName = actorPlayer.data?.username ?? 'Staff';
+
+  const describeResolutionError = (identifier, result) => {
+    if (result?.reason === 'ambiguous') {
+      return `⚠️ Hay varias coincidencias para *${identifier}*. Usa el celular, cita el mensaje, menciona al jugador o pasa un ID más largo.`;
     }
-
-    // 1. Username exact match (case-insensitive)
-    let { data: player } = await supabase
-      .from('players')
-      .select('*')
-      .ilike('username', identifier)
-      .maybeSingle();
-
-    // 2. UUID prefix match
-    if (!player && identifier.length >= 4) {
-      const { data: allPlayers } = await supabase.from('players').select('*');
-      if (allPlayers) {
-        const matches = allPlayers.filter(p => p.id.toLowerCase().startsWith(identifier.toLowerCase()));
-        if (matches.length === 1) player = matches[0];
-      }
-    }
-
-    return { player, isPhone: false };
+    return `❌ Jugador *${identifier || 'desconocido'}* no encontrado en el reino.`;
   };
 
   // 0. Menu command !admin
@@ -55,11 +46,13 @@ export async function handleAdminCommand(msg, client) {
              `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
              `➕ *!add admin <ID/nombre/celular>*\n` +
              `➖ *!remove admin <ID/nombre/celular>*\n` +
-             `🪙 *!grant <ID/nombre/celular> <monto>*\n` +
-             `💸 *!quitar <ID/nombre/celular> <monto>*\n` +
+             `🪙 *!grant <ID/nombre/celular/@/citado> <monto>*\n` +
+             `💸 *!quitar <ID/nombre/celular/@/citado> <monto>*\n` +
              `🔨 *!ban <ID/nombre/celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
-             `📊 *!stats*`;
+             `📊 *!stats*\n` +
+             `🧾 *!staff* (resumen staff)\n` +
+             `📚 *!bitacora* (últimas acciones)`;
     } else {
       return `🛡️ *MENÚ DE ADMINISTRADOR:*\n\n` +
              `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
@@ -67,11 +60,13 @@ export async function handleAdminCommand(msg, client) {
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
-             `🪙 *!grant <ID/nombre/celular> <monto>*\n` +
-             `💸 *!quitar <ID/nombre/celular> <monto>*\n` +
+             `🪙 *!grant <ID/nombre/celular/@/citado> <monto>*\n` +
+             `💸 *!quitar <ID/nombre/celular/@/citado> <monto>*\n` +
              `🔨 *!ban <ID/nombre/celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
-             `📊 *!stats*`;
+             `📊 *!stats*\n` +
+             `🧾 *!staff* (resumen staff)\n` +
+             `📚 *!bitacora* (últimas acciones)`;
     }
   }
 
@@ -92,16 +87,25 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Uso correcto: *!add admin <ID/nombre/celular>* o responde a un mensaje.`;
     }
 
-    const { player, isPhone, phone } = await findAdminTarget(identifier);
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
 
-    let targetPhone = player ? player.phone : (isPhone ? phone : null);
-    let targetName = player ? player.username : identifier;
-
-    if (!targetPhone) return `❌ No se pudo determinar el celular de *${identifier}*.`;
+    const targetPhone = resolved.player.phone || resolved.phone;
+    const targetName = resolved.player.username;
 
     const success = addAdmin(targetPhone);
-    if (success && player) {
+    if (success && resolved.player) {
       await supabase.from('players').update({ is_admin: true }).eq('phone', targetPhone);
+    }
+    if (success) {
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'add_admin',
+        target: `${targetName} (${targetPhone})`,
+        detail: `Otorgó admin por ${resolved.matchType || resolved.source || 'resolucion directa'}.`,
+        chatId: msg.from,
+      });
     }
     return success 
       ? `👑 *Soberanía concedida:* *${targetName}* ahora es Administrador del Reino.`
@@ -125,16 +129,25 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Uso correcto: *!remove admin <ID/nombre/celular>* o responde a un mensaje.`;
     }
 
-    const { player, isPhone, phone } = await findAdminTarget(identifier);
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
 
-    let targetPhone = player ? player.phone : (isPhone ? phone : null);
-    let targetName = player ? player.username : identifier;
-
-    if (!targetPhone) return `❌ No se pudo determinar el celular de *${identifier}*.`;
+    const targetPhone = resolved.player.phone || resolved.phone;
+    const targetName = resolved.player.username;
 
     const success = removeAdmin(targetPhone);
-    if (success && player) {
+    if (success && resolved.player) {
       await supabase.from('players').update({ is_admin: false }).eq('phone', targetPhone);
+    }
+    if (success) {
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'remove_admin',
+        target: `${targetName} (${targetPhone})`,
+        detail: `Revocó admin por ${resolved.matchType || resolved.source || 'resolucion directa'}.`,
+        chatId: msg.from,
+      });
     }
     return success 
       ? `🛡️ *Soberanía revocada:* *${targetName}* ha dejado de ser Administrador.`
@@ -191,6 +204,16 @@ export async function handleAdminCommand(msg, client) {
     // Ejecutar registro
     try {
       const result = await registerPlayer(`${cleanPhone}@c.us`, username.trim(), goldAmount);
+      if (result.startsWith('✅')) {
+        recordAdminAction({
+          actorPhone,
+          actorName,
+          action: 'registrar',
+          target: `${username.trim()} (${cleanPhone})`,
+          detail: `Registro manual con ${goldAmount.toLocaleString('es-PY')} oro inicial.`,
+          chatId: msg.from,
+        });
+      }
       return result;
     } catch (err) {
       console.error('[admin registrar]', err);
@@ -206,9 +229,9 @@ export async function handleAdminCommand(msg, client) {
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
       identifier = extractPhone(quoted.author || quoted.from);
-      amount = parseInt(parts[1]);
+      amount = parseInt(String(parts[1] ?? '').replace(/\./g, ''));
     } else {
-      amount = parseInt(parts[parts.length - 1]);
+      amount = parseInt(String(parts[parts.length - 1] ?? '').replace(/\./g, ''));
       identifier = parts.slice(1, -1).join(' ').trim();
     }
 
@@ -225,9 +248,10 @@ export async function handleAdminCommand(msg, client) {
       finalAmount = amount; // Permite !grant -100 por si acaso
     }
 
-    const { player } = await findAdminTarget(identifier);
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
 
-    if (!player) return `❌ Jugador *${identifier}* no encontrado en el reino.`;
+    const { player } = resolved;
 
     try {
       await updateGold(player.id, finalAmount);
@@ -235,6 +259,14 @@ export async function handleAdminCommand(msg, client) {
       const { data: updated } = await supabase.from('players').select('gold').eq('id', player.id).maybeSingle();
       const newTotal = updated?.gold ?? (player.gold + finalAmount);
       const action = finalAmount > 0 ? `+${finalAmount.toLocaleString('es-PY')}` : `${finalAmount.toLocaleString('es-PY')}`;
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: finalAmount > 0 ? 'grant_gold' : 'remove_gold',
+        target: `${player.username} (${player.phone || resolved.phone || 'sin telefono'})`,
+        detail: `${action} oro. Nuevo total: ${newTotal.toLocaleString('es-PY')}.`,
+        chatId: msg.from,
+      });
       return `✅ *${action} oro* aplicado a *${player.username}*\n🪙 Nuevo total: ${newTotal.toLocaleString('es-PY')}`;
     } catch {
       return `❌ Error al actualizar el oro.`;
@@ -259,6 +291,15 @@ export async function handleAdminCommand(msg, client) {
     return `📊 *Stats del Reino:*\n\n👥 Jugadores: ${totalPlayers}\n💰 Más rico: ${richest?.username ?? '—'} (${(richest?.gold ?? 0).toLocaleString('es-PY')} oro)`;
   }
 
+  if (cmd === '!staff') {
+    const snapshot = await getStaffSnapshot();
+    const richest = snapshot.richestPlayers
+      .map((entry, index) => `${index + 1}. ${entry.username} (${Number(entry.gold ?? 0).toLocaleString('es-PY')})`)
+      .join('\n');
+
+    return `🧾 *RESUMEN DE STAFF*\n\n👥 Jugadores: ${snapshot.totalPlayers}\n🔗 Vinculados: ${snapshot.linkedPlayers}\n🎭 Fichas: ${snapshot.totalSheets}\n📜 Misiones abiertas: ${snapshot.openMissions}\n🎭 Eventos activos: ${snapshot.activeEvents}\n\n👑 *Top oro*\n${richest || 'Sin datos.'}`;
+  }
+
   // 7. !ban
   if (cmd === '!ban') {
     let identifier = '';
@@ -275,14 +316,25 @@ export async function handleAdminCommand(msg, client) {
              `*Directo:* \`!ban <ID/nombre/celular>\``;
     }
 
-    const { player: target } = await findAdminTarget(identifier);
-
-    if (!target) return `❌ No existe ningún jugador con el ID/nombre/número *${identifier}* en el reino.`;
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
+    const { player: target } = resolved;
 
     const { error } = await supabase
       .from('players')
       .update({ banned: true })
       .eq('id', target.id);
+
+    if (!error) {
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'ban_player',
+        target: `${target.username} (${target.phone || resolved.phone || 'sin telefono'})`,
+        detail: 'Jugador marcado como baneado en Supabase.',
+        chatId: msg.from,
+      });
+    }
 
     return error ? `❌ Error al banear a *${target.username}*.` : `🔨 *${target.username}* (${target.phone}) ha sido desterrado del reino.`;
   }
@@ -474,6 +526,15 @@ export async function handleAdminCommand(msg, client) {
       toRemovePhones.forEach(phone => {
         response += `- +${phone}\n`;
       });
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'purga',
+        target: `${toRemove.length} expulsados`,
+        detail: `Telefonos: ${toRemovePhones.join(', ')}`,
+        chatId: msg.from,
+      });
       
       return response;
     } catch (err) {
@@ -491,5 +552,26 @@ export async function handleAdminCommand(msg, client) {
     return `📋 *ID del Grupo:* ${msg.from}`;
   }
 
+  if (cmd === '!bitacora') {
+    const limit = parts[1] === 'full' ? 20 : 8;
+    const entries = getRecentAdminActions(limit);
+    if (!entries.length) {
+      return `📚 La bitácora del reino aún no tiene acciones registradas.`;
+    }
+
+    const lines = entries.map((entry, index) => {
+      const when = new Date(entry.at).toLocaleString('es-PY');
+      return `${index + 1}. *${entry.action}*\n   ${entry.actorName || entry.actorPhone} → ${entry.target}\n   ${clipAudit(entry.detail)}\n   ${when}`;
+    });
+
+    return `📚 *BITÁCORA DEL REINO*\n\n${lines.join('\n\n')}`;
+  }
+
   return `❓ Comando admin no reconocido. Escribe *!admin* para ver la lista de comandos.`;
+}
+
+function clipAudit(value, max = 110) {
+  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!clean) return 'Sin detalle.';
+  return clean.length > max ? `${clean.slice(0, max - 1).trimEnd()}…` : clean;
 }

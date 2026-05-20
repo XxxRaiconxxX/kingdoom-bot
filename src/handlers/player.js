@@ -3,6 +3,7 @@ import {
   getActiveMissions,
   getEventDetails,
   getGoldLeaderboard,
+  getLinkStatusByWhatsapp,
   getLeaderboard,
   getMarketItemDetails,
   getMissionDetails,
@@ -72,8 +73,21 @@ export async function handlePlayerMessage(msg) {
   const rawText = msg.body.trim();
   const text = rawText.toLowerCase();
 
-  // 1. !ayuda (Permite que dueños, admins o usuarios no registrados puedan verlo)
-  if (text === '!ayuda') {
+  if (text === '!nuevo') {
+    return `🏰 *PRIMEROS PASOS EN KINGDOOM*\n\n1. Pide tu registro al staff.\n2. Vincula tu WhatsApp con *!verificar usuario_o_id*.\n3. Revisa la web del reino y crea tu ficha.\n4. Usa *!ayuda* para ver comandos del Heraldo.`;
+  }
+
+  if (text === '!vinculo') {
+    const link = await getLinkStatusByWhatsapp(sender);
+    if (!link.linked || !link.player) {
+      return `🔗 Tu número aún no está vinculado a ningún perfil web.\nUsa *!verificar usuario_o_id* cuando el staff te habilite la cuenta.`;
+    }
+
+    return `🔗 *VÍNCULO CONFIRMADO*\n\n👤 Aventurero: *${link.player.username}*\n📞 Número: *${link.phone}*\n🪙 Oro actual: *${Number(link.player.gold ?? 0).toLocaleString('es-PY')}*`;
+  }
+
+  // 1. !ayuda / !help (Permite que dueños, admins o usuarios no registrados puedan verlo)
+  if (text === '!ayuda' || text === '!help') {
     const isSenderOwner = isOwner(sender);
     let isSenderAdmin = isAdminUser(sender);
 
@@ -85,6 +99,8 @@ export async function handlePlayerMessage(msg) {
     let helpMsg = `📜 *Comandos del Reino:*\n\n` +
                   `🪙 *!oro*\n` +
                   `🛡️ *!perfil*\n` +
+                  `🔗 *!vinculo*\n` +
+                  `🧭 *!nuevo*\n` +
                   `🔗 *!verificar <usuario_o_id>*\n` +
                   `🏆 *!ranking*\n` +
                   `👑 *!ricos*\n` +
@@ -98,21 +114,25 @@ export async function handlePlayerMessage(msg) {
 
     if (isSenderOwner) {
       helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
-                 `➕ *!add admin <numero>*\n` +
-                 `➖ *!remove admin <numero>*\n` +
+                 `➕ *!add admin <ID/nombre/celular/@>*\n` +
+                 `➖ *!remove admin <ID/nombre/celular/@>*\n` +
                  `👥 *!registrar <nombre> [oro]*\n` +
-                 `📢 *!broadcast <mensaje>*\n` +
-                 `🪙 *!grant <celular> <monto>*\n` +
-                 `🔨 *!ban <celular>*\n` +
+                 `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
+                 `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
+                 `🔨 *!ban <ID/nombre/celular/@>*\n` +
                  `📊 *!stats*\n` +
+                 `🧾 *!staff*\n` +
+                 `📚 *!bitacora*\n` +
                  `🛡️ *!admin* (menú soberano)`;
     } else if (isSenderAdmin) {
       helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
                  `👥 *!registrar <nombre> [oro]*\n` +
-                 `📢 *!broadcast <mensaje>*\n` +
-                 `🪙 *!grant <celular> <monto>*\n` +
-                 `🔨 *!ban <celular>*\n` +
+                 `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
+                 `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
+                 `🔨 *!ban <ID/nombre/celular/@>*\n` +
                  `📊 *!stats*\n` +
+                 `🧾 *!staff*\n` +
+                 `📚 *!bitacora*\n` +
                  `🛡️ *!admin* (menú admin)`;
     }
 

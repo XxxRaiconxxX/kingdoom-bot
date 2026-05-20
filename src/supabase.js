@@ -61,6 +61,101 @@ export async function getPlayer(whatsappNumber) {
   return data ?? null;
 }
 
+export async function findPlayerByIdentifier(identifier) {
+  const rawIdentifier = String(identifier ?? '').trim();
+  if (!rawIdentifier) {
+    return { player: null, matchType: 'none', reason: 'missing', phone: '' };
+  }
+
+  const normalizedIdentifier = normalizeText(rawIdentifier);
+  const normalizedPhone = normalizePhone(rawIdentifier);
+  const allPlayersQuery = async () => {
+    const { data, error } = await supabase.from('players').select('*');
+    if (error) {
+      console.error('[findPlayerByIdentifier]', error.message);
+      return [];
+    }
+    return data ?? [];
+  };
+
+  if (/^\d+$/.test(normalizedPhone)) {
+    const { data, error } = await supabase
+      .from('players')
+      .select('*')
+      .eq('phone', normalizedPhone)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('[findPlayerByIdentifier.phone]', error.message);
+    }
+
+    if (data) {
+      return { player: data, matchType: 'phone', reason: 'ok', phone: normalizedPhone };
+    }
+  }
+
+  const { data: exactPlayer, error: exactError } = await supabase
+    .from('players')
+    .select('*')
+    .ilike('username', rawIdentifier)
+    .maybeSingle();
+
+  if (exactError && exactError.code !== 'PGRST116') {
+    console.error('[findPlayerByIdentifier.username]', exactError.message);
+  }
+
+  if (exactPlayer) {
+    return { player: exactPlayer, matchType: 'username-exact', reason: 'ok', phone: exactPlayer.phone ?? '' };
+  }
+
+  const allPlayers = await allPlayersQuery();
+  if (!allPlayers.length) {
+    return { player: null, matchType: 'none', reason: 'not_found', phone: normalizedPhone };
+  }
+
+  const idMatches = allPlayers.filter((player) =>
+    String(player.id ?? '').toLowerCase().startsWith(rawIdentifier.toLowerCase())
+  );
+  if (idMatches.length === 1) {
+    return { player: idMatches[0], matchType: 'id-prefix', reason: 'ok', phone: idMatches[0].phone ?? '' };
+  }
+  if (idMatches.length > 1) {
+    return { player: null, matchType: 'id-prefix', reason: 'ambiguous', phone: normalizedPhone };
+  }
+
+  const startsWithMatches = allPlayers.filter((player) =>
+    normalizeText(player.username).startsWith(normalizedIdentifier)
+  );
+  if (startsWithMatches.length === 1) {
+    return {
+      player: startsWithMatches[0],
+      matchType: 'username-prefix',
+      reason: 'ok',
+      phone: startsWithMatches[0].phone ?? '',
+    };
+  }
+  if (startsWithMatches.length > 1) {
+    return { player: null, matchType: 'username-prefix', reason: 'ambiguous', phone: normalizedPhone };
+  }
+
+  const containsMatches = allPlayers.filter((player) =>
+    normalizeText(player.username).includes(normalizedIdentifier)
+  );
+  if (containsMatches.length === 1) {
+    return {
+      player: containsMatches[0],
+      matchType: 'username-contains',
+      reason: 'ok',
+      phone: containsMatches[0].phone ?? '',
+    };
+  }
+  if (containsMatches.length > 1) {
+    return { player: null, matchType: 'username-contains', reason: 'ambiguous', phone: normalizedPhone };
+  }
+
+  return { player: null, matchType: 'none', reason: 'not_found', phone: normalizedPhone };
+}
+
 export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
   const phone = normalizePhone(whatsappNumber);
   const normalizedKey = String(searchKey ?? '').trim();
@@ -224,6 +319,36 @@ export async function getRealmSnapshot() {
     availableItems: availableItems ?? 0,
     richest: richest ?? null,
     weeklyChampion: weeklyChampion ?? null,
+  };
+}
+
+export async function getLinkStatusByWhatsapp(whatsappNumber) {
+  const player = await getPlayer(whatsappNumber);
+  return {
+    phone: normalizePhone(whatsappNumber),
+    linked: Boolean(player),
+    player,
+  };
+}
+
+export async function getStaffSnapshot() {
+  const [{ count: totalPlayers }, { count: linkedPlayers }, { count: totalSheets }, missions, events, richBoard] =
+    await Promise.all([
+      supabase.from('players').select('*', { count: 'exact', head: true }),
+      supabase.from('players').select('*', { count: 'exact', head: true }).not('phone', 'is', null),
+      supabase.from('character_sheets').select('*', { count: 'exact', head: true }),
+      getActiveMissions(10),
+      getActiveEvents(10),
+      getGoldLeaderboard(3),
+    ]);
+
+  return {
+    totalPlayers: totalPlayers ?? 0,
+    linkedPlayers: linkedPlayers ?? 0,
+    totalSheets: totalSheets ?? 0,
+    openMissions: missions.length,
+    activeEvents: events.length,
+    richestPlayers: richBoard,
   };
 }
 
