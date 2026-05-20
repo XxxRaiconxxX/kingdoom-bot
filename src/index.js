@@ -246,7 +246,7 @@ client.on('message', async (msg) => {
   };
 
   try {
-    if (isAdmin && ['grant', 'broadcast', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'groupid'].includes(command)) {
+    if (isAdmin && ['grant', 'stats', 'ban', 'registrar', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'groupid'].includes(command)) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client

@@ -25,7 +25,6 @@ export async function handleAdminCommand(msg, client) {
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `➕ *!add admin <numero>*\n` +
              `➖ *!remove admin <numero>*\n` +
-             `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
@@ -36,7 +35,6 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
-             `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
@@ -191,53 +189,7 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
-  // 5. !broadcast <mensaje>
-  if (cmd === '!broadcast') {
-    const message = parts.slice(1).join(' ');
-    if (!message.trim()) return `❌ Uso correcto: *!broadcast Tu mensaje aquí*`;
 
-    const { data: players, error } = await supabase
-      .from('players')
-      .select('phone, username')
-      .not('phone', 'is', null);
-
-    if (error || !players?.length) return `❌ No hay jugadores registrados.`;
-
-    let sent = 0;
-    let failed = 0;
-    const failedNames = [];
-
-    for (const p of players) {
-      const jid = `${p.phone}@c.us`;
-      try {
-        // Verificar que el número esté registrado en WhatsApp antes de enviar
-        const isRegistered = await client.isRegisteredUser(jid);
-        if (!isRegistered) {
-          console.log(`[broadcast] Número no registrado en WA: ${p.phone} (${p.username})`);
-          failed++;
-          failedNames.push(`${p.username || p.phone} (no WA)`);
-          continue;
-        }
-
-        await client.sendMessage(
-          jid,
-          `📢 *ANUNCIO DEL REINO*\n\n${message}`
-        );
-        sent++;
-        await new Promise(r => setTimeout(r, 1000)); // anti-spam
-      } catch (err) {
-        console.error(`[broadcast] Error al enviar a ${p.phone} (${p.username}):`, err?.message || err);
-        failed++;
-        failedNames.push(p.username || p.phone);
-      }
-    }
-
-    let response = `✅ Broadcast enviado: *${sent}* exitosos, *${failed}* fallidos.`;
-    if (failedNames.length > 0) {
-      response += `\n⚠️ Fallaron: ${failedNames.join(', ')}`;
-    }
-    return response;
-  }
 
   // 6. !stats
   if (cmd === '!stats') {
