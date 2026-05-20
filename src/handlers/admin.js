@@ -181,8 +181,11 @@ export async function handleAdminCommand(msg, client) {
 
     try {
       await updateGold(player.id, amount);
+      // Re-fetch to get the accurate gold total after the update
+      const { data: updated } = await supabase.from('players').select('gold').eq('id', player.id).maybeSingle();
+      const newTotal = updated?.gold ?? (player.gold + amount);
       const action = amount > 0 ? `+${amount.toLocaleString('es-PY')}` : `${amount.toLocaleString('es-PY')}`;
-      return `✅ *${action} oro* aplicado a *${player.username}*\n🪙 Nuevo total: ${(player.gold + amount).toLocaleString('es-PY')}`;
+      return `✅ *${action} oro* aplicado a *${player.username}*\n🪙 Nuevo total: ${newTotal.toLocaleString('es-PY')}`;
     } catch {
       return `❌ Error al actualizar el oro.`;
     }
@@ -249,12 +252,21 @@ export async function handleAdminCommand(msg, client) {
              `*Opción B (Directo):* Escribe de forma directa: \`!ban <celular>\``;
     }
 
+    // First verify player exists
+    const { data: target } = await supabase
+      .from('players')
+      .select('username')
+      .eq('phone', phone)
+      .maybeSingle();
+
+    if (!target) return `❌ No existe ningún jugador con el número *${phone}* en el reino.`;
+
     const { error } = await supabase
       .from('players')
       .update({ banned: true })
       .eq('phone', phone);
 
-    return error ? `❌ Error al banear.` : `🔨 Jugador *${phone}* baneado del reino.`;
+    return error ? `❌ Error al banear.` : `🔨 *${target.username}* (${phone}) ha sido desterrado del reino.`;
   }
 
   // 8. !censo o !fichas

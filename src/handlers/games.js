@@ -4,11 +4,12 @@ import { askKingdoomAI } from '../ai.js';
 export async function handleDados(msg) {
   const parts = msg.body.split(' ');
   const apuesta = parseInt(parts[1]);
-  const player = await getPlayer(msg.from);
+  const sender = msg.author || msg.from; // msg.from = group ID in group chats
+  const player = await getPlayer(sender);
 
   if (!player) return `⚔️ No estás registrado. Escribí *!registrar TuNombre*`;
   if (!apuesta || isNaN(apuesta) || apuesta < 10) return `🎲 Usá: *!dados 100* (mínimo 10 oro)`;
-  if (apuesta > player.gold) return `❌ No tenés suficiente oro.\n🪙 Tenés: ${player.gold}`;
+  if (apuesta > player.gold) return `❌ No tenés suficiente oro.\n🪙 Tenés: ${player.gold.toLocaleString('es-PY')}`;
 
   const d1 = Math.ceil(Math.random() * 6);
   const d2 = Math.ceil(Math.random() * 6);
