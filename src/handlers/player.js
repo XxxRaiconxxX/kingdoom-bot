@@ -31,7 +31,33 @@ function clipText(value, max = 140) {
   const normalized = String(value ?? '').replace(/\s+/g, ' ').trim();
   if (!normalized) return '';
   if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, max - 1).trimEnd()}…`;
+  return `${normalized.slice(0, max - 1).trimEnd()}...`;
+}
+
+function normalizeCommandText(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseCommand(value) {
+  const normalized = normalizeCommandText(value);
+  if (!normalized) {
+    return { normalized, hasPrefix: false, command: '', body: '' };
+  }
+
+  const hasPrefix = normalized.startsWith('!');
+  const sanitized = hasPrefix ? normalized.slice(1) : normalized;
+  const [command = '', ...rest] = sanitized.split(/\s+/);
+
+  return {
+    normalized,
+    hasPrefix,
+    command,
+    body: rest.join(' ').trim(),
+  };
 }
 
 function formatStatus(value) {
@@ -70,14 +96,14 @@ function formatEventRow(event) {
 export async function handlePlayerMessage(msg) {
   const sender = msg.author || msg.from;
   const chatId = msg.from;
-  const rawText = msg.body.trim();
-  const text = rawText.toLowerCase();
+  const rawText = String(msg.body ?? '').trim();
+  const { command, body } = parseCommand(rawText);
 
-  if (text === '!nuevo') {
+  if (command === 'nuevo') {
     return `🏰 *PRIMEROS PASOS EN KINGDOOM*\n\n1. Pide tu registro al staff.\n2. Vincula tu WhatsApp con *!verificar usuario_o_id*.\n3. Revisa la web del reino y crea tu ficha.\n4. Usa *!ayuda* para ver comandos del Heraldo.`;
   }
 
-  if (text === '!vinculo') {
+  if (command === 'vinculo') {
     const link = await getLinkStatusByWhatsapp(sender);
     if (!link.linked || !link.player) {
       return `🔗 Tu número aún no está vinculado a ningún perfil web.\nUsa *!verificar usuario_o_id* cuando el staff te habilite la cuenta.`;
@@ -86,54 +112,53 @@ export async function handlePlayerMessage(msg) {
     return `🔗 *VÍNCULO CONFIRMADO*\n\n👤 Aventurero: *${link.player.username}*\n📞 Número: *${link.phone}*\n🪙 Oro actual: *${Number(link.player.gold ?? 0).toLocaleString('es-PY')}*`;
   }
 
-  // 1. !ayuda / !help (Permite que dueños, admins o usuarios no registrados puedan verlo)
-  if (text === '!ayuda' || text === '!help') {
+  if (command === 'ayuda' || command === 'help') {
     const isSenderOwner = isOwner(sender);
     let isSenderAdmin = isAdminUser(sender);
 
     const player = await getPlayer(sender);
-    if (player && player.is_admin === true) {
+    if (player?.is_admin === true) {
       isSenderAdmin = true;
     }
 
     let helpMsg = `📜 *Comandos del Reino:*\n\n` +
-                  `🪙 *!oro*\n` +
-                  `🛡️ *!perfil*\n` +
-                  `🔗 *!vinculo*\n` +
-                  `🧭 *!nuevo*\n` +
-                  `🔗 *!verificar <usuario_o_id>*\n` +
-                  `🏆 *!ranking*\n` +
-                  `👑 *!ricos*\n` +
-                  `🏪 *!mercado [nombre]*\n` +
-                  `🗡️ *!item <nombre>*\n` +
-                  `📜 *!mision [nombre]*\n` +
-                  `🎭 *!evento [nombre]*\n` +
-                  `🎲 *!dados <monto>*\n` +
-                  `🔮 *!oraculo <pregunta>*\n` +
-                  `❓ *!ayuda*`;
+      `🪙 *!oro*\n` +
+      `🛡️ *!perfil*\n` +
+      `🔗 *!vinculo*\n` +
+      `🧭 *!nuevo*\n` +
+      `🔗 *!verificar <usuario_o_id>*\n` +
+      `🏆 *!ranking*\n` +
+      `👑 *!ricos*\n` +
+      `🏪 *!mercado [nombre]*\n` +
+      `🗡️ *!item <nombre>*\n` +
+      `📜 *!mision [nombre]*\n` +
+      `🎭 *!evento [nombre]*\n` +
+      `🎲 *!dados <monto>*\n` +
+      `🔮 *!oraculo <pregunta>*\n` +
+      `❓ *!ayuda*`;
 
     if (isSenderOwner) {
       helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
-                 `➕ *!add admin <ID/nombre/celular/@>*\n` +
-                 `➖ *!remove admin <ID/nombre/celular/@>*\n` +
-                 `👥 *!registrar <nombre> [oro]*\n` +
-                 `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
-                 `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
-                 `🔨 *!ban <ID/nombre/celular/@>*\n` +
-                 `📊 *!stats*\n` +
-                 `🧾 *!staff*\n` +
-                 `📚 *!bitacora*\n` +
-                 `🛡️ *!admin* (menú soberano)`;
+        `➕ *!add admin <ID/nombre/celular/@>*\n` +
+        `➖ *!remove admin <ID/nombre/celular/@>*\n` +
+        `👥 *!registrar <nombre> [oro]*\n` +
+        `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
+        `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
+        `🔨 *!ban <ID/nombre/celular/@>*\n` +
+        `📊 *!stats*\n` +
+        `🧾 *!staff*\n` +
+        `📚 *!bitacora*\n` +
+        `🛡️ *!admin* (menú soberano)`;
     } else if (isSenderAdmin) {
       helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
-                 `👥 *!registrar <nombre> [oro]*\n` +
-                 `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
-                 `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
-                 `🔨 *!ban <ID/nombre/celular/@>*\n` +
-                 `📊 *!stats*\n` +
-                 `🧾 *!staff*\n` +
-                 `📚 *!bitacora*\n` +
-                 `🛡️ *!admin* (menú admin)`;
+        `👥 *!registrar <nombre> [oro]*\n` +
+        `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
+        `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
+        `🔨 *!ban <ID/nombre/celular/@>*\n` +
+        `📊 *!stats*\n` +
+        `🧾 *!staff*\n` +
+        `📚 *!bitacora*\n` +
+        `🛡️ *!admin* (menú admin)`;
     }
 
     let identityName = 'Jugador';
@@ -142,7 +167,6 @@ export async function handlePlayerMessage(msg) {
 
     helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
 
-    // Si el usuario no está registrado en la base de datos de jugadores
     if (!player) {
       if (isSenderOwner || isSenderAdmin) {
         helpMsg += `\n\n⚠️ *Nota:* Aún no tienes personaje forjado en el reino. Regístrate usando:\n*!registrar <tu_nombre> [oro]*`;
@@ -154,9 +178,8 @@ export async function handlePlayerMessage(msg) {
     return helpMsg;
   }
 
-  if (text.startsWith('!verificar')) {
-    const query = rawText.replace(/^!verificar\s*/i, '').trim();
-    const result = await verifyAndLinkPlayer(sender, query);
+  if (command === 'verificar') {
+    const result = await verifyAndLinkPlayer(sender, body);
     return result.message;
   }
 
@@ -166,15 +189,15 @@ export async function handlePlayerMessage(msg) {
     return `⚔️ *Viajero desconocido*, no estas registrado en el reino.\n\nEscribe *!registrar TuNombre* para unirte a Kingdoom.`;
   }
 
-  if (text === '!oro' || text === '!gold') {
+  if (command === 'oro' || command === 'gold') {
     return `👑 *${player.username}*, tu fortuna actual:\n\n🪙 *${player.gold.toLocaleString('es-PY')} oro*\n\n_"El oro es el aliento del reino..."_`;
   }
 
-  if (text === '!perfil' || text === '!estado') {
+  if (command === 'perfil' || command === 'estado') {
     return `🛡️ *PERFIL DEL AVENTURERO*\n\n👤 *${player.username}*\n🪙 Oro total: *${player.gold.toLocaleString('es-PY')}*\n🏆 Oro semanal: *${(player.weekly_gold ?? 0).toLocaleString('es-PY')}*`;
   }
 
-  if (text === '!ranking' || text === '!top') {
+  if (command === 'ranking' || command === 'top') {
     const board = await getLeaderboard();
     if (!board.length) return `📊 Aun no hay guerreros en el ranking.`;
 
@@ -186,7 +209,7 @@ export async function handlePlayerMessage(msg) {
     return `⚔️ *RANKING SEMANAL DEL REINO* ⚔️\n\n${lines}`;
   }
 
-  if (text === '!ricos' || text === '!fortunas') {
+  if (command === 'ricos' || command === 'fortunas') {
     const board = await getGoldLeaderboard();
     if (!board.length) return `👑 Nadie ha amasado fortuna todavia.`;
 
@@ -198,30 +221,28 @@ export async function handlePlayerMessage(msg) {
     return `👑 *GRANDES FORTUNAS DEL REINO*\n\n${lines}`;
   }
 
-  if (text.startsWith('!mercado')) {
-    const query = rawText.replace(/^!mercado\s*/i, '').trim();
-    const items = await searchMarketItems(query);
+  if (command === 'mercado') {
+    const items = await searchMarketItems(body);
 
     if (!items.length) {
-      return query
-        ? `🏪 No halle articulos para *${query}* en el mercado del reino.`
+      return body
+        ? `🏪 No halle articulos para *${body}* en el mercado del reino.`
         : `🏪 El mercado esta vacio hoy, viajero.`;
     }
 
-    const maxItems = query ? 8 : 12;
+    const maxItems = body ? 8 : 12;
     const lines = items.slice(0, maxItems).map(formatMarketItem).join('\n');
 
-    return query
-      ? `🔎 *MERCADO: ${query.toUpperCase()}*\n\n${lines}`
+    return body
+      ? `🔎 *MERCADO: ${body.toUpperCase()}*\n\n${lines}`
       : `🏪 *MERCADO DE KINGDOOM*\n\n${lines}`;
   }
 
-  if (text.startsWith('!item')) {
-    const query = rawText.replace(/^!item\s*/i, '').trim();
-    if (!query) return `🗡️ Usa: *!item Nombre del arma*`;
+  if (command === 'item') {
+    if (!body) return `🗡️ Usa: *!item Nombre del arma*`;
 
-    const item = await getMarketItemDetails(query);
-    if (!item) return `🗡️ No encontre un item llamado *${query}* en el mercado del reino.`;
+    const item = await getMarketItemDetails(body);
+    if (!item) return `🗡️ No encontre un item llamado *${body}* en el mercado del reino.`;
 
     const lines = [
       `🗡️ *${item.name}*`,
@@ -238,36 +259,33 @@ export async function handlePlayerMessage(msg) {
     return lines.join('\n');
   }
 
-  if (text === '!mision') {
+  if (command === 'mision' && !body) {
     const missions = await getActiveMissions();
     if (!missions.length) return `📜 No hay misiones abiertas en este momento.`;
     return `📜 *MISIONES ABIERTAS*\n\n${missions.map(formatMissionRow).join('\n')}\n\nUsa *!mision nombre* para ver una en detalle.`;
   }
 
-  if (text.startsWith('!mision ')) {
-    const query = rawText.replace(/^!mision\s*/i, '').trim();
-    const mission = await getMissionDetails(query);
-    if (!mission) return `📜 No encontre una mision llamada *${query}*.`;
+  if (command === 'mision' && body) {
+    const mission = await getMissionDetails(body);
+    if (!mission) return `📜 No encontre una mision llamada *${body}*.`;
 
     return `📜 *${mission.title}*\n${String(mission.difficulty).toUpperCase()} - ${String(mission.type).toUpperCase()} - 🪙 ${Number(mission.reward_gold ?? 0).toLocaleString('es-PY')}\nCupo: *${mission.max_participants ?? 1}* - Estado: *${formatStatus(mission.status)}*\n${clipText(mission.description || mission.instructions, 500)}`;
   }
 
-  if (text === '!evento') {
+  if (command === 'evento' && !body) {
     const events = await getActiveEvents();
     if (!events.length) return `🎭 No hay eventos abiertos ni en produccion ahora mismo.`;
     return `🎭 *EVENTOS DEL REINO*\n\n${events.map(formatEventRow).join('\n')}\n\nUsa *!evento nombre* para ver uno en detalle.`;
   }
 
-  if (text.startsWith('!evento ')) {
-    const query = rawText.replace(/^!evento\s*/i, '').trim();
-    const event = await getEventDetails(query);
-    if (!event) return `🎭 No encontre un evento llamado *${query}*.`;
+  if (command === 'evento' && body) {
+    const event = await getEventDetails(body);
+    if (!event) return `🎭 No encontre un evento llamado *${body}*.`;
 
     return `🎭 *${event.title}*\n${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*\nCierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro\n${clipText(event.description || event.long_description || event.rewards, 500)}`;
   }
 
-
-  if (text === '!reino' || text === '!resumen') {
+  if (command === 'reino' || command === 'resumen') {
     const snapshot = await getRealmSnapshot();
     return `🏰 *ESTADO DEL REINO*\n\n👥 Aventureros: *${snapshot.totalPlayers}*\n🏪 Mercado activo: *${snapshot.availableItems}* articulos\n👑 Mas rico: *${snapshot.richest?.username ?? '-'}* (${(snapshot.richest?.gold ?? 0).toLocaleString('es-PY')} oro)\n🏆 Lider semanal: *${snapshot.weeklyChampion?.username ?? '-'}* (${(snapshot.weeklyChampion?.weekly_gold ?? 0).toLocaleString('es-PY')} oro)`;
   }
