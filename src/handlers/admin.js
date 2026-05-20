@@ -1,5 +1,6 @@
 import { supabase, updateGold, registerPlayer, getRealmCensus } from '../supabase.js';
 import { isOwner, addAdmin, removeAdmin } from '../adminStore.js';
+import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
@@ -51,6 +52,7 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
+             `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
              `➕ *!add admin <ID/nombre/celular>*\n` +
              `➖ *!remove admin <ID/nombre/celular>*\n` +
              `🪙 *!grant <ID/nombre/celular> <monto>*\n` +
@@ -64,6 +66,7 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
+             `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
              `🪙 *!grant <ID/nombre/celular> <monto>*\n` +
              `💸 *!quitar <ID/nombre/celular> <monto>*\n` +
              `🔨 *!ban <ID/nombre/celular>*\n` +
@@ -400,10 +403,19 @@ export async function handleAdminCommand(msg, client) {
       }
 
       if (unregisteredMembers.length === 0 && registeredWithoutPj.length === 0) {
+        // Limpiar tracker si todos están bien
+        trackUnregisteredUsers([]);
         response += `🎉 *¡Increíble! Todos los miembros del grupo están registrados y tienen sus fichas completadas.*`;
         await client.sendMessage(msg.from, response);
         return;
       }
+
+      // Rastrear a todos los pendientes
+      const allPendingPhones = [
+        ...unregisteredMembers.map(m => m.id.user),
+        ...registeredWithoutPj.map(m => m.participant.id.user)
+      ];
+      trackUnregisteredUsers(allPendingPhones);
 
       response += `📢 *Por favor, completen su ficha web medieval y vinculen su cuenta usando !verificar.*`;
 
@@ -415,7 +427,62 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Error al procesar el reporte de pendientes.`;
     }
   }
-  // 10. !groupid
+
+  // 10. !purga
+  if (cmd === '!purga') {
+    const chat = await msg.getChat();
+    if (!chat.isGroup) {
+      return `❌ Este comando solo se puede ejecutar dentro de un grupo de WhatsApp.`;
+    }
+
+    try {
+      // Usamos el tracker para ver quiénes llevan más de 5 días
+      const trackerData = getTrackerData();
+      const groupParticipants = chat.participants;
+      
+      const now = Date.now();
+      const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+      
+      const toRemove = [];
+      const toRemovePhones = [];
+
+      for (const participant of groupParticipants) {
+        const phone = participant.id.user;
+        const jid = participant.id._serialized;
+        
+        if (trackerData[phone]) {
+          const timeElapsed = now - trackerData[phone];
+          if (timeElapsed >= FIVE_DAYS_MS) {
+            toRemove.push(jid);
+            toRemovePhones.push(phone);
+          }
+        }
+      }
+
+      if (toRemove.length === 0) {
+        return `✅ *No hay aventureros para purgar hoy.* Nadie ha superado el límite de 5 días sin ficha.`;
+      }
+
+      // Proceder a expulsarlos
+      await chat.removeParticipants(toRemove);
+      
+      // Limpiar del tracker
+      toRemovePhones.forEach(phone => delete trackerData[phone]);
+      saveTrackerData(trackerData);
+
+      let response = `☠️ *PURGA COMPLETADA* ☠️\n\nSe han expulsado ${toRemove.length} aventureros por inactividad (más de 5 días sin ficha):\n`;
+      toRemovePhones.forEach(phone => {
+        response += `- +${phone}\n`;
+      });
+      
+      return response;
+    } catch (err) {
+      console.error("Error en !purga:", err);
+      return `❌ Hubo un error al ejecutar la purga. Verifica que el bot sea Administrador del grupo.`;
+    }
+  }
+
+  // 11. !groupid
   if (cmd === '!groupid') {
     const isGroup = msg.from.endsWith('@g.us');
     if (!isGroup) {
