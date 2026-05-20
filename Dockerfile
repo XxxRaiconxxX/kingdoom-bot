@@ -14,5 +14,7 @@ COPY package*.json ./
 RUN npm install
 COPY src/ ./src/
 
-# Persistencia de sesión WhatsApp se maneja vía Railway Volumes
+# Crear carpeta de auth y dar permisos para compatibilidad con el usuario no-root de Hugging Face
+RUN mkdir -p /app/.wwebjs_auth && chmod -R 777 /app
+
 CMD ["node", "src/index.js"]
