@@ -384,7 +384,7 @@ export async function getRealmCensus() {
 
   const { data: sheets, error: sheetErr } = await supabase
     .from('character_sheets')
-    .select('playerId, player_id, name');
+    .select('playerId, name');
 
   if (sheetErr) {
     console.error('[getRealmCensus] sheets error:', sheetErr.message);
