@@ -25,7 +25,8 @@ export async function handleAdminCommand(msg, client) {
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
              `➕ *!add admin <numero>*\n` +
              `➖ *!remove admin <numero>*\n` +
-             `🪙 *!grant <celular> <monto>*\n` +
+             `🪙 *!grant <nombre/celular> <monto>*\n` +
+             `💸 *!quitar <nombre/celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
@@ -35,7 +36,8 @@ export async function handleAdminCommand(msg, client) {
              `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
              `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
              `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
-             `🪙 *!grant <celular> <monto>*\n` +
+             `🪙 *!grant <nombre/celular> <monto>*\n` +
+             `💸 *!quitar <nombre/celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
              `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
@@ -149,40 +151,52 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
-  // 4. !grant
-  if (cmd === '!grant') {
-    let phone = '';
+  // 4. !grant y !quitar
+  if (cmd === '!grant' || cmd === '!quitar') {
+    let identifier = '';
     let amount = 0;
 
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
-      phone = extractPhone(quoted.author || quoted.from);
+      identifier = extractPhone(quoted.author || quoted.from);
       amount = parseInt(parts[1]);
     } else {
-      phone = extractPhone(parts[1]);
-      amount = parseInt(parts[2]);
+      amount = parseInt(parts[parts.length - 1]);
+      identifier = parts.slice(1, -1).join(' ').trim();
     }
 
-    if (!phone || isNaN(amount) || amount === 0) {
-      return `❌ *Uso correcto de !grant:*\n` +
-             `*Opción A (Respondiendo):* Responde al mensaje del jugador con: \`!grant <monto>\`\n` +
-             `*Opción B (Directo):* Escribe de forma directa: \`!grant <celular> <monto>\``;
+    if (!identifier || isNaN(amount) || amount === 0) {
+      return `❌ *Uso correcto:*\n` +
+             `*Respondiendo:* \`${cmd} <monto>\`\n` +
+             `*Directo:* \`${cmd} <nombre_o_celular> <monto>\``;
     }
 
-    const { data: player, error } = await supabase
-      .from('players')
-      .select('id, username, gold')
-      .eq('phone', phone)
-      .maybeSingle();
+    let finalAmount = Math.abs(amount);
+    if (cmd === '!quitar') {
+      finalAmount = -finalAmount;
+    } else if (cmd === '!grant' && amount < 0) {
+      finalAmount = amount; // Permite !grant -100 por si acaso
+    }
 
-    if (error || !player) return `❌ Jugador con número *${phone}* no encontrado en el reino.`;
+    const isPhone = /^[\d\+\s]+$/.test(identifier);
+    let query = supabase.from('players').select('id, username, gold');
+    
+    if (isPhone) {
+      query = query.eq('phone', extractPhone(identifier));
+    } else {
+      query = query.ilike('username', identifier);
+    }
+
+    const { data: player, error } = await query.maybeSingle();
+
+    if (error || !player) return `❌ Jugador *${identifier}* no encontrado en el reino.`;
 
     try {
-      await updateGold(player.id, amount);
-      // Re-fetch to get the accurate gold total after the update
+      await updateGold(player.id, finalAmount);
+      // Re-fetch para tener el saldo real
       const { data: updated } = await supabase.from('players').select('gold').eq('id', player.id).maybeSingle();
-      const newTotal = updated?.gold ?? (player.gold + amount);
-      const action = amount > 0 ? `+${amount.toLocaleString('es-PY')}` : `${amount.toLocaleString('es-PY')}`;
+      const newTotal = updated?.gold ?? (player.gold + finalAmount);
+      const action = finalAmount > 0 ? `+${finalAmount.toLocaleString('es-PY')}` : `${finalAmount.toLocaleString('es-PY')}`;
       return `✅ *${action} oro* aplicado a *${player.username}*\n🪙 Nuevo total: ${newTotal.toLocaleString('es-PY')}`;
     } catch {
       return `❌ Error al actualizar el oro.`;
