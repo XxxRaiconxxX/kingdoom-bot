@@ -56,9 +56,12 @@ export function startScheduler(client) {
     await sendToAll(client, msg);
 
     // Reset weekly_gold después de anunciar
+    // Note: Supabase JS v2 requires at least one filter on mass updates.
+    // Using .gte('weekly_gold', 0) to match all rows (gold is never negative).
     await supabase
       .from('players')
-      .update({ weekly_gold: 0 });
+      .update({ weekly_gold: 0 })
+      .gte('weekly_gold', 0);
 
     console.log('[scheduler] weekly_gold reseteado.');
   }, TZ);
