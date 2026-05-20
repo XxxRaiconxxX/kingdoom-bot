@@ -9,6 +9,14 @@ function cleanIdentifier(value) {
   return String(value ?? '').replace(/^@+/, '').trim();
 }
 
+function extractRawMentionToken(msg, fallbackIdentifier = '') {
+  const body = String(msg?.body ?? '');
+  const fromFallback = String(fallbackIdentifier ?? '');
+  const source = fromFallback || body;
+  const match = source.match(/@([^\s]+)/);
+  return match ? cleanIdentifier(match[1]) : '';
+}
+
 export function getMentionedPhone(msg) {
   const mentioned = Array.isArray(msg?.mentionedIds) ? msg.mentionedIds[0] : '';
   return mentioned ? normalizePhone(mentioned) : '';
@@ -26,6 +34,11 @@ export async function extractTargetIdentifier(msg, fallbackIdentifier = '') {
   const mentionedPhone = getMentionedPhone(msg);
   if (mentionedPhone) {
     return { identifier: mentionedPhone, source: 'mentioned' };
+  }
+
+  const rawMention = extractRawMentionToken(msg, fallbackIdentifier);
+  if (rawMention) {
+    return { identifier: rawMention, source: 'raw-mention' };
   }
 
   const normalized = cleanIdentifier(fallbackIdentifier);
