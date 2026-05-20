@@ -71,19 +71,20 @@ export async function askKingdoomAI(history, systemPrompt) {
         if (err?.status) console.error(`[ai] HTTP Status:`, err.status);
         if (err?.errorDetails) console.error(`[ai] Details:`, JSON.stringify(err.errorDetails));
 
-        // Si es un error 404 (modelo no encontrado), probamos con el siguiente modelo de la lista para esta misma clave.
-        const isModelNotFoundError = err?.status === 404 || 
-          (err?.message && (err.message.includes('not found') || err.message.includes('supported')));
+        // Si el error es una cuota/limite de peticiones (429) o autenticacion/permisos (401, 403),
+        // el problema es de la clave API, por lo que pasamos a la siguiente clave.
+        // Si es cualquier otro error (404 no encontrado, 503 sobrecarga/indisponible, etc.),
+        // el problema puede ser específico del modelo, por lo que probamos el siguiente de la lista con esta clave.
+        const isKeyError = err?.status === 429 || err?.status === 401 || err?.status === 403 ||
+          (err?.message && (err.message.includes('API key') || err.message.includes('quota') || err.message.includes('429')));
 
-        if (isModelNotFoundError) {
-          console.log(`[ai] Modelo ${modelName} no encontrado o no soportado. Intentando con el siguiente modelo...`);
+        if (!isKeyError) {
+          console.log(`[ai] Error de modelo o servicio (${err?.status || '503/red'}). Intentando con el siguiente modelo de la lista...`);
           continue;
         }
 
-        // Si es otro tipo de error (ej. 429 cuota), rompemos el bucle de modelos para esta clave
-        // y pasamos a la siguiente clave API.
         if (i < keys.length - 1) {
-          console.log(`[ai] Error no relacionado con el modelo (ej: cuotas/429). Pasando a la siguiente clave API...`);
+          console.log(`[ai] Error relacionado con la clave API (ej: cuotas/429/403). Pasando a la siguiente clave API...`);
         }
         break;
       }
@@ -92,5 +93,6 @@ export async function askKingdoomAI(history, systemPrompt) {
 
   throw lastError || new Error('Todas las claves de API y modelos fallaron');
 }
+
 
 
