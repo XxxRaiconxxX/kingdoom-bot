@@ -182,7 +182,6 @@ export async function getMarketItems() {
   const { data, error } = await supabase
     .from('market_items')
     .select('*')
-    .eq('available', true)
     .order('price', { ascending: false });
 
   if (error) console.error('[getMarketItems]', error.message);
@@ -196,7 +195,6 @@ export async function searchMarketItems(query, limit = 8) {
   const { data, error } = await supabase
     .from('market_items')
     .select('*')
-    .eq('available', true)
     .or(`name.ilike.%${normalized}%,description.ilike.%${normalized}%,category.ilike.%${normalized}%`)
     .order('price', { ascending: false })
     .limit(limit);
@@ -216,7 +214,7 @@ export async function getRealmSnapshot() {
   const [{ count: totalPlayers }, { count: availableItems }, { data: richest }, { data: weeklyChampion }] =
     await Promise.all([
       supabase.from('players').select('*', { count: 'exact', head: true }),
-      supabase.from('market_items').select('*', { count: 'exact', head: true }).eq('available', true),
+      supabase.from('market_items').select('*', { count: 'exact', head: true }).neq('stock_status', 'sold-out'),
       supabase.from('players').select('username, gold').order('gold', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('players').select('username, weekly_gold').order('weekly_gold', { ascending: false }).limit(1).maybeSingle(),
     ]);
