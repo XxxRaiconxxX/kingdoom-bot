@@ -318,8 +318,8 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
-  // 9. !pendientes
-  if (cmd === '!pendientes') {
+  // 9. !pendientes o !pendiente
+  if (cmd === '!pendientes' || cmd === '!pendiente') {
     const chat = await msg.getChat();
     if (!chat.isGroup) {
       return `❌ Este comando solo se puede ejecutar dentro de un grupo de WhatsApp.`;
