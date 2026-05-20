@@ -28,6 +28,7 @@ export async function handleAdminCommand(msg, client) {
              `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
+             `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
     } else {
       return `🛡️ *MENÚ DE ADMINISTRADOR:*\n\n` +
@@ -38,6 +39,7 @@ export async function handleAdminCommand(msg, client) {
              `📢 *!broadcast <mensaje>*\n` +
              `🪙 *!grant <celular> <monto>*\n` +
              `🔨 *!ban <celular>*\n` +
+             `📋 *!groupid* (Obtener ID del grupo actual)\n` +
              `📊 *!stats*`;
     }
   }
@@ -385,6 +387,14 @@ export async function handleAdminCommand(msg, client) {
       console.error(err);
       return `❌ Error al procesar el reporte de pendientes.`;
     }
+  }
+  // 10. !groupid
+  if (cmd === '!groupid') {
+    const isGroup = msg.from.endsWith('@g.us');
+    if (!isGroup) {
+      return `❌ Este comando solo puede ser usado dentro de un grupo de WhatsApp.`;
+    }
+    return `📋 *ID del Grupo:* ${msg.from}`;
   }
 
   return `❓ Comando admin no reconocido. Escribe *!admin* para ver la lista de comandos.`;
