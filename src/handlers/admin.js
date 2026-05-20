@@ -5,7 +5,7 @@ import {
   getRealmCensus,
   getStaffSnapshot,
 } from '../supabase.js';
-import { isOwner, addAdmin, removeAdmin } from '../adminStore.js';
+import { isOwner, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
 import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
@@ -400,7 +400,9 @@ export async function handleAdminCommand(msg, client) {
       
       const groupParticipants = chat.participants; 
       const registeredPhones = new Set(
-        players.map(p => String(p.phone || '').trim().replace(/\D/g, ''))
+        players
+          .map((player) => normalizePhone(player.phone))
+          .filter(Boolean)
       );
 
       const unregisteredMembers = [];
@@ -408,7 +410,7 @@ export async function handleAdminCommand(msg, client) {
       const mentions = [];
 
       for (const participant of groupParticipants) {
-        const phone = participant.id.user;
+        const phone = normalizePhone(participant.id.user);
         const jid = participant.id._serialized;
         
         // Excluir al propio bot del listado
@@ -418,17 +420,17 @@ export async function handleAdminCommand(msg, client) {
           unregisteredMembers.push(participant);
           mentions.push(jid);
         } else {
-          // Si está registrado, verificar si tiene ficha
-          const playerObj = players.find(p => String(p.phone || '').trim().replace(/\D/g, '') === phone);
-          if (playerObj) {
-            const hasSheets = sheets.some(s => {
-              const sheetPlayerId = String(s.playerId || s.player_id || '').trim();
-              return sheetPlayerId === String(playerObj.id).trim();
-            });
-            if (!hasSheets) {
-              registeredWithoutPj.push({ player: playerObj, participant });
-              mentions.push(jid);
-            }
+          const linkedPlayers = players.filter((player) => normalizePhone(player.phone) === phone);
+          const hasAnySheet = linkedPlayers.some((player) =>
+            sheets.some((sheet) => {
+              const sheetPlayerId = String(sheet.playerId || sheet.player_id || '').trim();
+              return sheetPlayerId === String(player.id).trim();
+            })
+          );
+
+          if (!hasAnySheet && linkedPlayers.length > 0) {
+            registeredWithoutPj.push({ player: linkedPlayers[0], participant });
+            mentions.push(jid);
           }
         }
       }
