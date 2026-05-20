@@ -44,11 +44,15 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   const chat = await notification.getChat();
   const groupId = chat?.id?._serialized || notification.chatId || '';
   const groupName = normalizeText(chat?.name ?? '');
+  console.log(`[welcome] group_join detected – group="${chat?.name}" id="${groupId}" enabled=${config.enabled} filter=${config.groupId || config.groupName || '(none)'}`);
 
-  const matchesGroupId = config.groupId && groupId === config.groupId;
-  const matchesGroupName = config.groupName && groupName === config.groupName;
-
-  if (!matchesGroupId && !matchesGroupName) return;
+  const hasFilter = !!(config.groupId || config.groupName);
+  if (hasFilter) {
+    const matchesGroupId = config.groupId && groupId === config.groupId;
+    const matchesGroupName = config.groupName && groupName === config.groupName;
+    if (!matchesGroupId && !matchesGroupName) return;
+  }
+  // If no filter is configured, welcome fires in every group
 
   const botId = client.info?.wid?._serialized || '';
   const joinedContacts = uniqueById(await notification.getRecipients()).filter(
