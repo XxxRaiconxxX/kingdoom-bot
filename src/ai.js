@@ -15,7 +15,14 @@ export async function askKingdoomAI(history, systemPrompt) {
     throw new Error('GEMINI_API_KEY no configurada');
   }
 
-  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const baseModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const modelsToTry = [baseModel];
+  if (baseModel !== 'gemini-2.5-flash') {
+    modelsToTry.push('gemini-2.5-flash');
+  }
+  if (baseModel !== 'gemini-3.5-flash') {
+    modelsToTry.push('gemini-3.5-flash');
+  }
 
   // Gemini requiere que el historial empiece con 'user' y alterne roles.
   // Sanitizamos: eliminamos el primer mensaje si no es 'user',
@@ -39,35 +46,51 @@ export async function askKingdoomAI(history, systemPrompt) {
   let lastError = null;
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
-    console.log(`[ai] Intentando con clave API index ${i} (${key.substring(0, 8)}...) y modelo ${modelName}`);
 
-    try {
-      const genAI = new GoogleGenerativeAI(key);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: systemPrompt,
-      });
+    for (const modelName of modelsToTry) {
+      console.log(`[ai] Intentando con clave API index ${i} (${key.substring(0, 8)}...) y modelo ${modelName}`);
 
-      const response = await model.generateContent({
-        contents,
-        generationConfig: {
-          maxOutputTokens: 1024,
-          temperature: 0.85,
-        },
-      });
-      return response.response.text();
-    } catch (err) {
-      lastError = err;
-      console.error(`[ai] Error con clave API index ${i}:`, err?.message ?? err);
-      if (err?.status) console.error(`[ai] HTTP Status index ${i}:`, err.status);
-      if (err?.errorDetails) console.error(`[ai] Details index ${i}:`, JSON.stringify(err.errorDetails));
+      try {
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt,
+        });
 
-      if (i < keys.length - 1) {
-        console.log(`[ai] Reintentando con la siguiente clave API...`);
+        const response = await model.generateContent({
+          contents,
+          generationConfig: {
+            maxOutputTokens: 1024,
+            temperature: 0.85,
+          },
+        });
+        return response.response.text();
+      } catch (err) {
+        lastError = err;
+        console.error(`[ai] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
+        if (err?.status) console.error(`[ai] HTTP Status:`, err.status);
+        if (err?.errorDetails) console.error(`[ai] Details:`, JSON.stringify(err.errorDetails));
+
+        // Si es un error 404 (modelo no encontrado), probamos con el siguiente modelo de la lista para esta misma clave.
+        const isModelNotFoundError = err?.status === 404 || 
+          (err?.message && (err.message.includes('not found') || err.message.includes('supported')));
+
+        if (isModelNotFoundError) {
+          console.log(`[ai] Modelo ${modelName} no encontrado o no soportado. Intentando con el siguiente modelo...`);
+          continue;
+        }
+
+        // Si es otro tipo de error (ej. 429 cuota), rompemos el bucle de modelos para esta clave
+        // y pasamos a la siguiente clave API.
+        if (i < keys.length - 1) {
+          console.log(`[ai] Error no relacionado con el modelo (ej: cuotas/429). Pasando a la siguiente clave API...`);
+        }
+        break;
       }
     }
   }
 
-  throw lastError || new Error('Todas las claves de API fallaron');
+  throw lastError || new Error('Todas las claves de API y modelos fallaron');
 }
+
 
