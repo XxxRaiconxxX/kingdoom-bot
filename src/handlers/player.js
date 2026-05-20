@@ -208,9 +208,9 @@ export async function handlePlayerMessage(msg) {
     ];
 
     if (item.ability) {
-      lines.push(`Habilidad: ${clipText(item.ability, 110)}`);
+      lines.push(`Habilidad: ${clipText(item.ability, 500)}`);
     } else {
-      lines.push(clipText(item.description, 130));
+      lines.push(clipText(item.description, 500));
     }
 
     return lines.join('\n');
@@ -227,7 +227,7 @@ export async function handlePlayerMessage(msg) {
     const mission = await getMissionDetails(query);
     if (!mission) return `📜 No encontre una mision llamada *${query}*.`;
 
-    return `📜 *${mission.title}*\n${String(mission.difficulty).toUpperCase()} - ${String(mission.type).toUpperCase()} - 🪙 ${Number(mission.reward_gold ?? 0).toLocaleString('es-PY')}\nCupo: *${mission.max_participants ?? 1}* - Estado: *${formatStatus(mission.status)}*\n${clipText(mission.description || mission.instructions, 140)}`;
+    return `📜 *${mission.title}*\n${String(mission.difficulty).toUpperCase()} - ${String(mission.type).toUpperCase()} - 🪙 ${Number(mission.reward_gold ?? 0).toLocaleString('es-PY')}\nCupo: *${mission.max_participants ?? 1}* - Estado: *${formatStatus(mission.status)}*\n${clipText(mission.description || mission.instructions, 500)}`;
   }
 
   if (text === '!evento') {
@@ -241,7 +241,7 @@ export async function handlePlayerMessage(msg) {
     const event = await getEventDetails(query);
     if (!event) return `🎭 No encontre un evento llamado *${query}*.`;
 
-    return `🎭 *${event.title}*\n${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*\nCierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro\n${clipText(event.description || event.long_description || event.rewards, 140)}`;
+    return `🎭 *${event.title}*\n${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*\nCierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro\n${clipText(event.description || event.long_description || event.rewards, 500)}`;
   }
 
 
