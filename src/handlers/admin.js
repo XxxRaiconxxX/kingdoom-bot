@@ -9,6 +9,7 @@ import { isOwner, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js
 import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
+import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
@@ -43,35 +44,49 @@ export async function handleAdminCommand(msg, client) {
   // 0. Menu command !admin
   if (cmd === '!admin') {
     if (isSenderOwner) {
-      return `👑 *MENÚ DEL SOBERANO (OWNER):*\n\n` +
-             `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
-             `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
-             `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
-             `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
-             `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
-             `➕ *!add admin <ID/nombre/celular>*\n` +
-             `➖ *!remove admin <ID/nombre/celular>*\n` +
-             `🪙 *!grant <ID/nombre/celular/@/citado> <monto>*\n` +
-             `💸 *!quitar <ID/nombre/celular/@/citado> <monto>*\n` +
-             `🔨 *!ban <ID/nombre/celular>*\n` +
-             `📋 *!groupid* (Obtener ID del grupo actual)\n` +
-             `📊 *!stats*\n` +
-             `🧾 *!staff* (resumen staff)\n` +
-             `📚 *!bitacora* (últimas acciones)`;
+      return heraldCard('Menu del soberano', [
+        heraldSection('Altas y control'),
+        heraldList([
+          heraldCommand('!registrar <nombre> [oro]', 'Registra respondiendo a un mensaje.'),
+          heraldCommand('!registrar <celular> <nombre> [oro]', 'Registro manual directo.'),
+          heraldCommand('!add admin <objetivo>', 'Otorga admin.'),
+          heraldCommand('!remove admin <objetivo>', 'Revoca admin.'),
+          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
+        ]),
+        heraldSection('Economia y revision'),
+        heraldList([
+          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
+          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!censo', 'Censo general del reino.'),
+          heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
+          heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!staff', 'Resumen operativo.'),
+          heraldCommand('!bitacora', 'Ultimas acciones.'),
+          heraldCommand('!groupid', 'ID tecnico del grupo.'),
+          heraldCommand('!stats', 'Resumen general del reino.'),
+        ]),
+      ], { icon: '👑' });
     } else {
-      return `🛡️ *MENÚ DE ADMINISTRADOR:*\n\n` +
-             `👥 *!registrar <nombre> [oro]* (Respondiendo a un mensaje)\n` +
-             `👥 *!registrar <celular> <nombre> [oro]* (Sin responder)\n` +
-             `📊 *!censo* / *!fichas* (Censo general del reino)\n` +
-             `📋 *!pendientes* (Reporte de no vinculados y sin ficha)\n` +
-             `☠️ *!purga* (Expulsar a los que llevan >5 días en pendientes)\n` +
-             `🪙 *!grant <ID/nombre/celular/@/citado> <monto>*\n` +
-             `💸 *!quitar <ID/nombre/celular/@/citado> <monto>*\n` +
-             `🔨 *!ban <ID/nombre/celular>*\n` +
-             `📋 *!groupid* (Obtener ID del grupo actual)\n` +
-             `📊 *!stats*\n` +
-             `🧾 *!staff* (resumen staff)\n` +
-             `📚 *!bitacora* (últimas acciones)`;
+      return heraldCard('Menu de administrador', [
+        heraldSection('Operaciones'),
+        heraldList([
+          heraldCommand('!registrar <nombre> [oro]', 'Registra respondiendo a un mensaje.'),
+          heraldCommand('!registrar <celular> <nombre> [oro]', 'Registro manual directo.'),
+          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
+          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
+        ]),
+        heraldSection('Revision'),
+        heraldList([
+          heraldCommand('!censo', 'Censo general del reino.'),
+          heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
+          heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!staff', 'Resumen operativo.'),
+          heraldCommand('!bitacora', 'Ultimas acciones.'),
+          heraldCommand('!groupid', 'ID tecnico del grupo.'),
+          heraldCommand('!stats', 'Resumen general del reino.'),
+        ]),
+      ], { icon: '🛡️' });
     }
   }
 
@@ -293,7 +308,10 @@ export async function handleAdminCommand(msg, client) {
       .limit(1)
       .maybeSingle();
 
-    return `📊 *Stats del Reino:*\n\n👥 Jugadores: ${totalPlayers}\n💰 Más rico: ${richest?.username ?? '—'} (${(richest?.gold ?? 0).toLocaleString('es-PY')} oro)`;
+    return heraldCard('Stats del reino', [
+      heraldStat('Jugadores', totalPlayers),
+      heraldStat('Mas rico', `${richest?.username ?? '—'} (${(richest?.gold ?? 0).toLocaleString('es-PY')} oro)`),
+    ], { icon: '📊' });
   }
 
   if (cmd === '!staff') {
@@ -302,7 +320,15 @@ export async function handleAdminCommand(msg, client) {
       .map((entry, index) => `${index + 1}. ${entry.username} (${Number(entry.gold ?? 0).toLocaleString('es-PY')})`)
       .join('\n');
 
-    return `🧾 *RESUMEN DE STAFF*\n\n👥 Jugadores: ${snapshot.totalPlayers}\n🔗 Vinculados: ${snapshot.linkedPlayers}\n🎭 Fichas: ${snapshot.totalSheets}\n📜 Misiones abiertas: ${snapshot.openMissions}\n🎭 Eventos activos: ${snapshot.activeEvents}\n\n👑 *Top oro*\n${richest || 'Sin datos.'}`;
+    return heraldCard('Resumen de staff', [
+      heraldStat('Jugadores', snapshot.totalPlayers),
+      heraldStat('Vinculados', snapshot.linkedPlayers),
+      heraldStat('Fichas', snapshot.totalSheets),
+      heraldStat('Misiones abiertas', snapshot.openMissions),
+      heraldStat('Eventos activos', snapshot.activeEvents),
+      heraldSection('Top oro'),
+      richest || 'Sin datos.',
+    ], { icon: '🧾' });
   }
 
   // 7. !ban
@@ -349,13 +375,14 @@ export async function handleAdminCommand(msg, client) {
     try {
       const { players, sheets } = await getRealmCensus();
       
-      let response = `📊 *CENSO GENERAL DE AVENTUREROS* 🏰\n\n`;
-      response += `👥 *Aventureros Registrados:* ${players.length}\n`;
+      let response = heraldCard('Censo general de aventureros', [
+        heraldStat('Aventureros registrados', players.length),
+      ], { icon: '📊' });
       
       const linkedPlayers = players.filter(p => p.phone);
-      response += `🔗 *Vinculados a WhatsApp:* ${linkedPlayers.length} (${Math.round((linkedPlayers.length / (players.length || 1)) * 100)}%)\n`;
-      response += `🎭 *PJs Creados:* ${sheets.length} en total\n\n`;
-      response += `⚔️ *REGISTRO DE FICHAS Y VINCULACIONES:*\n\n`;
+      response += `\n${heraldStat('Vinculados a WhatsApp', `${linkedPlayers.length} (${Math.round((linkedPlayers.length / (players.length || 1)) * 100)}%)`)}`;
+      response += `\n${heraldStat('PJs creados', `${sheets.length} en total`)}`;
+      response += `\n\n${heraldSection('Registro de fichas y vinculaciones')}\n`;
 
       players.forEach((player, idx) => {
         // Encontrar fichas del jugador
@@ -440,13 +467,15 @@ export async function handleAdminCommand(msg, client) {
         }
       }
 
-      let response = `📋 *REPORTE DE PENDIENTES DEL REINO* 🏰\n\n`;
-      response += `👥 *Miembros del Grupo:* ${groupParticipants.length}\n`;
-      response += `🔴 *Sin Registro:* ${unregisteredMembers.length} personas\n`;
-      response += `🟡 *Registrados sin Ficha:* ${registeredWithoutPj.length} personas\n\n`;
+      let response = heraldCard('Reporte de pendientes del reino', [
+        heraldStat('Miembros del grupo', groupParticipants.length),
+        heraldStat('Sin registro', `${unregisteredMembers.length} personas`),
+        heraldStat('Registrados sin ficha', `${registeredWithoutPj.length} personas`),
+      ], { icon: '📋' });
+      response += `\n\n`;
 
       if (unregisteredMembers.length > 0) {
-        response += `🔴 *SIN REGISTRO / NUEVOS (No vinculados):*\n`;
+        response += `${heraldSection('Sin registro / nuevos')}\n`;
         unregisteredMembers.forEach(member => {
           response += `- @${member.id.user}\n`;
         });
@@ -454,7 +483,7 @@ export async function handleAdminCommand(msg, client) {
       }
 
       if (registeredWithoutPj.length > 0) {
-        response += `🟡 *CON CUENTA PERO SIN FICHA (Pendientes):*\n`;
+        response += `${heraldSection('Con cuenta pero sin ficha')}\n`;
         registeredWithoutPj.forEach(item => {
           response += `- @${item.participant.id.user} (User: *${item.player.username}*)\n`;
         });
@@ -476,7 +505,7 @@ export async function handleAdminCommand(msg, client) {
       ];
       trackUnregisteredUsers(allPendingPhones);
 
-      response += `📢 *Por favor, completen su ficha web medieval y vinculen su cuenta usando !verificar.*`;
+      response += `📢 Completen su ficha y vinculen su cuenta con \`!verificar\`.`;
 
       // Enviar el mensaje mencionando a los usuarios para que les llegue la notificación
       await client.sendMessage(msg.from, response, { mentions });
@@ -529,7 +558,10 @@ export async function handleAdminCommand(msg, client) {
       toRemovePhones.forEach(phone => delete trackerData[phone]);
       saveTrackerData(trackerData);
 
-      let response = `☠️ *PURGA COMPLETADA* ☠️\n\nSe han expulsado ${toRemove.length} aventureros por inactividad (más de 5 días sin ficha):\n`;
+      let response = heraldCard('Purga completada', [
+        `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 5 dias sin ficha:`,
+      ], { icon: '☠️' });
+      response += `\n`;
       toRemovePhones.forEach(phone => {
         response += `- +${phone}\n`;
       });
@@ -556,7 +588,7 @@ export async function handleAdminCommand(msg, client) {
     if (!isGroup) {
       return `❌ Este comando solo puede ser usado dentro de un grupo de WhatsApp.`;
     }
-    return `📋 *ID del Grupo:* ${msg.from}`;
+      return heraldCard('ID del grupo', [msg.from], { icon: '📋' });
   }
 
   if (cmd === '!bitacora') {
@@ -571,7 +603,7 @@ export async function handleAdminCommand(msg, client) {
       return `${index + 1}. *${entry.action}*\n   ${entry.actorName || entry.actorPhone} → ${entry.target}\n   ${clipAudit(entry.detail)}\n   ${when}`;
     });
 
-    return `📚 *BITÁCORA DEL REINO*\n\n${lines.join('\n\n')}`;
+    return heraldCard('Bitacora del reino', [lines.join('\n\n')], { icon: '📚' });
   }
 
   return `❓ Comando admin no reconocido. Escribe *!admin* para ver la lista de comandos.`;

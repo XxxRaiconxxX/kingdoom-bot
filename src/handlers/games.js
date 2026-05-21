@@ -1,5 +1,6 @@
 import { getPlayer, updateGold } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
+import { heraldCard, heraldStat } from '../formatting.js';
 
 export async function handleDados(msg) {
   const parts = msg.body.split(' ');
@@ -24,11 +25,11 @@ export async function handleDados(msg) {
     return `⚔️ Error al registrar la apuesta. Intentá de nuevo.`;
   }
 
-  return `🎲 *DADOS DEL DESTINO*\n\n` +
-    `Dados: [${d1}] [${d2}] = *${suma}*\n\n` +
-    (gano
-      ? `✨ *¡VICTORIA!* +${apuesta} oro\n🪙 Nuevo total: ${nuevoTotal.toLocaleString()}`
-      : `💀 *Derrota...* -${apuesta} oro\n🪙 Nuevo total: ${nuevoTotal.toLocaleString()}`);
+  return heraldCard('Dados del destino', [
+    `Dados: [${d1}] [${d2}] = *${suma}*`,
+    gano ? `✨ *Victoria* +${apuesta} oro` : `💀 *Derrota* -${apuesta} oro`,
+    heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
+  ], { icon: '🎲' });
 }
 
 export async function handleOraculo(msg) {
@@ -43,7 +44,7 @@ export async function handleOraculo(msg) {
        Siempre en tono épico medieval. Usás metáforas de sombras, llamas y destino.
        Nunca rompas el personaje.`
     );
-    return `🔮 *EL ORÁCULO HABLA...*\n\n_${respuesta}_`;
+    return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: '🔮' });
   } catch (err) {
     console.error('[handleOraculo]', err.message);
     return `🔮 El oráculo guarda silencio... intentá de nuevo más tarde.`;

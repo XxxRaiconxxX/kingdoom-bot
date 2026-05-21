@@ -1,3 +1,5 @@
+import { heraldCard, heraldList, heraldSection } from '../formatting.js';
+
 function normalizeText(value) {
   return String(value ?? '')
     .trim()
@@ -65,31 +67,30 @@ export async function handleGroupWelcome(notification, client, config = buildWel
     .map((contact) => `@${contact.number}`)
     .join(' ');
 
-  const firstMessage = 
-    `┌──────────────────────────┐\n` +
-    `│  ⚔️  REINO DE LAS SOMBRAS  ⚔️  │\n` +
-    `│    𝐊 𝐈 𝐍 𝐆 𝐃 𝐎 𝐎 𝐌     │\n` +
-    `└──────────────────────────┘\n\n` +
-    `🏰 *Bienvenido, aventurero ${welcomeMentions}.*\n\n` +
-    `Has cruzado las puertas de la taberna más oscura del reino. Aquí corren el oro, los dados y las leyendas.\n\n` +
-    `🍺 Este es el espacio oficial de *Kingdoom*, donde nobles y bribones se reúnen para:\n\n` +
-    `▸ 🎰 Jugar en la Taberna\n` +
-    `▸ 💰 Comerciar en el mercado P2P\n` +
-    `▸ 🏆 Competir en misiones y eventos\n` +
-    `▸ 📜 Mantenerse al día con novedades\n\n` +
-    `*¡Que el destino esté de tu lado!*\n\n` +
-    `*La informacion para crear tu primer personaje estan aqui*\n\n` +
-    `▸ https://whatsapp.com/channel/0029Vb85e337YSdBx5Swjg0R`;
+  const firstMessage = heraldCard('Bienvenida al Reino de las Sombras', [
+    `Bienvenido, aventurero ${welcomeMentions}.`,
+    'Has cruzado la puerta de la taberna oficial de Kingdoom.',
+    heraldSection('Aqui podras'),
+    heraldList([
+      'Jugar en la Taberna',
+      'Comerciar en el mercado P2P',
+      'Competir en misiones y eventos',
+      'Mantenerte al dia con avisos y novedades',
+    ], '▸'),
+    heraldSection('Primer enlace clave'),
+    'Ficha, lore y primeros pasos:',
+    'https://whatsapp.com/channel/0029Vb85e337YSdBx5Swjg0R',
+  ], { icon: '🏰' });
 
-  const secondMessage = 
-    `━━━━━━━━━━━━━━━━━━━━━\n` +
-    `👑 *GUARDIANES DEL REINO*\n` +
-    `━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `🗡️ *Nothing* — Señor de la Taberna\n` +
-    `🗡️ *Zoelfrost* — Guardián del Tesoro\n` +
-    `🗡️ *Ord* — Heraldo del Reino\n` +
-    `🗡️ *E.xe* — El Cybord\n\n` +
-    `📌 _Ante cualquier duda o conflicto, acude a uno de los Guardianes._`;
+  const secondMessage = heraldCard('Guardianes del reino', [
+    heraldList([
+      '*Nothing* — Senor de la Taberna',
+      '*Zoelfrost* — Guardian del Tesoro',
+      '*Ord* — Heraldo del Reino',
+      '*E.xe* — El Cybord',
+    ], '🗡️'),
+    'Ante cualquier duda o conflicto, acude a uno de los Guardianes.',
+  ], { icon: '👑' });
 
   try {
     await chat.sendMessage(firstMessage, {

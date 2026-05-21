@@ -14,6 +14,7 @@ import {
 } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
+import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -100,16 +101,28 @@ export async function handlePlayerMessage(msg) {
   const { command, body } = parseCommand(rawText);
 
   if (command === 'nuevo') {
-    return `🏰 *PRIMEROS PASOS EN KINGDOOM*\n\n1. Pide tu registro al staff.\n2. Vincula tu WhatsApp con *!verificar usuario_o_id*.\n3. Revisa la web del reino y crea tu ficha.\n4. Usa *!ayuda* para ver comandos del Heraldo.`;
+    return heraldCard('Primeros pasos en Kingdoom', [
+      '1. Pide tu registro al staff.',
+      '2. Vincula tu WhatsApp con `!verificar usuario_o_id`.',
+      '3. Revisa la web del reino y crea tu ficha.',
+      '4. Usa `!ayuda` para ver los comandos del Heraldo.',
+    ], { icon: '🏰' });
   }
 
   if (command === 'vinculo') {
     const link = await getLinkStatusByWhatsapp(sender);
     if (!link.linked || !link.player) {
-      return `🔗 Tu número aún no está vinculado a ningún perfil web.\nUsa *!verificar usuario_o_id* cuando el staff te habilite la cuenta.`;
+      return heraldCard('Vinculo no encontrado', [
+        'Tu numero aun no esta vinculado a ningun perfil web.',
+        'Usa `!verificar usuario_o_id` cuando el staff te habilite la cuenta.',
+      ], { icon: '🔗' });
     }
 
-    return `🔗 *VÍNCULO CONFIRMADO*\n\n👤 Aventurero: *${link.player.username}*\n📞 Número: *${link.phone}*\n🪙 Oro actual: *${Number(link.player.gold ?? 0).toLocaleString('es-PY')}*`;
+    return heraldCard('Vinculo confirmado', [
+      heraldStat('Aventurero', `*${link.player.username}*`),
+      heraldStat('Numero', `*${link.phone}*`),
+      heraldStat('Oro actual', `*${Number(link.player.gold ?? 0).toLocaleString('es-PY')}*`),
+    ], { icon: '🔗' });
   }
 
   if (command === 'ayuda' || command === 'help') {
@@ -121,61 +134,79 @@ export async function handlePlayerMessage(msg) {
       isSenderAdmin = true;
     }
 
-    let helpMsg = `📜 *Comandos del Reino:*\n\n` +
-      `🪙 *!oro*\n` +
-      `🛡️ *!perfil*\n` +
-      `🔗 *!vinculo*\n` +
-      `🧭 *!nuevo*\n` +
-      `🔗 *!verificar <usuario_o_id>*\n` +
-      `🏆 *!ranking*\n` +
-      `👑 *!ricos*\n` +
-      `🏪 *!mercado [nombre]*\n` +
-      `🗡️ *!item <nombre>*\n` +
-      `📜 *!mision [nombre]*\n` +
-      `🎭 *!evento [nombre]*\n` +
-      `🎲 *!dados <monto>*\n` +
-      `🔮 *!oraculo <pregunta>*\n` +
-      `❓ *!ayuda*`;
+    let helpSections = [
+      heraldSection('Comandos del reino'),
+      heraldList([
+        heraldCommand('!oro', 'Consulta tu oro actual.'),
+        heraldCommand('!perfil', 'Muestra tu estado de aventurero.'),
+        heraldCommand('!vinculo', 'Revisa tu enlace con la web.'),
+        heraldCommand('!nuevo', 'Guia corta para empezar.'),
+        heraldCommand('!verificar <usuario_o_id>', 'Vincula tu numero al reino.'),
+        heraldCommand('!ranking', 'Ve el top semanal.'),
+        heraldCommand('!ricos', 'Ve las mayores fortunas.'),
+        heraldCommand('!mercado [nombre]', 'Explora o busca en el mercado.'),
+        heraldCommand('!item <nombre>', 'Ficha breve de un objeto.'),
+        heraldCommand('!mision [nombre]', 'Lista o inspecciona misiones.'),
+        heraldCommand('!evento [nombre]', 'Lista o inspecciona eventos.'),
+        heraldCommand('!dados <monto>', 'Apuesta oro en los dados.'),
+        heraldCommand('!oraculo <pregunta>', 'Consulta libre al Oraculo.'),
+        heraldCommand('!ayuda', 'Abre este compendio.'),
+      ]),
+    ];
 
     if (isSenderOwner) {
-      helpMsg += `\n\n👑 *Comandos del Soberano (Señor Owner):*\n` +
-        `➕ *!add admin <ID/nombre/celular/@>*\n` +
-        `➖ *!remove admin <ID/nombre/celular/@>*\n` +
-        `👥 *!registrar <nombre> [oro]*\n` +
-        `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
-        `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
-        `🔨 *!ban <ID/nombre/celular/@>*\n` +
-        `📊 *!stats*\n` +
-        `🧾 *!staff*\n` +
-        `📚 *!bitacora*\n` +
-        `🛡️ *!admin* (menú soberano)`;
+      helpSections.push(
+        heraldSection('Comandos del soberano'),
+        heraldList([
+          heraldCommand('!add admin <objetivo>', 'Otorga admin a un jugador.'),
+          heraldCommand('!remove admin <objetivo>', 'Revoca admin de un jugador.'),
+          heraldCommand('!registrar <nombre> [oro]', 'Registra un nuevo jugador.'),
+          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
+          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
+          heraldCommand('!stats', 'Resumen general del reino.'),
+          heraldCommand('!staff', 'Vista operativa del staff.'),
+          heraldCommand('!bitacora', 'Ultimas acciones del consejo.'),
+          heraldCommand('!admin', 'Abre el menu soberano.'),
+        ]),
+      );
     } else if (isSenderAdmin) {
-      helpMsg += `\n\n🛡️ *Comandos de Administrador:*\n` +
-        `👥 *!registrar <nombre> [oro]*\n` +
-        `🪙 *!grant <ID/nombre/celular/@> <monto>*\n` +
-        `💸 *!quitar <ID/nombre/celular/@> <monto>*\n` +
-        `🔨 *!ban <ID/nombre/celular/@>*\n` +
-        `📊 *!stats*\n` +
-        `🧾 *!staff*\n` +
-        `📚 *!bitacora*\n` +
-        `🛡️ *!admin* (menú admin)`;
+      helpSections.push(
+        heraldSection('Comandos de administrador'),
+        heraldList([
+          heraldCommand('!registrar <nombre> [oro]', 'Registra un nuevo jugador.'),
+          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
+          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
+          heraldCommand('!stats', 'Resumen general del reino.'),
+          heraldCommand('!staff', 'Vista operativa del staff.'),
+          heraldCommand('!bitacora', 'Ultimas acciones del consejo.'),
+          heraldCommand('!admin', 'Abre el menu admin.'),
+        ]),
+      );
     }
 
     let identityName = 'Jugador';
     if (isSenderOwner) identityName = '👑 Señor Owner';
     else if (isSenderAdmin) identityName = '🛡️ Administrador';
 
-    helpMsg += `\n\n👤 *Identidad:* ${identityName}\n📞 *Teléfono:* ${normalizePhone(sender)}`;
+    helpSections.push(
+      heraldSection('Identidad actual'),
+      heraldList([
+        heraldStat('Rol', identityName),
+        heraldStat('Telefono', normalizePhone(sender)),
+      ]),
+    );
 
     if (!player) {
       if (isSenderOwner || isSenderAdmin) {
-        helpMsg += `\n\n⚠️ *Nota:* Aún no tienes personaje forjado en el reino. Regístrate usando:\n*!registrar <tu_nombre> [oro]*`;
+        helpSections.push(`⚠️ Aun no tienes personaje forjado. Usa \`!registrar <tu_nombre> [oro]\`.`);
       } else {
-        helpMsg += `\n\n⚠️ *Nota:* Aún no estás registrado en el reino. Pídele a un administrador que te registre con *!registrar* para unirte.`;
+        helpSections.push(`⚠️ Aun no estas registrado. Pidele al staff que use \`!registrar\` para darte entrada.`);
       }
     }
 
-    return helpMsg;
+    return heraldCard('Compendio del Heraldo', helpSections, { icon: '📜' });
   }
 
   if (command === 'verificar') {
@@ -190,11 +221,18 @@ export async function handlePlayerMessage(msg) {
   }
 
   if (command === 'oro' || command === 'gold') {
-    return `👑 *${player.username}*, tu fortuna actual:\n\n🪙 *${player.gold.toLocaleString('es-PY')} oro*\n\n_"El oro es el aliento del reino..."_`;
+    return heraldCard(`Fortuna de ${player.username}`, [
+      heraldStat('Oro actual', `*${player.gold.toLocaleString('es-PY')} oro*`),
+      '_El oro es el aliento del reino._',
+    ], { icon: '👑' });
   }
 
   if (command === 'perfil' || command === 'estado') {
-    return `🛡️ *PERFIL DEL AVENTURERO*\n\n👤 *${player.username}*\n🪙 Oro total: *${player.gold.toLocaleString('es-PY')}*\n🏆 Oro semanal: *${(player.weekly_gold ?? 0).toLocaleString('es-PY')}*`;
+    return heraldCard('Perfil del aventurero', [
+      heraldStat('Nombre', `*${player.username}*`),
+      heraldStat('Oro total', `*${player.gold.toLocaleString('es-PY')}*`),
+      heraldStat('Oro semanal', `*${(player.weekly_gold ?? 0).toLocaleString('es-PY')}*`),
+    ], { icon: '🛡️' });
   }
 
   if (command === 'ranking' || command === 'top') {
@@ -206,7 +244,7 @@ export async function handlePlayerMessage(msg) {
       return `${medal} *${entry.username}* - ${entry.weekly_gold.toLocaleString('es-PY')} oro`;
     }).join('\n');
 
-    return `⚔️ *RANKING SEMANAL DEL REINO* ⚔️\n\n${lines}`;
+    return heraldCard('Ranking semanal del reino', [lines], { icon: '⚔️' });
   }
 
   if (command === 'ricos' || command === 'fortunas') {
@@ -218,7 +256,7 @@ export async function handlePlayerMessage(msg) {
       return `${medal} *${entry.username}* - ${entry.gold.toLocaleString('es-PY')} oro`;
     }).join('\n');
 
-    return `👑 *GRANDES FORTUNAS DEL REINO*\n\n${lines}`;
+    return heraldCard('Grandes fortunas del reino', [lines], { icon: '👑' });
   }
 
   if (command === 'mercado') {
@@ -234,8 +272,8 @@ export async function handlePlayerMessage(msg) {
     const lines = items.slice(0, maxItems).map(formatMarketItem).join('\n');
 
     return body
-      ? `🔎 *MERCADO: ${body.toUpperCase()}*\n\n${lines}`
-      : `🏪 *MERCADO DE KINGDOOM*\n\n${lines}`;
+      ? heraldCard(`Mercado: ${body.toUpperCase()}`, [lines], { icon: '🔎' })
+      : heraldCard('Mercado de Kingdoom', [lines], { icon: '🏪' });
   }
 
   if (command === 'item') {
@@ -256,38 +294,57 @@ export async function handlePlayerMessage(msg) {
       lines.push(clipText(item.description, 500));
     }
 
-    return lines.join('\n');
+    return heraldCard(item.name, lines.slice(1), { icon: '🗡️' });
   }
 
   if (command === 'mision' && !body) {
     const missions = await getActiveMissions();
     if (!missions.length) return `📜 No hay misiones abiertas en este momento.`;
-    return `📜 *MISIONES ABIERTAS*\n\n${missions.map(formatMissionRow).join('\n')}\n\nUsa *!mision nombre* para ver una en detalle.`;
+    return heraldCard('Misiones abiertas', [
+      missions.map(formatMissionRow).join('\n'),
+      'Usa `!mision nombre` para verla en detalle.',
+    ], { icon: '📜' });
   }
 
   if (command === 'mision' && body) {
     const mission = await getMissionDetails(body);
     if (!mission) return `📜 No encontre una mision llamada *${body}*.`;
 
-    return `📜 *${mission.title}*\n${String(mission.difficulty).toUpperCase()} - ${String(mission.type).toUpperCase()} - 🪙 ${Number(mission.reward_gold ?? 0).toLocaleString('es-PY')}\nCupo: *${mission.max_participants ?? 1}* - Estado: *${formatStatus(mission.status)}*\n${clipText(mission.description || mission.instructions, 500)}`;
+    return heraldCard(mission.title, [
+      `${String(mission.difficulty).toUpperCase()} - ${String(mission.type).toUpperCase()} - 🪙 ${Number(mission.reward_gold ?? 0).toLocaleString('es-PY')}`,
+      `Cupo: *${mission.max_participants ?? 1}* - Estado: *${formatStatus(mission.status)}*`,
+      clipText(mission.description || mission.instructions, 500),
+    ], { icon: '📜' });
   }
 
   if (command === 'evento' && !body) {
     const events = await getActiveEvents();
     if (!events.length) return `🎭 No hay eventos abiertos ni en produccion ahora mismo.`;
-    return `🎭 *EVENTOS DEL REINO*\n\n${events.map(formatEventRow).join('\n')}\n\nUsa *!evento nombre* para ver uno en detalle.`;
+    return heraldCard('Eventos del reino', [
+      events.map(formatEventRow).join('\n'),
+      'Usa `!evento nombre` para verlo en detalle.',
+    ], { icon: '🎭' });
   }
 
   if (command === 'evento' && body) {
     const event = await getEventDetails(body);
     if (!event) return `🎭 No encontre un evento llamado *${body}*.`;
 
-    return `🎭 *${event.title}*\n${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*\nCierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro\n${clipText(event.description || event.long_description || event.rewards, 500)}`;
+    return heraldCard(event.title, [
+      `${formatStatus(event.status)} - Inicio: *${event.start_date || '-'}*`,
+      `Cierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro`,
+      clipText(event.description || event.long_description || event.rewards, 500),
+    ], { icon: '🎭' });
   }
 
   if (command === 'reino' || command === 'resumen') {
     const snapshot = await getRealmSnapshot();
-    return `🏰 *ESTADO DEL REINO*\n\n👥 Aventureros: *${snapshot.totalPlayers}*\n🏪 Mercado activo: *${snapshot.availableItems}* articulos\n👑 Mas rico: *${snapshot.richest?.username ?? '-'}* (${(snapshot.richest?.gold ?? 0).toLocaleString('es-PY')} oro)\n🏆 Lider semanal: *${snapshot.weeklyChampion?.username ?? '-'}* (${(snapshot.weeklyChampion?.weekly_gold ?? 0).toLocaleString('es-PY')} oro)`;
+    return heraldCard('Estado del reino', [
+      heraldStat('Aventureros', `*${snapshot.totalPlayers}*`),
+      heraldStat('Mercado activo', `*${snapshot.availableItems}* articulos`),
+      heraldStat('Mas rico', `*${snapshot.richest?.username ?? '-'}* (${(snapshot.richest?.gold ?? 0).toLocaleString('es-PY')} oro)`),
+      heraldStat('Lider semanal', `*${snapshot.weeklyChampion?.username ?? '-'}* (${(snapshot.weeklyChampion?.weekly_gold ?? 0).toLocaleString('es-PY')} oro)`),
+    ], { icon: '🏰' });
   }
 
   if (!chatHistory.has(chatId)) chatHistory.set(chatId, []);
