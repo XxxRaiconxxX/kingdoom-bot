@@ -60,6 +60,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!censo', 'Censo general del reino.'),
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
           heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!grupos', 'Lista grupos y sus IDs.'),
           heraldCommand('!staff', 'Resumen operativo.'),
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
@@ -588,7 +589,42 @@ export async function handleAdminCommand(msg, client) {
     if (!isGroup) {
       return `❌ Este comando solo puede ser usado dentro de un grupo de WhatsApp.`;
     }
-      return heraldCard('ID del grupo', [msg.from], { icon: '📋' });
+    return heraldCard('ID del grupo', [msg.from], { icon: '📋' });
+  }
+
+  if (cmd === '!grupos') {
+    if (!isSenderOwner) {
+      return `❌ Solo el Soberano del Reino puede consultar la lista completa de grupos.`;
+    }
+
+    try {
+      const chats = await client.getChats();
+      const groups = chats
+        .filter((chat) => chat?.isGroup)
+        .map((chat) => ({
+          name: chat.name || 'Grupo sin nombre',
+          id: chat.id?._serialized || 'Sin ID',
+        }));
+
+      if (!groups.length) {
+        return heraldCard('Grupos del Heraldo', [
+          'El bot no se encuentra dentro de ningun grupo en este momento.',
+        ], { icon: '👥' });
+      }
+
+      const lines = groups.map((group, index) =>
+        `${index + 1}. *${group.name}*\n   ID: \`${group.id}\``
+      );
+
+      return heraldCard('Grupos del Heraldo', [
+        heraldStat('Total', groups.length),
+        '',
+        lines.join('\n\n'),
+      ], { icon: '👥' });
+    } catch (error) {
+      console.error('[admin grupos]', error);
+      return `❌ No se pudo obtener la lista de grupos del Heraldo.`;
+    }
   }
 
   if (cmd === '!bitacora') {
