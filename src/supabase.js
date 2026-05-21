@@ -50,15 +50,27 @@ function formatAsuncionDateKey(date = new Date()) {
   return `${lookup.year}-${lookup.month}-${lookup.day}`;
 }
 
-export async function getPlayer(whatsappNumber) {
+export async function getPlayersByPhone(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
-  const { data, error } = await supabase.from('players').select('*').eq('phone', phone).single();
+  if (!phone) return [];
 
-  if (error && error.code !== 'PGRST116') {
-    console.error('[getPlayer]', error.message);
+  const { data, error } = await supabase
+    .from('players')
+    .select('*')
+    .eq('phone', phone)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[getPlayersByPhone]', error.message);
+    return [];
   }
 
-  return data ?? null;
+  return data ?? [];
+}
+
+export async function getPlayer(whatsappNumber) {
+  const players = await getPlayersByPhone(whatsappNumber);
+  return players[0] ?? null;
 }
 
 export async function findPlayerByIdentifier(identifier) {
@@ -79,18 +91,12 @@ export async function findPlayerByIdentifier(identifier) {
   };
 
   if (/^\d+$/.test(normalizedPhone)) {
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .eq('phone', normalizedPhone)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') {
-      console.error('[findPlayerByIdentifier.phone]', error.message);
+    const phoneMatches = await getPlayersByPhone(normalizedPhone);
+    if (phoneMatches.length === 1) {
+      return { player: phoneMatches[0], matchType: 'phone', reason: 'ok', phone: normalizedPhone };
     }
-
-    if (data) {
-      return { player: data, matchType: 'phone', reason: 'ok', phone: normalizedPhone };
+    if (phoneMatches.length > 1) {
+      return { player: null, matchType: 'phone', reason: 'ambiguous', phone: normalizedPhone };
     }
   }
 
@@ -168,12 +174,19 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
   }
 
   // 1. Check if this WhatsApp is already linked to some player
-  const { data: alreadyLinked, error: linkErr } = await supabase
-    .from('players')
-    .select('*')
-    .eq('phone', phone)
-    .maybeSingle();
+  const alreadyLinkedPlayers = await getPlayersByPhone(phone);
+  if (alreadyLinkedPlayers.length > 1) {
+    const usernames = alreadyLinkedPlayers
+      .map((player) => player.username)
+      .filter(Boolean)
+      .join(', ');
+    return {
+      success: false,
+      message: `❌ Tu WhatsApp ya está vinculado a varias cuentas del reino: *${usernames}*.\nPídele al Soberano que ordene o depure tus vínculos antes de volver a verificar.`
+    };
+  }
 
+  const alreadyLinked = alreadyLinkedPlayers[0];
   if (alreadyLinked) {
     return {
       success: false,
@@ -323,11 +336,13 @@ export async function getRealmSnapshot() {
 }
 
 export async function getLinkStatusByWhatsapp(whatsappNumber) {
-  const player = await getPlayer(whatsappNumber);
+  const players = await getPlayersByPhone(whatsappNumber);
   return {
     phone: normalizePhone(whatsappNumber),
-    linked: Boolean(player),
-    player,
+    linked: players.length > 0,
+    player: players[0] ?? null,
+    players,
+    multipleProfiles: players.length > 1,
   };
 }
 

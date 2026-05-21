@@ -15,7 +15,7 @@ export async function handleAdminCommand(msg, client) {
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
   const sender = msg.author || msg.from;
-  const actorPhone = sender.replace(/@c\.us$/, '').replace(/\D/g, '');
+  const actorPhone = normalizePhone(sender);
 
   const isSenderOwner = isOwner(sender);
 
@@ -25,8 +25,13 @@ export async function handleAdminCommand(msg, client) {
     return input.replace('@c.us', '').replace(/\D/g, '').trim();
   };
 
-  const actorPlayer = await supabase.from('players').select('username').eq('phone', actorPhone).maybeSingle();
-  const actorName = actorPlayer.data?.username ?? 'Staff';
+  const { data: actorPlayers } = await supabase
+    .from('players')
+    .select('username')
+    .eq('phone', actorPhone)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  const actorName = actorPlayers?.[0]?.username ?? 'Staff';
 
   const describeResolutionError = (identifier, result) => {
     if (result?.reason === 'ambiguous') {
@@ -95,7 +100,7 @@ export async function handleAdminCommand(msg, client) {
 
     const success = addAdmin(targetPhone);
     if (success && resolved.player) {
-      await supabase.from('players').update({ is_admin: true }).eq('phone', targetPhone);
+      await supabase.from('players').update({ is_admin: true }).eq('id', resolved.player.id);
     }
     if (success) {
       recordAdminAction({
@@ -137,7 +142,7 @@ export async function handleAdminCommand(msg, client) {
 
     const success = removeAdmin(targetPhone);
     if (success && resolved.player) {
-      await supabase.from('players').update({ is_admin: false }).eq('phone', targetPhone);
+      await supabase.from('players').update({ is_admin: false }).eq('id', resolved.player.id);
     }
     if (success) {
       recordAdminAction({
@@ -466,8 +471,8 @@ export async function handleAdminCommand(msg, client) {
 
       // Rastrear a todos los pendientes
       const allPendingPhones = [
-        ...unregisteredMembers.map(m => m.id.user),
-        ...registeredWithoutPj.map(m => m.participant.id.user)
+        ...unregisteredMembers.map((member) => normalizePhone(member.id.user)),
+        ...registeredWithoutPj.map((member) => normalizePhone(member.participant.id.user))
       ];
       trackUnregisteredUsers(allPendingPhones);
 
@@ -501,7 +506,7 @@ export async function handleAdminCommand(msg, client) {
       const toRemovePhones = [];
 
       for (const participant of groupParticipants) {
-        const phone = participant.id.user;
+        const phone = normalizePhone(participant.id.user);
         const jid = participant.id._serialized;
         
         if (trackerData[phone]) {

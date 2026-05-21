@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { supabase } from './supabase.js';
+import { normalizePhone } from './adminStore.js';
 
 // ✅ Timezone Paraguay (UTC-4, con ajuste horario de verano)
 const TZ = { timezone: 'America/Asuncion' };
@@ -12,13 +13,19 @@ async function sendToAll(client, buildMessage) {
 
   if (error || !players?.length) return;
 
-  for (const p of players) {
+  const uniquePhones = [...new Set(
+    players
+      .map((player) => normalizePhone(player.phone))
+      .filter(Boolean)
+  )];
+
+  for (const phone of uniquePhones) {
     try {
-      const msg = typeof buildMessage === 'function' ? buildMessage(p) : buildMessage;
-      await client.sendMessage(`${p.phone}@c.us`, msg);
+      const msg = typeof buildMessage === 'function' ? buildMessage({ phone }) : buildMessage;
+      await client.sendMessage(`${phone}@c.us`, msg);
       await new Promise(r => setTimeout(r, 1500)); // anti-spam
     } catch (err) {
-      console.error(`[scheduler] Error enviando a ${p.phone}:`, err.message);
+      console.error(`[scheduler] Error enviando a ${phone}:`, err.message);
     }
   }
 }
