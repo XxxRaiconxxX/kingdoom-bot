@@ -10,6 +10,7 @@ import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../trac
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
+import { buildWelcomeConfig } from './welcome.js';
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
@@ -61,6 +62,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
           heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
           heraldCommand('!grupos', 'Lista grupos y sus IDs.'),
+          heraldCommand('!grupoactual', 'Estado del grupo donde escribes.'),
           heraldCommand('!staff', 'Resumen operativo.'),
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
@@ -624,6 +626,45 @@ export async function handleAdminCommand(msg, client) {
     } catch (error) {
       console.error('[admin grupos]', error);
       return `❌ No se pudo obtener la lista de grupos del Heraldo.`;
+    }
+  }
+
+  if (cmd === '!grupoactual') {
+    if (!isSenderOwner) {
+      return `❌ Solo el Soberano del Reino puede inspeccionar la configuracion completa del grupo actual.`;
+    }
+
+    if (!msg.from.endsWith('@g.us')) {
+      return `❌ Este comando solo puede usarse dentro de un grupo de WhatsApp.`;
+    }
+
+    try {
+      const chat = await msg.getChat();
+      const groupId = chat?.id?._serialized || msg.from;
+      const groupName = chat?.name || 'Grupo sin nombre';
+      const welcomeConfig = buildWelcomeConfig();
+      const normalizedGroupName = String(groupName)
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+      const welcomeEnabled = Boolean(
+        welcomeConfig.enabled &&
+        (
+          (welcomeConfig.groupId && welcomeConfig.groupId === groupId) ||
+          (welcomeConfig.groupName && welcomeConfig.groupName === normalizedGroupName)
+        )
+      );
+
+      return heraldCard('Grupo actual', [
+        heraldStat('Nombre', `*${groupName}*`),
+        heraldStat('ID', `\`${groupId}\``),
+        heraldStat('Bienvenida activa', welcomeEnabled ? 'Si' : 'No'),
+      ], { icon: '📍' });
+    } catch (error) {
+      console.error('[admin grupoactual]', error);
+      return `❌ No se pudo inspeccionar el grupo actual.`;
     }
   }
 
