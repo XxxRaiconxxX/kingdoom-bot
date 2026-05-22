@@ -657,3 +657,19 @@ export function pickKnowledgeContext(documents, question, maxDocuments = 3) {
     .slice(0, maxDocuments)
     .map((entry) => entry.document);
 }
+
+export async function getPlayerSheet(playerId) {
+  if (!playerId) return null;
+  const { data, error } = await supabase
+    .from('character_sheets')
+    .select('name, race, powers, weapon, birthRealm, personality')
+    .eq('playerId', playerId)
+    .limit(1)
+    .maybeSingle();
+    
+  if (error) {
+    console.error('[getPlayerSheet] Error fetching sheet:', error.message);
+    return null;
+  }
+  return data;
+}

@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -73,15 +73,23 @@ export async function handleOraculo(msg) {
       });
     }
 
-    // 2. Contexto del Jugador
+    // 2. Contexto del Jugador y Ficha
     contextStr += `\n=== CONTEXTO DEL AVENTURERO ===\n`;
     if (player) {
-      contextStr += `Nombre: ${player.username}\nOro: ${player.gold}\n(Usa este nombre en tu profecía. Si tiene poco oro (menos de 500), sé despectivo o compasivo. Si tiene mucho, adviértele sobre la codicia y traición).\n`;
+      contextStr += `Jugador: ${player.username}\nOro en el banco: ${player.gold}\n`;
+      
+      const sheet = await getPlayerSheet(player.id);
+      if (sheet) {
+        contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma: ${sheet.weapon}\n- Personalidad: ${sheet.personality}\n`;
+        contextStr += `(Usa la información de la ficha de personaje de este jugador en tu profecía. Si tiene poco oro (menos de 500), sé despectivo o compasivo. Haz referencia a su raza, orígenes o armas de forma poética).\n`;
+      } else {
+        contextStr += `(Usa su nombre en tu profecía. Si tiene poco oro (menos de 500), sé despectivo o compasivo. Si tiene mucho, adviértele sobre la codicia y traición. Este jugador no tiene ficha de rol registrada aún).\n`;
+      }
     } else {
       contextStr += `El jugador es un alma forastera, no registrada en el censo. Llámalo "alma sin nombre".\n`;
     }
 
-    // 3. Estadísticas globales (opcional, sin await pesados para evitar lag, usamos una aproximación o la omitimos si es lento, pero ya estamos usando DB).
+    // 3. Estadísticas globales (opcional)
     // Para simplificar, omitiremos el cálculo pesado de todos los jugadores si no es necesario, pero agregaremos un toque si el prompt pregunta por "el más rico".
 
     // Agregar pregunta al historial
