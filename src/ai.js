@@ -23,6 +23,10 @@ export async function askKingdoomAI(history, systemPrompt) {
   if (baseModel !== 'gemini-3.5-flash') {
     modelsToTry.push('gemini-3.5-flash');
   }
+  // Añadimos la version 1.5 como salvavidas en caso de que los servidores esten muy saturados
+  if (baseModel !== 'gemini-1.5-flash') {
+    modelsToTry.push('gemini-1.5-flash');
+  }
 
   // Gemini requiere que el historial empiece con 'user' y alterne roles.
   // Sanitizamos: eliminamos el primer mensaje si no es 'user',
