@@ -1,4 +1,4 @@
-import { getPlayer, updateGold } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -12,6 +12,15 @@ export async function handleDados(msg) {
   if (!apuesta || isNaN(apuesta) || apuesta < 10) return `🎲 Usá: *!dados 100* (mínimo 10 oro)`;
   if (apuesta > player.gold) return `❌ No tenés suficiente oro.\n🪙 Tenés: ${player.gold.toLocaleString('es-PY')}`;
 
+  const dayOfWeek = new Date().getDay();
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const maxUsos = isWeekend ? 5 : 3;
+
+  const currentUsos = await getDadosUsage(player.id);
+  if (currentUsos >= maxUsos) {
+    return `🎲 Alcanzaste el límite diario de dados (${maxUsos}/${maxUsos}). ¡Volvé mañana para probar tu suerte!`;
+  }
+
   const d1 = Math.ceil(Math.random() * 6);
   const d2 = Math.ceil(Math.random() * 6);
   const suma = d1 + d2;
@@ -21,14 +30,17 @@ export async function handleDados(msg) {
 
   try {
     await updateGold(player.id, delta);
+    await incrementDadosUsage(player.id);
   } catch {
     return `⚔️ Error al registrar la apuesta. Intentá de nuevo.`;
   }
 
+  const remainingUsos = maxUsos - (currentUsos + 1);
   return heraldCard('Dados del destino', [
     `Dados: [${d1}] [${d2}] = *${suma}*`,
     gano ? `✨ *Victoria* +${apuesta} oro` : `💀 *Derrota* -${apuesta} oro`,
     heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
+    heraldStat('Usos restantes', `${remainingUsos}/${maxUsos}`),
   ], { icon: '🎲' });
 }
 

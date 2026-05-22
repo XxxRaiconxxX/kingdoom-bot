@@ -479,6 +479,41 @@ export async function hasClaimedDailyReward(playerId) {
   return data ?? null;
 }
 
+export async function getDadosUsage(playerId) {
+  const claimDate = formatAsuncionDateKey();
+  const { data, error } = await supabase
+    .from('bot_daily_claims')
+    .select('reward_gold')
+    .eq('player_id', playerId)
+    .eq('claim_type', 'dados_usage')
+    .eq('claim_date', claimDate)
+    .maybeSingle();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('[getDadosUsage]', error.message);
+  }
+
+  return data ? data.reward_gold : 0;
+}
+
+export async function incrementDadosUsage(playerId) {
+  const claimDate = formatAsuncionDateKey();
+  const current = await getDadosUsage(playerId);
+  
+  const { error } = await supabase
+    .from('bot_daily_claims')
+    .upsert({
+      player_id: playerId,
+      claim_type: 'dados_usage',
+      claim_date: claimDate,
+      reward_gold: current + 1
+    }, { onConflict: 'player_id, claim_type, claim_date' });
+    
+  if (error) {
+    console.error('[incrementDadosUsage]', error.message);
+  }
+}
+
 export async function registerPlayer(whatsappNumber, username, initialGold = 2500) {
   const phone = normalizePhone(whatsappNumber);
 
