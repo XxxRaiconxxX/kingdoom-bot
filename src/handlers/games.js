@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -49,12 +49,23 @@ export async function handleOraculo(msg) {
   if (!pregunta) return `🔮 Formulá tu pregunta: *!oraculo ¿Cuándo llegará el invierno?*`;
 
   try {
+    const documents = await getKnowledgeDocuments();
+    const relevantDocs = pickKnowledgeContext(documents, pregunta, 2);
+    
+    let contextStr = '';
+    if (relevantDocs.length > 0) {
+      contextStr = `\n\n=== CONTEXTO DEL REINO ===\nUtiliza esta información confidencial para responder de forma precisa, pero mantén siempre tu tono poético y críptico.\n\n`;
+      relevantDocs.forEach(doc => {
+        contextStr += `* ${doc.title} (${doc.category}): ${doc.summary || doc.content.substring(0, 500)}\n`;
+      });
+    }
+
     const respuesta = await askKingdoomAI(
       [{ role: 'user', content: pregunta }],
       `Eres el Oráculo Eterno de Kingdoom — Reino de las Sombras.
        Respondés profecías crípticas y misteriosas en exactamente 2-3 líneas.
        Siempre en tono épico medieval. Usás metáforas de sombras, llamas y destino.
-       Nunca rompas el personaje.`
+       Nunca rompas el personaje.` + contextStr
     );
     return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: '🔮' });
   } catch (err) {

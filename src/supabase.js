@@ -568,3 +568,92 @@ export async function getRealmCensus() {
 
   return { players: players ?? [], sheets: sheets ?? [] };
 }
+
+export async function getKnowledgeDocuments() {
+  const { data, error } = await supabase
+    .from('knowledge_documents')
+    .select('id, title, type, category, tags, source, content, summary, visible')
+    .eq('visible', true);
+
+  if (error) {
+    console.error('[getKnowledgeDocuments]', error.message);
+    return [];
+  }
+  return data || [];
+}
+
+export function slugifyKnowledgeId(value, fallback = "documento") {
+  const slug = value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-");
+
+  return slug || fallback;
+}
+
+export async function upsertKnowledgeDocument(doc) {
+  const payload = {
+    id: doc.id || slugifyKnowledgeId(doc.title),
+    title: doc.title,
+    type: doc.type || 'other',
+    category: doc.category || 'bot',
+    tags: doc.tags || [],
+    source: doc.source || 'whatsapp-bot',
+    content: doc.content,
+    summary: doc.summary || '',
+    visible: doc.visible !== undefined ? doc.visible : true,
+  };
+
+  const { error } = await supabase
+    .from('knowledge_documents')
+    .upsert(payload, { onConflict: 'id' });
+
+  if (error) {
+    console.error('[upsertKnowledgeDocument]', error.message);
+    return false;
+  }
+  return true;
+}
+
+export function pickKnowledgeContext(documents, question, maxDocuments = 3) {
+  const tokens = question
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9]+/g)
+    .filter((token) => token.length > 2);
+
+  const scored = documents.map((document) => {
+    const title = document.title
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const metadata = `${document.type} ${document.category} ${(document.tags || []).join(" ")} ${document.source} ${document.summary}`
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const content = document.content
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+      
+    const score = tokens.reduce((total, token) => {
+      const titleHit = title.includes(token) ? 6 : 0;
+      const metadataHit = metadata.includes(token) ? 3 : 0;
+      const contentHit = content.includes(token) ? 1 : 0;
+      return total + titleHit + metadataHit + contentHit;
+    }, 0);
+
+    return { document, score };
+  });
+
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .filter((entry, index) => entry.score > 0 || index < 1) // Always keep at least 1 document if nothing matches perfectly, or maybe only if score > 0? Let's just keep score > 0.
+    .filter(entry => entry.score > 0)
+    .slice(0, maxDocuments)
+    .map((entry) => entry.document);
+}

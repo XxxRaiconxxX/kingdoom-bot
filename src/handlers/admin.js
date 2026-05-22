@@ -683,6 +683,58 @@ export async function handleAdminCommand(msg, client) {
     return heraldCard('Bitacora del reino', [lines.join('\n\n')], { icon: '📚' });
   }
 
+  // 12. !data (Knowledge upload)
+  if (cmd === '!data') {
+    if (!msg.hasMedia) {
+      return `❌ Debes adjuntar un archivo .txt con el comando *!data [titulo]* para cargarlo a la base de conocimiento.`;
+    }
+
+    try {
+      const media = await msg.downloadMedia();
+      if (!media || !media.mimetype.includes('text/plain')) {
+        return `❌ Solo se permiten archivos de texto plano (.txt).`;
+      }
+
+      const content = Buffer.from(media.data, 'base64').toString('utf-8');
+      if (!content.trim()) {
+        return `❌ El archivo está vacío.`;
+      }
+
+      const rawTitle = parts.slice(1).join(' ').trim();
+      const title = rawTitle || media.filename || 'Documento sin titulo';
+
+      // Dinamicamente importar upsertKnowledgeDocument
+      const { upsertKnowledgeDocument } = await import('../supabase.js');
+
+      const success = await upsertKnowledgeDocument({
+        title,
+        content,
+        type: 'lore',
+        category: 'bot-upload',
+        source: 'whatsapp',
+        summary: `Documento cargado vía WhatsApp por ${actorName}`,
+        visible: true,
+      });
+
+      if (success) {
+        recordAdminAction({
+          actorPhone,
+          actorName,
+          action: 'upload_data',
+          target: title,
+          detail: `Cargó documento TXT de ${content.length} caracteres.`,
+          chatId: msg.from,
+        });
+        return `✅ *Documento guardado:* "${title}" ha sido asimilado por el Archivista.`;
+      } else {
+        return `❌ Error al guardar el documento en la base de datos.`;
+      }
+    } catch (err) {
+      console.error('[admin data upload]', err);
+      return `❌ Hubo un error al procesar el archivo adjunto.`;
+    }
+  }
+
   return `❓ Comando admin no reconocido. Escribe *!admin* para ver la lista de comandos.`;
 }
 
