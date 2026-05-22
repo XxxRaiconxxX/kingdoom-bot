@@ -137,7 +137,7 @@ export async function handlePlayerMessage(msg) {
     let helpSections = [
       heraldSection('Comandos del reino'),
       heraldList([
-        heraldCommand('!oro', 'Consulta tu oro actual.'),
+        heraldCommand('!oro [monto] [@user]', 'Consulta o envía oro a otro jugador.'),
         heraldCommand('!perfil', 'Muestra tu estado de aventurero.'),
         heraldCommand('!vinculo', 'Revisa tu enlace con la web.'),
         heraldCommand('!nuevo', 'Guia corta para empezar.'),
@@ -221,10 +221,63 @@ export async function handlePlayerMessage(msg) {
   }
 
   if (command === 'oro' || command === 'gold') {
-    return heraldCard(`Fortuna de ${player.username}`, [
-      heraldStat('Oro actual', `*${player.gold.toLocaleString('es-PY')} oro*`),
-      '_El oro es el aliento del reino._',
-    ], { icon: '👑' });
+    if (!body) {
+      return heraldCard(`Fortuna de ${player.username}`, [
+        heraldStat('Oro actual', `*${player.gold.toLocaleString('es-PY')} oro*`),
+        '_El oro es el aliento del reino._',
+      ], { icon: '👑' });
+    }
+
+    const parts = body.split(/\s+/);
+    const amount = parseInt(parts[0].replace(/\./g, ''));
+    
+    if (isNaN(amount) || amount <= 0) {
+      return `❌ *Uso correcto para enviar oro:*\n\`!oro <monto> <@usuario>\``;
+    }
+
+    if (amount > player.gold) {
+      return `❌ No tienes suficiente oro para transferir.\n🪙 Tu oro actual: *${player.gold.toLocaleString('es-PY')}*`;
+    }
+
+    let identifier = '';
+    if (msg.hasQuotedMsg) {
+      identifier = ''; // resolvePlayerTarget handles quoted msg when identifier is empty
+    } else {
+      identifier = parts.slice(1).join(' ').trim();
+    }
+
+    if (!identifier && !msg.hasQuotedMsg) {
+      return `❌ *Uso correcto para enviar oro:*\n\`!oro <monto> <@usuario>\``;
+    }
+
+    const { resolvePlayerTarget } = await import('../targetResolver.js');
+    const { updateGold } = await import('../supabase.js');
+
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    
+    if (!resolved.ok) {
+      if (resolved?.reason === 'ambiguous') {
+        return `⚠️ Hay varias coincidencias. Usa el celular, cita el mensaje o menciona al jugador directamente.`;
+      }
+      return `❌ Jugador no encontrado en el reino.`;
+    }
+
+    const targetPlayer = resolved.player;
+
+    if (targetPlayer.id === player.id) {
+      return `❌ No puedes enviarte oro a ti mismo.`;
+    }
+
+    try {
+      await updateGold(player.id, -amount);
+      await updateGold(targetPlayer.id, amount);
+
+      const nuevoTotal = player.gold - amount;
+      return `✅ Has enviado *${amount.toLocaleString('es-PY')} oro* a *${targetPlayer.username}*.\n🪙 Tu nuevo total: *${nuevoTotal.toLocaleString('es-PY')}*`;
+    } catch (err) {
+      console.error('[oro transfer error]', err);
+      return `❌ Hubo un error al procesar la transferencia de oro. Inténtalo de nuevo.`;
+    }
   }
 
   if (command === 'perfil' || command === 'estado') {
