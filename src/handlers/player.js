@@ -50,7 +50,7 @@ function parseCommand(value) {
   }
 
   const hasPrefix = normalized.startsWith('!');
-  const sanitized = hasPrefix ? normalized.slice(1) : normalized;
+  const sanitized = hasPrefix ? normalized.slice(1).trim() : normalized;
   const [command = '', ...rest] = sanitized.split(/\s+/);
 
   return {
