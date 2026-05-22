@@ -81,9 +81,9 @@ export async function handleOraculo(msg) {
       const sheet = await getPlayerSheet(player.id);
       if (sheet) {
         contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma: ${sheet.weapon}\n- Personalidad: ${sheet.personality}\n`;
-        contextStr += `(Usa la información de la ficha de personaje de este jugador en tu profecía. Si tiene poco oro (menos de 500), sé despectivo o compasivo. Haz referencia a su raza, orígenes o armas de forma poética).\n`;
+        contextStr += `(Usa la información de la ficha de forma SUTIL en tu profecía, como guiños. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta o si preguntas sobre fortunas. Varía tus menciones: a veces háblale sobre su arma, a veces sobre su raza, no menciones todo a la vez).\n`;
       } else {
-        contextStr += `(Usa su nombre en tu profecía. Si tiene poco oro (menos de 500), sé despectivo o compasivo. Si tiene mucho, adviértele sobre la codicia y traición. Este jugador no tiene ficha de rol registrada aún).\n`;
+        contextStr += `(Usa su nombre en tu profecía. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza, destino o si te falta inspiración. Este jugador no tiene ficha de rol registrada aún).\n`;
       }
     } else {
       contextStr += `El jugador es un alma forastera, no registrada en el censo. Llámalo "alma sin nombre".\n`;
