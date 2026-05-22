@@ -24,7 +24,7 @@ export async function handleDados(msg) {
   const d1 = Math.ceil(Math.random() * 6);
   const d2 = Math.ceil(Math.random() * 6);
   const suma = d1 + d2;
-  const gano = suma >= 7;
+  const gano = suma >= 8;
   const delta = gano ? apuesta : -apuesta;
   const nuevoTotal = player.gold + delta; // calculamos antes del await
 
