@@ -13,11 +13,15 @@ async function sendToAll(client, buildMessage) {
 
   if (error || !players?.length) return;
 
-  const uniquePhones = [...new Set(
-    players
-      .map((player) => normalizePhone(player.phone))
-      .filter(Boolean)
-  )];
+  const uniquePhones = new Set();
+  players.forEach(player => {
+    if (player.phone) {
+      player.phone.split(',').forEach(p => {
+        const norm = normalizePhone(p.trim());
+        if (norm) uniquePhones.add(norm);
+      });
+    }
+  });
 
   for (const phone of uniquePhones) {
     try {
