@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -112,7 +112,20 @@ export async function handleOraculo(msg) {
     }
 
     // 3. Estadísticas globales (opcional)
-    // Para simplificar, omitiremos el cálculo pesado de todos los jugadores si no es necesario, pero agregaremos un toque si el prompt pregunta por "el más rico".
+    const [missions, events] = await Promise.all([
+      getActiveMissions(3),
+      getActiveEvents(3)
+    ]);
+
+    if (missions && missions.length > 0) {
+      contextStr += `\nMisiones Activas en el Reino:\n` + missions.map(m => `- ${m.title} (Recompensa: ${m.reward_gold} oro). Descripcion: ${m.description}`).join('\n') + `\n`;
+    }
+    
+    if (events && events.length > 0) {
+      contextStr += `\nEventos Actuales en el Reino:\n` + events.map(e => `- ${e.title}: ${e.description}`).join('\n') + `\n`;
+    }
+
+    contextStr += `(Si el jugador te pregunta sobre misiones o eventos, utiliza esta información para guiarlo y motivarlo a participar. Si no pregunta, puedes mencionarlos brevemente como rumores si encajan en tu profecía).\n`;
 
     // Agregar pregunta al historial
     history.push({ role: 'user', content: pregunta });
