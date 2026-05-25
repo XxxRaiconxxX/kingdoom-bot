@@ -294,11 +294,38 @@ export async function handlePlayerMessage(msg) {
   }
 
   if (command === 'perfil' || command === 'estado') {
-    return heraldCard('Perfil del aventurero', [
-      heraldStat('Nombre', `*${player.username}*`),
-      heraldStat('Oro total', `*${player.gold.toLocaleString('es-PY')}*`),
-      heraldStat('Oro semanal', `*${(player.weekly_gold ?? 0).toLocaleString('es-PY')}*`),
-    ], { icon: '🛡️' });
+    let targetPlayer = player;
+
+    if (body) {
+      if (isOwner(sender) || isAdminUser(sender) || player?.is_admin) {
+        const { resolvePlayerTarget } = await import('../targetResolver.js');
+        const resolved = await resolvePlayerTarget(msg, body);
+        if (!resolved.ok) {
+          if (resolved?.reason === 'ambiguous') {
+            return `⚠️ Hay varias coincidencias para "${body}". Especifica el nombre completo o usa el ID.`;
+          }
+          return `❌ Jugador no encontrado en el reino.`;
+        }
+        targetPlayer = resolved.player;
+      } else {
+        return `❌ Solo los administradores pueden ver el perfil de otros viajeros.`;
+      }
+    }
+
+    const phoneList = (targetPlayer.phone || '').split(',').map(n => n.trim()).filter(Boolean);
+    const ids = phoneList.filter(n => n.length >= 15);
+    const phones = phoneList.filter(n => n.length < 15);
+
+    const stats = [
+      heraldStat('Nombre', `*${targetPlayer.username}*`),
+      heraldStat('Oro total', `*${targetPlayer.gold.toLocaleString('es-PY')}*`),
+      heraldStat('Oro semanal', `*${(targetPlayer.weekly_gold ?? 0).toLocaleString('es-PY')}*`),
+      heraldStat('ID Web', `*${targetPlayer.id}*`),
+      heraldStat('ID WhatsApp', `*${ids.length > 0 ? ids.join(', ') : 'Ninguno'}*`),
+      heraldStat('Telefono', `*${phones.length > 0 ? phones.join(', ') : 'Ninguno'}*`),
+    ];
+
+    return heraldCard('Perfil del aventurero', stats, { icon: '🛡️' });
   }
 
   if (command === 'ranking' || command === 'top') {
