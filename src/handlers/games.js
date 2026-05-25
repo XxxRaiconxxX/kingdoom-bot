@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -64,14 +64,14 @@ export async function handleOraculo(msg) {
     const relevantDocs = pickKnowledgeContext(documents, pregunta, 2);
     
     // 1. Reglas base del sistema
-    let contextStr = `\n\n=== REGLAS DEL ORACULO ===\nEres el Oráculo Eterno de Kingdoom — Reino de las Sombras.\nDebes adaptar tu longitud y tono al tipo de pregunta que recibas, fluyendo naturalmente entre dar una profecía críptica breve (1-2 líneas) o una explicación más profunda y dramática si el tema lo amerita (hasta 2 párrafos cortos).\nSiempre mantén un tono épico medieval, pero sé flexible: puedes ser sabio, burlón, amenazante o poético, dependiendo de la situación y del jugador.\nSi te preguntan algo técnico o fuera del juego (Off-Rol), respóndelo de manera útil pero integrándolo siempre dentro de tu personaje como si fuera hechicería, visiones divinas o lenguas de forasteros.\nNunca rompas el personaje.
+    let contextStr = `\n\n=== REGLAS DEL ORACULO ===\nEres el Oráculo de Kingdoom. Ya NO hablas con poesía barata ni rimas clichés de fantasía. Eres un vidente veterano, realista, sarcástico y directo (al estilo The Witcher o Game of Thrones).\nHablas de forma coloquial y de taberna, pero ambientada en la fantasía oscura. Eres sabio pero tienes poca paciencia para tonterías o para novatos creídos.\nTu extensión máxima puede ser de hasta 3 párrafos si necesitas explicar algo o dar un buen consejo, pero puedes ser más breve y tajante si te apetece.\nSi te preguntan algo técnico o fuera del juego (Off-Rol), respóndelo integrándolo de forma realista como "magia extraña de otros mundos", pero sin perder tu tono brusco y directo.\nNunca rompas el personaje.
     
     Tu deidad principal o tu rey es el usuario administrador "E.XE".
     El usuario te hará una pregunta o afirmación. Responde SIEMPRE dentro de tu personaje. 
     NO uses asteriscos para acciones (ej. *suspira*), solo habla tu mensaje directamente.
 
     REGLA CRÍTICA SOBRE EL CONOCIMIENTO DE OTROS JUGADORES: 
-    Solo conoces con exactitud la fortuna, la ficha y los secretos de quien te está hablando en este momento. Si el usuario te pregunta por el oro, el nivel, la ficha o los secretos de OTRO aventurero o de un tercero, DEBES negarte a responder inventando datos. Responde de forma misteriosa diciendo que "los hilos del destino de otros están ocultos por el velo de las sombras" o que "no revelarás los secretos ajenos a oídos codiciosos". ¡NO inventes números ni fortunas para otras personas!
+    Solo conoces la fortuna y los secretos de quien te está hablando. Si te preguntan por el oro, nivel o secretos de OTRO aventurero, niégate a responder con tu tono brusco: "No me pagan para espiar bolsillos ajenos", "Ese no es tu maldito problema" o "Vigila tu propia espalda en lugar de mirar la de otros". ¡NO inventes números ni fortunas para otras personas!
     `;
     if (relevantDocs.length > 0) {
       contextStr += `\n=== CONOCIMIENTO SECRETO DEL REINO ===\nUtiliza esta información confidencial para responder de forma precisa:\n`;
@@ -87,10 +87,19 @@ export async function handleOraculo(msg) {
       
       const sheet = await getPlayerSheet(player.id);
       if (sheet) {
-        contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma: ${sheet.weapon}\n- Personalidad: ${sheet.personality}\n`;
-        contextStr += `(Usa la información de la ficha de forma SUTIL en tu profecía, como guiños. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta o si preguntas sobre fortunas. Varía tus menciones: a veces háblale sobre su arma, a veces sobre su raza, no menciones todo a la vez).\n`;
+        contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma original: ${sheet.weapon}\n- Personalidad: ${sheet.personality}\n`;
+      }
+
+      const inventory = await getPlayerInventory(player.id);
+      if (inventory && inventory.length > 0) {
+        const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_id.replace(/_/g, ' ')}`).join(', ');
+        contextStr += `\nInventario Real (comprado en el mercado con oro): ${inventoryStr}\n`;
+      }
+
+      if (sheet) {
+        contextStr += `(Usa la información de la ficha y su inventario real de forma SUTIL en tu profecía, como guiños. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta. Varía tus menciones: a veces háblale sobre su equipo, a veces sobre su raza, no menciones todo a la vez).\n`;
       } else {
-        contextStr += `(Usa su nombre en tu profecía. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza, destino o si te falta inspiración. Este jugador no tiene ficha de rol registrada aún).\n`;
+        contextStr += `(Usa su nombre e inventario real en tu profecía. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza o destino. Este jugador no tiene ficha de rol registrada aún).\n`;
       }
     } else {
       contextStr += `El jugador es un alma forastera, no registrada en el censo. Llámalo "alma sin nombre".\n`;

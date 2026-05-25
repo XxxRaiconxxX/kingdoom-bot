@@ -673,3 +673,17 @@ export async function getPlayerSheet(playerId) {
   }
   return data;
 }
+
+export async function getPlayerInventory(playerId) {
+  if (!playerId) return null;
+  const { data, error } = await supabase
+    .from('player_inventory')
+    .select('item_id, quantity, category')
+    .eq('player_id', playerId);
+    
+  if (error) {
+    console.error('[getPlayerInventory] Error fetching inventory:', error.message);
+    return null;
+  }
+  return data;
+}
