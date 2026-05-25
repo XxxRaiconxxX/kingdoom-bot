@@ -95,7 +95,7 @@ export async function handleOraculo(msg) {
 
       const inventory = await getPlayerInventory(player.id);
       if (inventory && inventory.length > 0) {
-        const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_id.replace(/_/g, ' ')}`).join(', ');
+        const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_name || i.item_id}`).join(', ');
         contextStr += `\nInventario Real (comprado en el mercado con oro): ${inventoryStr}\n`;
       }
 

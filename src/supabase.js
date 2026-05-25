@@ -678,7 +678,7 @@ export async function getPlayerInventory(playerId) {
   if (!playerId) return null;
   const { data, error } = await supabase
     .from('player_inventory')
-    .select('item_id, quantity, category')
+    .select('item_id, item_name, quantity, item_category')
     .eq('player_id', playerId);
     
   if (error) {
