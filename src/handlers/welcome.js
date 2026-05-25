@@ -57,18 +57,37 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   // If no filter is configured, welcome fires in every group
 
   const botId = client.info?.wid?._serialized || '';
-  const joinedContacts = uniqueById(await notification.getRecipients()).filter(
+  
+  let rawContacts = [];
+  try {
+    rawContacts = await notification.getRecipients();
+  } catch (err) {
+    console.error('[welcome] Error fetching recipients:', err.message);
+  }
+
+  // Fallback if getRecipients() fails or returns empty but we have recipientIds
+  if ((!rawContacts || rawContacts.length === 0) && notification.recipientIds && notification.recipientIds.length > 0) {
+    rawContacts = notification.recipientIds.map(id => ({
+      id: { _serialized: id },
+      number: id.split('@')[0]
+    }));
+  }
+
+  const joinedContacts = uniqueById(rawContacts).filter(
     (contact) => contact?.id?._serialized && contact.id._serialized !== botId
   );
 
-  if (!joinedContacts.length) return;
+  if (!joinedContacts.length) {
+    console.log('[welcome] No valid contacts found to welcome.');
+    return;
+  }
 
   const welcomeMentions = joinedContacts
-    .map((contact) => `@${contact.number}`)
+    .map((contact) => contact.number ? `@${contact.number}` : `@aventurero`)
     .join(' ');
 
   const firstMessage = heraldCard('Bienvenida al Reino de las Sombras', [
-    `Bienvenido, aventurero ${welcomeMentions}.`,
+    `Bienvenido, ${welcomeMentions}.`,
     'Has cruzado la puerta de la taberna oficial de Kingdoom.',
     heraldSection('Aqui podras'),
     heraldList([
