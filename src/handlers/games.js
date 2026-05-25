@@ -97,6 +97,8 @@ export async function handleOraculo(msg) {
       if (inventory && inventory.length > 0) {
         const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_name || i.item_id}`).join(', ');
         contextStr += `\nInventario Real (comprado en el mercado con oro): ${inventoryStr}\n`;
+      } else {
+        contextStr += `\nInventario Real: El jugador NO TIENE NINGÚN OBJETO. Sus bolsillos están totalmente vacíos.\n`;
       }
 
       if (sheet) {
