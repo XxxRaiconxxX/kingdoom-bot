@@ -495,11 +495,15 @@ export async function handleAdminCommand(msg, client) {
       const { players, sheets } = await getRealmCensus();
       
       const groupParticipants = chat.participants; 
-      const registeredPhones = new Set(
-        players
-          .map((player) => normalizePhone(player.phone))
-          .filter(Boolean)
-      );
+      const registeredPhones = new Set();
+      players.forEach(player => {
+        if (player.phone) {
+          player.phone.split(',').forEach(p => {
+            const norm = normalizePhone(p.trim());
+            if (norm) registeredPhones.add(norm);
+          });
+        }
+      });
 
       const unregisteredMembers = [];
       const registeredWithoutPj = [];
@@ -516,7 +520,10 @@ export async function handleAdminCommand(msg, client) {
           unregisteredMembers.push(participant);
           mentions.push(jid);
         } else {
-          const linkedPlayers = players.filter((player) => normalizePhone(player.phone) === phone);
+          const linkedPlayers = players.filter((player) => {
+            if (!player.phone) return false;
+            return player.phone.split(',').some(p => normalizePhone(p.trim()) === phone);
+          });
           const hasAnySheet = linkedPlayers.some((player) =>
             sheets.some((sheet) => {
               const sheetPlayerId = String(sheet.playerId || sheet.player_id || '').trim();
