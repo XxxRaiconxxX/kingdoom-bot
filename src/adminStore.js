@@ -33,6 +33,11 @@ export function normalizePhone(phone) {
     cleaned = '549' + rest;
   }
 
+  // 4. Map owner 15-digit ID to main phone number so the same profile is used
+  if (cleaned === '275162062668001') {
+    cleaned = '595987273405';
+  }
+
   return cleaned;
 }
 
