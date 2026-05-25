@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { supabase } from './supabase.js';
 import { normalizePhone } from './adminStore.js';
+import { getActiveProfile } from './activeProfileStore.js';
 
 // ✅ Timezone Paraguay (UTC-4, con ajuste horario de verano)
 const TZ = { timezone: 'America/Asuncion' };
@@ -8,24 +9,32 @@ const TZ = { timezone: 'America/Asuncion' };
 async function sendToAll(client, buildMessage) {
   const { data: players, error } = await supabase
     .from('players')
-    .select('phone')
+    .select('id, username, phone')
     .not('phone', 'is', null);
 
   if (error || !players?.length) return;
 
-  const uniquePhones = new Set();
+  const phoneMap = new Map();
   players.forEach(player => {
     if (player.phone) {
       player.phone.split(',').forEach(p => {
         const norm = normalizePhone(p.trim());
-        if (norm) uniquePhones.add(norm);
+        if (norm) {
+          if (!phoneMap.has(norm)) {
+            phoneMap.set(norm, []);
+          }
+          phoneMap.get(norm).push(player);
+        }
       });
     }
   });
 
-  for (const phone of uniquePhones) {
+  for (const [phone, linkedPlayers] of phoneMap.entries()) {
     try {
-      const msg = typeof buildMessage === 'function' ? buildMessage({ phone }) : buildMessage;
+      const activeId = getActiveProfile(phone);
+      let activePlayer = linkedPlayers.find(p => p.id === activeId) || linkedPlayers[0];
+
+      const msg = typeof buildMessage === 'function' ? buildMessage({ phone, username: activePlayer.username }) : buildMessage;
       await client.sendMessage(`${phone}@c.us`, msg);
       await new Promise(r => setTimeout(r, 1500)); // anti-spam
     } catch (err) {
@@ -39,32 +48,18 @@ export function startScheduler(client) {
   // Reset diario — medianoche hora Paraguay
   cron.schedule('0 0 * * *', async () => {
     console.log('[scheduler] Enviando reset diario...');
-    await sendToAll(client,
-      `⚔️ *¡Un nuevo día en el Reino!*\n\n🎮 Tus límites de juego se han reiniciado.\n🪙 ¡A ganar oro, guerrero!`
+    await sendToAll(client, ({ username }) => 
+      `🌙 *La noche cae sobre el Reino de las Sombras...*\n\nSaludos, valiente *${username}*. Tus límites de juego se han reiniciado con el amanecer.\nLevántate, empuña tu arma y forja tu propio destino hoy. ¡A ganar oro, guerrero! ⚔️`
     );
   }, TZ);
 
-  // Ranking semanal — lunes 9am hora Paraguay
+  // Ranking semanal (reemplazado por Mensaje Motivacional) — lunes 9am hora Paraguay
   cron.schedule('0 9 * * 1', async () => {
-    console.log('[scheduler] Enviando ranking semanal...');
+    console.log('[scheduler] Enviando mensaje motivacional semanal...');
 
-    const { data: top } = await supabase
-      .from('players')
-      .select('phone, username, weekly_gold')
-      .order('weekly_gold', { ascending: false })
-      .limit(3);
-
-    // ✅ Guard: puede haber menos de 3 jugadores
-    if (!top?.length) return;
-
-    const podio = ['🥇', '🥈', '🥉'];
-    const lines = top
-      .map((p, i) => `${podio[i]} *${p.username}* — ${p.weekly_gold.toLocaleString()} oro`)
-      .join('\n');
-
-    const msg = `👑 *RANKING SEMANAL FINAL*\n\n${lines}\n\n_¡El reino honra a sus campeones!_ ⚔️`;
-
-    await sendToAll(client, msg);
+    await sendToAll(client, ({ username }) => 
+      `🌅 *¡Un nuevo ciclo comienza en el reino!*\n\nEl Rey Supremo te observa, *${username}*. Las bestias son feroces, los caminos oscuros, pero tu leyenda apenas comienza a escribirse.\n\n_«Ni la magia más poderosa se compara con la voluntad de un aventurero que se niega a rendirse.»_\n\n¡Que los dioses de Kingdoom guíen tus pasos esta semana! 🛡️✨`
+    );
 
     // Reset weekly_gold después de anunciar
     // Note: Supabase JS v2 requires at least one filter on mass updates.

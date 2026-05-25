@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 import { normalizePhone } from './adminStore.js';
+import { getActiveProfile } from './activeProfileStore.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
 
@@ -70,7 +71,14 @@ export async function getPlayersByPhone(whatsappNumber) {
 
 export async function getPlayer(whatsappNumber) {
   const players = await getPlayersByPhone(whatsappNumber);
-  return players[0] ?? null;
+  if (!players.length) return null;
+  
+  const activeId = getActiveProfile(whatsappNumber);
+  if (activeId) {
+    const activePlayer = players.find(p => p.id === activeId);
+    if (activePlayer) return activePlayer;
+  }
+  return players[0];
 }
 
 export async function findPlayerByIdentifier(identifier) {
@@ -173,26 +181,8 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
     };
   }
 
-  // 1. Check if this WhatsApp is already linked to some player
-  const alreadyLinkedPlayers = await getPlayersByPhone(phone);
-  if (alreadyLinkedPlayers.length > 1) {
-    const usernames = alreadyLinkedPlayers
-      .map((player) => player.username)
-      .filter(Boolean)
-      .join(', ');
-    return {
-      success: false,
-      message: `❌ Tu WhatsApp ya está vinculado a varias cuentas del reino: *${usernames}*.\nPídele al Soberano que ordene o depure tus vínculos antes de volver a verificar.`
-    };
-  }
-
-  const alreadyLinked = alreadyLinkedPlayers[0];
-  if (alreadyLinked) {
-    return {
-      success: false,
-      message: `❌ Tu WhatsApp ya está vinculado al aventurero *${alreadyLinked.username}*.\nSi deseas cambiar de cuenta, pídele ayuda al Soberano.`
-    };
-  }
+  // We allow multiple accounts per WhatsApp now.
+  // The user can switch between them using !cambiarcuenta
 
   // 2. Search for the target player
   // First attempt: search by exact username (case-insensitive)

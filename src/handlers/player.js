@@ -11,7 +11,9 @@ import {
   getRealmSnapshot,
   searchMarketItems,
   verifyAndLinkPlayer,
+  getPlayersByPhone
 } from '../supabase.js';
+import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
@@ -139,6 +141,7 @@ export async function handlePlayerMessage(msg) {
       heraldList([
         heraldCommand('!oro [monto] [@user]', 'Consulta o envía oro a otro jugador.'),
         heraldCommand('!perfil', 'Muestra tu estado de aventurero.'),
+        heraldCommand('!cambiarcuenta [nombre]', 'Cambia entre tus personajes si tienes varios vinculados.'),
         heraldCommand('!vinculo', 'Revisa tu enlace con la web.'),
         heraldCommand('!nuevo', 'Guia corta para empezar.'),
         heraldCommand('!verificar <usuario_o_id>', 'Vincula tu numero al reino.'),
@@ -225,6 +228,28 @@ export async function handlePlayerMessage(msg) {
   if (command === 'verificar') {
     const result = await verifyAndLinkPlayer(sender, body);
     return result.message;
+  }
+
+  if (command === 'cambiarcuenta') {
+    const searchKey = String(body ?? '').trim().toLowerCase();
+    const linkedPlayers = await getPlayersByPhone(sender);
+    
+    if (linkedPlayers.length <= 1) {
+      return `⚠️ Solo tienes una cuenta vinculada a este número de WhatsApp.`;
+    }
+
+    if (!searchKey) {
+      const names = linkedPlayers.map(p => `*${p.username}*`).join(', ');
+      return `Tienes varias cuentas vinculadas:\n${names}\n\nUsa \`!cambiarcuenta <nombre>\` para elegir cuál usar.`;
+    }
+
+    const targetPlayer = linkedPlayers.find(p => p.username.toLowerCase() === searchKey || p.id.toLowerCase().startsWith(searchKey));
+    if (!targetPlayer) {
+      return `❌ No tienes ninguna cuenta vinculada que coincida con "${searchKey}".`;
+    }
+
+    setActiveProfile(sender, targetPlayer.id);
+    return `✅ ¡Cambio exitoso! Ahora estás usando la cuenta de *${targetPlayer.username}* en el bot.`;
   }
 
   const player = await getPlayer(sender);
