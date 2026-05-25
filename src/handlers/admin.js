@@ -244,6 +244,67 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
+  // 3.5 !verificarnumero
+  if (cmd === '!verificarnumero') {
+    let targetPhone = '';
+    let identifier = '';
+    
+    if (msg.hasQuotedMsg) {
+      const quoted = await msg.getQuotedMessage();
+      targetPhone = quoted.author || quoted.from;
+      identifier = parts.slice(1).join(' ').trim();
+    } else {
+      targetPhone = parts[1];
+      identifier = parts.slice(2).join(' ').trim();
+    }
+
+    if (!targetPhone || !identifier) {
+      return `❌ *Uso correcto:*\n` +
+             `*Opción A (Respondiendo):* Cita un mensaje con \`!verificarnumero <perfil/ID>\`\n` +
+             `*Opción B (Manual):* \`!verificarnumero <número> <perfil/ID>\``;
+    }
+
+    const cleanPhone = normalizePhone(targetPhone);
+    if (!cleanPhone) {
+      return `❌ Número de celular no válido.`;
+    }
+
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
+
+    let newPhone = cleanPhone;
+    if (resolved.player.phone) {
+      const existingPhones = resolved.player.phone.split(',').map(p => p.trim());
+      if (!existingPhones.includes(cleanPhone)) {
+        newPhone = `${resolved.player.phone},${cleanPhone}`;
+      } else {
+        return `✅ El número ${cleanPhone} ya estaba vinculado a *${resolved.player.username}*.`;
+      }
+    }
+
+    const { error } = await supabase
+      .from('players')
+      .update({ phone: newPhone })
+      .eq('id', resolved.player.id);
+
+    if (error) {
+      console.error('[admin verificarnumero]', error);
+      return `❌ Error al vincular en Supabase: ${error.message}`;
+    }
+
+    recordAdminAction({
+      actorPhone,
+      actorName,
+      action: 'verificarnumero',
+      target: `${resolved.player.username} (${cleanPhone})`,
+      detail: `Vinculación forzada de número por ${resolved.matchType || resolved.source}.`,
+      chatId: msg.from,
+    });
+
+    return `✅ ¡Vinculación forzada exitosa!\n\n🛡️ El aventurero *${resolved.player.username}* ahora está vinculado también al número ${cleanPhone}.`;
+  }
+
+
   // 4. !grant y !quitar
   if (cmd === '!grant' || cmd === '!quitar') {
     let identifier = '';

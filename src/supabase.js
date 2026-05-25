@@ -57,7 +57,7 @@ export async function getPlayersByPhone(whatsappNumber) {
   const { data, error } = await supabase
     .from('players')
     .select('*')
-    .eq('phone', phone)
+    .ilike('phone', `%${phone}%`)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -232,7 +232,7 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
 
   // 3. Check if the target player already has a phone linked
   if (targetPlayer.phone) {
-    if (normalizePhone(targetPlayer.phone) === phone) {
+    if (targetPlayer.phone.includes(phone)) {
       return {
         success: true,
         message: `🛡️ Tu cuenta ya está vinculada de manera segura con el aventurero *${targetPlayer.username}*.`
