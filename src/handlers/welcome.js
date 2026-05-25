@@ -67,9 +67,13 @@ export async function handleGroupWelcome(notification, client, config = buildWel
 
   // Fallback if getRecipients() fails or returns empty but we have recipientIds
   if ((!rawContacts || rawContacts.length === 0) && notification.recipientIds && notification.recipientIds.length > 0) {
-    rawContacts = notification.recipientIds.map(id => ({
-      id: { _serialized: id },
-      number: id.split('@')[0]
+    rawContacts = await Promise.all(notification.recipientIds.map(async id => {
+      try {
+        const contact = await client.getContactById(id);
+        return contact || { id: { _serialized: id }, number: id.split('@')[0] };
+      } catch (e) {
+        return { id: { _serialized: id }, number: id.split('@')[0] };
+      }
     }));
   }
 
@@ -83,7 +87,12 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   }
 
   const welcomeMentions = joinedContacts
-    .map((contact) => contact.number ? `@${contact.number}` : `@aventurero`)
+    .map((contact) => {
+      const fallbackName = contact.pushname || contact.name || contact.shortName;
+      if (contact.number) return `@${contact.number}`;
+      if (fallbackName) return fallbackName;
+      return `@aventurero`;
+    })
     .join(' ');
 
   const firstMessage = heraldCard('Bienvenida al Reino de las Sombras', [
