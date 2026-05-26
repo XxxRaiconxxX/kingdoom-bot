@@ -176,6 +176,7 @@ http.createServer(async (req, res) => {
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '/app/.wwebjs_auth' }),
+  authTimeoutMs: 60000,
   puppeteer: {
     headless: true,
     args: [
@@ -298,4 +299,6 @@ client.on('message', async (msg) => {
   }
 });
 
-client.initialize();
+client.initialize().catch(err => {
+  console.error('Failed to initialize client:', err);
+});
