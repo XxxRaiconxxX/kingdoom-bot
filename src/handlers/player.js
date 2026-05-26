@@ -136,93 +136,96 @@ export async function handlePlayerMessage(msg) {
       isSenderAdmin = true;
     }
 
-    let helpSections = [
-      heraldSection('Comandos del reino'),
-      heraldList([
-        heraldCommand('!oro [monto] [@user]', 'Consulta o envía oro a otro jugador.'),
-        heraldCommand('!perfil', 'Muestra tu estado de aventurero.'),
-        heraldCommand('!cambiarcuenta [nombre]', 'Cambia entre tus personajes si tienes varios vinculados.'),
-        heraldCommand('!vinculo', 'Revisa tu enlace con la web.'),
-        heraldCommand('!nuevo', 'Guia corta para empezar.'),
-        heraldCommand('!verificar <usuario_o_id>', 'Vincula tu numero al reino.'),
-        heraldCommand('!ranking', 'Ve el top semanal.'),
-        heraldCommand('!reino', 'Resumen publico del reino.'),
-        heraldCommand('!ricos', 'Ve las mayores fortunas.'),
-        heraldCommand('!mercado [nombre]', 'Explora o busca en el mercado.'),
-        heraldCommand('!item <nombre>', 'Ficha breve de un objeto.'),
-        heraldCommand('!mision [nombre]', 'Lista o inspecciona misiones.'),
-        heraldCommand('!evento [nombre]', 'Lista o inspecciona eventos.'),
-        heraldCommand('!dados <monto>', 'Apuesta oro en los dados.'),
-        heraldCommand('!oraculo <pregunta>', 'Consulta libre al Oraculo.'),
-        heraldCommand('!ayuda', 'Abre este compendio.'),
-      ]),
-    ];
+    let menu = `╔════════════════════════════╗
+⚔️  *KINGDOOM — REINO DE LAS SOMBRAS*  ⚔️
+╚════════════════════════════╝
+🏰 _Bienvenido al Compendio de Comandos_
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🗡️ *COMANDOS DEL REINO*
+_Para todos los aventureros_
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+💰 \`!oro [monto] [@user]\` — Consulta o envía oro
+🧙 \`!perfil\` — Tu estado de aventurero
+🔄 \`!cambiarcuenta [nombre]\` — Cambia de personaje
+🔗 \`!vinculo\` — Revisa tu enlace con la web
+📜 \`!nuevo\` — Guía corta para empezar
+✅ \`!verificar <usuario_o_id>\` — Vinculate al reino
+🏆 \`!ranking\` — Top semanal de poder
+🌍 \`!reino\` — Resumen público del reino
+💎 \`!ricos\` — Las mayores fortunas
+🛒 \`!mercado [nombre]\` — Explora el mercado
+🗡️ \`!item <nombre>\` — Ficha de un objeto
+🎯 \`!mision [nombre]\` — Lista o inspecciona misiones
+🎪 \`!evento [nombre]\` — Lista o inspecciona eventos
+🎲 \`!dados <monto>\` — Apuesta oro en los dados
+🔮 \`!oraculo <pregunta>\` — Consulta al Oráculo
+❓ \`!ayuda\` — Abre este compendio`;
 
     if (isSenderOwner) {
-      helpSections.push(
-        heraldSection('Comandos del soberano'),
-        heraldList([
-          heraldCommand('!add admin <objetivo>', 'Otorga admin a un jugador.'),
-          heraldCommand('!remove admin <objetivo>', 'Revoca admin de un jugador.'),
-          heraldCommand('!registrar <nombre> [oro]', 'Registra un nuevo jugador.'),
-          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
-          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
-          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
-          heraldCommand('!verificarnumero <objetivo>', 'Vinculacion forzada (respondiendo).'),
-          heraldCommand('!stats', 'Resumen general del reino.'),
-          heraldCommand('!censo', 'Lista total de guerreros (CSV).'),
-          heraldCommand('!pendientes', 'Jugadores sin registrar en el grupo.'),
-          heraldCommand('!purga', 'Expulsa inactivos y no registrados.'),
-          heraldCommand('!grupos', 'Lista de grupos activos vinculados.'),
-          heraldCommand('!groupid', 'Muestra el ID de WhatsApp del grupo actual.'),
-          heraldCommand('!data <query>', 'Ejecuta consulta SQL en la BD.'),
-          heraldCommand('!staff', 'Vista operativa del staff.'),
-          heraldCommand('!bitacora', 'Ultimas acciones del consejo.'),
-          heraldCommand('!admin', 'Abre el menu soberano.'),
-        ]),
-      );
+      menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+              `👑 *COMANDOS DEL SOBERANO*\n` +
+              `_Exclusivo para el Owner / Creador_\n` +
+              `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+              `🛡️ \\!add admin <objetivo>\\ — Otorga admin\n` +
+              `🚫 \\!remove admin <objetivo>\\ — Revoca admin\n` +
+              `📋 \\!registrar <nombre> [oro]\\ — Nuevo jugador\n` +
+              `➕ \\!grant <objetivo> <monto>\\ — Entrega oro\n` +
+              `➖ \\!quitar <objetivo> <monto>\\ — Descuenta oro\n` +
+              `⛓️ \\!ban <objetivo>\\ — Destierra un jugador\n` +
+              `📲 \\!verificarnumero <objetivo>\\ — Vinculación forzada\n` +
+              `📊 \\!stats\\ — Resumen general del reino\n` +
+              `📜 \\!censo\\ — Lista total de guerreros (CSV)\n` +
+              `⏳ \\!pendientes\\ — Jugadores sin registrar\n` +
+              `🧹 \\!purga\\ — Expulsa inactivos\n` +
+              `🗺️ \\!grupos\\ — Grupos activos vinculados\n` +
+              `🆔 \\!groupid\\ — ID de WhatsApp del grupo\n` +
+              `🔍 \\!data <query>\\ — Consulta SQL en la BD\n` +
+              `⚙️ \\!staff\\ — Vista operativa del staff\n` +
+              `📖 \\!bitacora\\ — Últimas acciones del consejo\n` +
+              `👑 \\!admin\\ — Abre el menú soberano`.replace(/\\/g, '`');
     } else if (isSenderAdmin) {
-      helpSections.push(
-        heraldSection('Comandos de administrador'),
-        heraldList([
-          heraldCommand('!registrar <nombre> [oro]', 'Registra un nuevo jugador.'),
-          heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
-          heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
-          heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
-          heraldCommand('!verificarnumero <objetivo>', 'Vinculacion forzada (respondiendo mensaje).'),
-          heraldCommand('!stats', 'Resumen general del reino.'),
-          heraldCommand('!censo', 'Lista total de guerreros (CSV).'),
-          heraldCommand('!pendientes', 'Jugadores sin registrar en el grupo.'),
-          heraldCommand('!purga', 'Expulsa inactivos y no registrados.'),
-          heraldCommand('!grupos', 'Lista de grupos activos vinculados.'),
-          heraldCommand('!staff', 'Vista operativa del staff.'),
-          heraldCommand('!bitacora', 'Ultimas acciones del consejo.'),
-          heraldCommand('!admin', 'Abre el menu admin.'),
-        ]),
-      );
+      menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+              `🛡️ *COMANDOS DE ADMINISTRADOR*\n` +
+              `_Gestión y Moderación_\n` +
+              `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+              `📋 \\!registrar <nombre> [oro]\\ — Nuevo jugador\n` +
+              `➕ \\!grant <objetivo> <monto>\\ — Entrega oro\n` +
+              `➖ \\!quitar <objetivo> <monto>\\ — Descuenta oro\n` +
+              `⛓️ \\!ban <objetivo>\\ — Destierra un jugador\n` +
+              `📲 \\!verificarnumero <objetivo>\\ — Vinculación forzada\n` +
+              `📊 \\!stats\\ — Resumen general del reino\n` +
+              `📜 \\!censo\\ — Lista total de guerreros (CSV)\n` +
+              `⏳ \\!pendientes\\ — Jugadores sin registrar\n` +
+              `🧹 \\!purga\\ — Expulsa inactivos\n` +
+              `🗺️ \\!grupos\\ — Grupos activos vinculados\n` +
+              `⚙️ \\!staff\\ — Vista operativa del staff\n` +
+              `📖 \\!bitacora\\ — Últimas acciones del consejo\n` +
+              `👑 \\!admin\\ — Abre el menú admin`.replace(/\\/g, '`');
     }
+
+    menu += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `_🏰 Que el oro fluya y el reino prospere_ ⚔️\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━`;
 
     let identityName = 'Jugador';
     if (isSenderOwner) identityName = '👑 Señor Owner';
     else if (isSenderAdmin) identityName = '🛡️ Administrador';
 
-    helpSections.push(
-      heraldSection('Identidad actual'),
-      heraldList([
-        heraldStat('Rol', identityName),
-        heraldStat('Telefono', normalizePhone(sender)),
-      ]),
-    );
+    menu += `\n\n*Identidad:* ` + identityName + ` | *Tel:* ` + normalizePhone(sender);
 
     if (!player) {
       if (isSenderOwner || isSenderAdmin) {
-        helpSections.push(`⚠️ Aun no tienes personaje forjado. Usa \`!registrar <tu_nombre> [oro]\`.`);
+        menu += `\n⚠️ Aun no tienes personaje forjado. Usa \`!registrar <tu_nombre> [oro]\`.`;
       } else {
-        helpSections.push(`⚠️ Aun no estas registrado. Pidele al staff que use \`!registrar\` para darte entrada.`);
+        menu += `\n⚠️ Aun no estas registrado. Pidele al staff que use \`!registrar\` para darte entrada.`;
       }
     }
 
-    return heraldCard('Compendio del Heraldo', helpSections, { icon: '📜' });
+    return menu;
+
   }
 
   if (command === 'verificar') {
