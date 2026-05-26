@@ -435,8 +435,8 @@ export async function handleAdminCommand(msg, client) {
     ], { icon: '🧾' });
   }
 
-  // 7. !ban
-  if (cmd === '!ban') {
+  // 7. !ban o !eliminar
+  if (cmd === '!ban' || cmd === '!eliminar' || cmd === '!kick') {
     let identifier = '';
     if (msg.hasQuotedMsg) {
       const quoted = await msg.getQuotedMessage();
@@ -446,32 +446,68 @@ export async function handleAdminCommand(msg, client) {
     }
 
     if (!identifier) {
-      return `❌ *Uso correcto de !ban:*\n` +
-             `*Respondiendo:* \`!ban\`\n` +
-             `*Directo:* \`!ban <ID/nombre/celular>\``;
+      return `❌ *Uso correcto de !ban/!eliminar:*\n` +
+             `*Respondiendo:* \`${cmd}\`\n` +
+             `*Directo:* \`${cmd} <ID/nombre/celular>\``;
     }
 
     const resolved = await resolvePlayerTarget(msg, identifier);
-    if (!resolved.ok) return describeResolutionError(identifier, resolved);
-    const { player: target } = resolved;
+    
+    // Permitir expulsión de número o ID de 15 dígitos aunque no estén en la base
+    const cleanId = normalizePhone(identifier) || identifier.replace(/\D/g, '');
+    const isNumber = /^\d{10,20}$/.test(cleanId);
+    
+    let targetName = 'Desconocido';
+    let targetPhones = [];
+    let dbBanned = false;
 
-    const { error } = await supabase
-      .from('players')
-      .update({ banned: true })
-      .eq('id', target.id);
+    if (resolved.ok) {
+      targetName = resolved.player.username;
+      targetPhones = (resolved.player.phone || resolved.phone || '').split(',').map(p => normalizePhone(p.trim())).filter(Boolean);
+      
+      const { error } = await supabase
+        .from('players')
+        .update({ banned: true })
+        .eq('id', resolved.player.id);
+        
+      dbBanned = !error;
+    } else if (isNumber) {
+      targetName = `Número ${cleanId}`;
+      targetPhones = [cleanId];
+      dbBanned = true; // Skip DB update since they don't exist
+    } else {
+      return describeResolutionError(identifier, resolved);
+    }
 
-    if (!error) {
+    let kicked = false;
+    try {
+      const chat = await msg.getChat();
+      if (chat.isGroup && targetPhones.length > 0) {
+        const jidsToKick = targetPhones.map(p => `${p}@c.us`);
+        await chat.removeParticipants(jidsToKick);
+        kicked = true;
+      }
+    } catch (e) {
+      console.error("Error al expulsar del grupo en !ban:", e);
+    }
+
+    if (dbBanned || kicked) {
       recordAdminAction({
         actorPhone,
         actorName,
         action: 'ban_player',
-        target: `${target.username} (${target.phone || resolved.phone || 'sin telefono'})`,
-        detail: 'Jugador marcado como baneado en Supabase.',
+        target: `${targetName} (${targetPhones.join(', ')})`,
+        detail: `Baneado en DB: ${resolved.ok}. Expulsado del grupo: ${kicked}.`,
         chatId: msg.from,
       });
+      
+      let msgText = `🔨 *${targetName}* ha sido desterrado del reino`;
+      if (kicked) msgText += ` y expulsado del grupo.`;
+      else msgText += `.`;
+      return msgText;
     }
 
-    return error ? `❌ Error al banear a *${target.username}*.` : `🔨 *${target.username}* (${target.phone}) ha sido desterrado del reino.`;
+    return `❌ Error al banear o expulsar a *${targetName}*.`;
   }
 
   // 8. !censo o !fichas
