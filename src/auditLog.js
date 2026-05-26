@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const AUDIT_FILE = '/app/.wwebjs_auth/admin_audit_log.json';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const AUDIT_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'admin_audit_log.json');
 const MAX_AUDIT_ENTRIES = 500;
 
 function ensureAuditDir() {
