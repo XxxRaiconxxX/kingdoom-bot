@@ -691,3 +691,17 @@ export async function touchPlayerActivity(playerId) {
   }
   return true;
 }
+
+export async function getActivityReport() {
+  const { data, error } = await supabase
+    .from('players')
+    .select('username, last_active_at')
+    .order('last_active_at', { ascending: true, nullsFirst: true });
+
+  if (error) {
+    console.error('[getActivityReport]', error.message);
+    throw new Error('Error al obtener el reporte de actividad.');
+  }
+
+  return data ?? [];
+}
