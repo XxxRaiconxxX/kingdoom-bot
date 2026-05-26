@@ -535,15 +535,27 @@ export async function handleAdminCommand(msg, client) {
       response += `Aventurero      | Actividad\n`;
       response += `----------------|----------\n`;
 
-      const now = new Date();
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
       report.forEach(p => {
         let status = 'Desconocido';
         if (p.last_active_at) {
-          const date = new Date(p.last_active_at);
-          const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
-          if (diffDays === 0) status = 'Hoy';
-          else if (diffDays === 1) status = 'Ayer';
-          else status = `Hace ${diffDays}d`;
+          const activeDateObj = new Date(p.last_active_at);
+          const activeDate = new Date(activeDateObj);
+          activeDate.setHours(0, 0, 0, 0);
+
+          if (activeDate.getTime() === today.getTime()) {
+            status = 'Hoy';
+          } else if (activeDate.getTime() === yesterday.getTime()) {
+            status = 'Ayer';
+          } else {
+            const diffDays = Math.floor((today.getTime() - activeDate.getTime()) / (1000 * 60 * 60 * 24));
+            status = `Hace ${diffDays}d`;
+          }
         }
         
         const uname = (p.username || 'SinNombre').slice(0, 15).padEnd(15, ' ');

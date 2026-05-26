@@ -66,7 +66,14 @@ export async function getPlayersByPhone(whatsappNumber) {
     return [];
   }
 
-  return data ?? [];
+  if (!data) return [];
+
+  // Exact match filtering to avoid substring issues (e.g., 59598112345 matching 595981123456)
+  return data.filter(player => {
+    if (!player.phone) return false;
+    const phones = player.phone.split(',').map(p => p.trim());
+    return phones.includes(phone);
+  });
 }
 
 export async function getPlayer(whatsappNumber) {
