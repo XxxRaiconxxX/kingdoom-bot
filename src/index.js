@@ -223,9 +223,12 @@ client.on('message', async (msg) => {
   if (msg.fromMe || msg.isStatus) return;
 
   const text = msg.body.trim();
+  const { command, body, hasPrefix } = parseCommand(text);
+  if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
+
   const sender = msg.author || msg.from;
   
-  // Track activity for any message from a registered user (with 5 min debounce)
+  // Track activity for any explicit command from a registered user (with 5 min debounce)
   const nowMs = Date.now();
   if (!activityCache.has(sender) || (nowMs - activityCache.get(sender)) > 5 * 60 * 1000) {
     activityCache.set(sender, nowMs);
@@ -237,9 +240,6 @@ client.on('message', async (msg) => {
       });
     }).catch(console.error);
   }
-
-  const { command, body, hasPrefix } = parseCommand(text);
-  if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
 
   const checkIsAdmin = async (user) => {
     if (isAdminUser(user)) return true;
