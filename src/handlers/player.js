@@ -176,6 +176,7 @@ _Para todos los aventureros_
               `➖ \`!quitar <objetivo> <monto>\` — Descuenta oro\n` +
               `⛓️ \`!ban <objetivo>\` — Destierra un jugador\n` +
               `📲 \`!verificarnumero <objetivo>\` — Vinculación forzada\n` +
+              `✂️ \`!desvincular <objetivo>\` — Elimina los números de un perfil\n` +
               `📊 \`!stats\` — Resumen general del reino\n` +
               `📜 \`!censo\` — Lista total de guerreros (CSV)\n` +
               `⏳ \`!pendientes\` — Jugadores sin registrar\n` +
@@ -198,6 +199,7 @@ _Para todos los aventureros_
               `➖ \`!quitar <objetivo> <monto>\` — Descuenta oro\n` +
               `⛓️ \`!ban <objetivo>\` — Destierra un jugador\n` +
               `📲 \`!verificarnumero <objetivo>\` — Vinculación forzada\n` +
+              `✂️ \`!desvincular <objetivo>\` — Elimina los números de un perfil\n` +
               `📊 \`!stats\` — Resumen general del reino\n` +
               `📜 \`!censo\` — Lista total de guerreros (CSV)\n` +
               `⏳ \`!pendientes\` — Jugadores sin registrar\n` +

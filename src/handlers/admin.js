@@ -306,6 +306,44 @@ export async function handleAdminCommand(msg, client) {
     return `✅ ¡Vinculación forzada exitosa!\n\n🛡️ El aventurero *${resolved.player.username}* ahora está vinculado también al número ${cleanPhone}.`;
   }
 
+  // 3.6 !desvincular
+  if (cmd === '!desvincular') {
+    const identifier = parts.slice(1).join(' ').trim();
+    if (!identifier) {
+      return `❌ *Uso correcto:* \`!desvincular <perfil_o_ID>\``;
+    }
+
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
+
+    if (!resolved.player.phone) {
+      return `⚠️ El aventurero *${resolved.player.username}* no tiene ningún número telefónico vinculado actualmente.`;
+    }
+
+    const oldPhone = resolved.player.phone;
+
+    const { error } = await supabase
+      .from('players')
+      .update({ phone: null })
+      .eq('id', resolved.player.id);
+
+    if (error) {
+      console.error('[admin desvincular]', error);
+      return `❌ Error al desvincular en Supabase: ${error.message}`;
+    }
+
+    recordAdminAction({
+      actorPhone,
+      actorName,
+      action: 'desvincular',
+      target: `${resolved.player.username}`,
+      detail: `Se desvinculó de los números: ${oldPhone}`,
+      chatId: msg.from,
+    });
+
+    return `✂️ Se ha desvinculado exitosamente a *${resolved.player.username}* de sus números telefónicos (${oldPhone}).`;
+  }
+
 
   // 4. !grant y !quitar
   if (cmd === '!grant' || cmd === '!quitar') {
