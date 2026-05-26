@@ -169,41 +169,45 @@ _Para todos los aventureros_
               `👑 *COMANDOS DEL SOBERANO*\n` +
               `_Exclusivo para el Owner / Creador_\n` +
               `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-              `🛡️ \\!add admin <objetivo>\\ — Otorga admin\n` +
-              `🚫 \\!remove admin <objetivo>\\ — Revoca admin\n` +
-              `📋 \\!registrar <nombre> [oro]\\ — Nuevo jugador\n` +
-              `➕ \\!grant <objetivo> <monto>\\ — Entrega oro\n` +
-              `➖ \\!quitar <objetivo> <monto>\\ — Descuenta oro\n` +
-              `⛓️ \\!ban <objetivo>\\ — Destierra un jugador\n` +
-              `📲 \\!verificarnumero <objetivo>\\ — Vinculación forzada\n` +
-              `📊 \\!stats\\ — Resumen general del reino\n` +
-              `📜 \\!censo\\ — Lista total de guerreros (CSV)\n` +
-              `⏳ \\!pendientes\\ — Jugadores sin registrar\n` +
-              `🧹 \\!purga\\ — Expulsa inactivos\n` +
-              `🗺️ \\!grupos\\ — Grupos activos vinculados\n` +
-              `🆔 \\!groupid\\ — ID de WhatsApp del grupo\n` +
-              `🔍 \\!data <query>\\ — Consulta SQL en la BD\n` +
-              `⚙️ \\!staff\\ — Vista operativa del staff\n` +
-              `📖 \\!bitacora\\ — Últimas acciones del consejo\n` +
-              `👑 \\!admin\\ — Abre el menú soberano`.replace(/\\/g, '`');
+              `🛡️ \`!add admin <objetivo>\` — Otorga admin\n` +
+              `🚫 \`!remove admin <objetivo>\` — Revoca admin\n` +
+              `📋 \`!registrar <nombre> [oro]\` — Nuevo jugador\n` +
+              `➕ \`!grant <objetivo> <monto>\` — Entrega oro\n` +
+              `➖ \`!quitar <objetivo> <monto>\` — Descuenta oro\n` +
+              `⛓️ \`!ban <objetivo>\` — Destierra un jugador\n` +
+              `📲 \`!verificarnumero <objetivo>\` — Vinculación forzada\n` +
+              `📊 \`!stats\` — Resumen general del reino\n` +
+              `📜 \`!censo\` — Lista total de guerreros (CSV)\n` +
+              `⏳ \`!pendientes\` — Jugadores sin registrar\n` +
+              `🧹 \`!purga\` — Expulsa inactivos\n` +
+              `📈 \`!actividad\` — Reporte de inactividad\n` +
+              `🗺️ \`!grupos\` — Grupos activos vinculados\n` +
+              `🆔 \`!groupid\` — ID de WhatsApp del grupo\n` +
+              `📍 \`!grupoactual\` — Estado detallado del grupo\n` +
+              `🔍 \`!data <query>\` — Consulta SQL en la BD\n` +
+              `⚙️ \`!staff\` — Vista operativa del staff\n` +
+              `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
+              `👑 \`!admin\` — Abre el menú soberano`;
     } else if (isSenderAdmin) {
       menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
               `🛡️ *COMANDOS DE ADMINISTRADOR*\n` +
               `_Gestión y Moderación_\n` +
               `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-              `📋 \\!registrar <nombre> [oro]\\ — Nuevo jugador\n` +
-              `➕ \\!grant <objetivo> <monto>\\ — Entrega oro\n` +
-              `➖ \\!quitar <objetivo> <monto>\\ — Descuenta oro\n` +
-              `⛓️ \\!ban <objetivo>\\ — Destierra un jugador\n` +
-              `📲 \\!verificarnumero <objetivo>\\ — Vinculación forzada\n` +
-              `📊 \\!stats\\ — Resumen general del reino\n` +
-              `📜 \\!censo\\ — Lista total de guerreros (CSV)\n` +
-              `⏳ \\!pendientes\\ — Jugadores sin registrar\n` +
-              `🧹 \\!purga\\ — Expulsa inactivos\n` +
-              `🗺️ \\!grupos\\ — Grupos activos vinculados\n` +
-              `⚙️ \\!staff\\ — Vista operativa del staff\n` +
-              `📖 \\!bitacora\\ — Últimas acciones del consejo\n` +
-              `👑 \\!admin\\ — Abre el menú admin`.replace(/\\/g, '`');
+              `📋 \`!registrar <nombre> [oro]\` — Nuevo jugador\n` +
+              `➕ \`!grant <objetivo> <monto>\` — Entrega oro\n` +
+              `➖ \`!quitar <objetivo> <monto>\` — Descuenta oro\n` +
+              `⛓️ \`!ban <objetivo>\` — Destierra un jugador\n` +
+              `📲 \`!verificarnumero <objetivo>\` — Vinculación forzada\n` +
+              `📊 \`!stats\` — Resumen general del reino\n` +
+              `📜 \`!censo\` — Lista total de guerreros (CSV)\n` +
+              `⏳ \`!pendientes\` — Jugadores sin registrar\n` +
+              `🧹 \`!purga\` — Expulsa inactivos\n` +
+              `📈 \`!actividad\` — Reporte de inactividad\n` +
+              `🗺️ \`!grupos\` — Grupos activos vinculados\n` +
+              `🆔 \`!groupid\` — ID de WhatsApp del grupo\n` +
+              `⚙️ \`!staff\` — Vista operativa del staff\n` +
+              `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
+              `👑 \`!admin\` — Abre el menú admin`;
     }
 
     menu += `\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +

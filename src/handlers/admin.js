@@ -4,6 +4,7 @@ import {
   registerPlayer,
   getRealmCensus,
   getStaffSnapshot,
+  getActivityReport,
 } from '../supabase.js';
 import { isOwner, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
 import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
@@ -84,6 +85,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!censo', 'Censo general del reino.'),
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
           heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!actividad', 'Reporte de inactividad.'),
           heraldCommand('!staff', 'Resumen operativo.'),
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
@@ -484,6 +486,40 @@ export async function handleAdminCommand(msg, client) {
     }
   }
 
+  // 8.5 !actividad
+  if (cmd === '!actividad' || cmd === '!inactivos') {
+    try {
+      const report = await getActivityReport();
+      if (!report.length) return `✅ No hay registros de actividad.`;
+
+      let response = heraldCard('Reporte de Actividad', [], { icon: '🕰️' });
+      response += `\n\n\`\`\`\n`;
+      response += `Aventurero      | Actividad\n`;
+      response += `----------------|----------\n`;
+
+      const now = new Date();
+      report.forEach(p => {
+        let status = 'Desconocido';
+        if (p.last_active_at) {
+          const date = new Date(p.last_active_at);
+          const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays === 0) status = 'Hoy';
+          else if (diffDays === 1) status = 'Ayer';
+          else status = `Hace ${diffDays}d`;
+        }
+        
+        const uname = (p.username || 'SinNombre').slice(0, 15).padEnd(15, ' ');
+        const statStr = status.padEnd(9, ' ');
+        response += `${uname} | ${statStr}\n`;
+      });
+      response += `\`\`\``;
+
+      return response;
+    } catch (e) {
+      return `❌ Hubo un error al obtener la actividad.`;
+    }
+  }
+
   // 9. !pendientes o !pendiente
   if (cmd === '!pendientes' || cmd === '!pendiente') {
     const chat = await msg.getChat();
@@ -604,47 +640,75 @@ export async function handleAdminCommand(msg, client) {
       
       const toRemove = [];
       const toRemovePhones = [];
+      const toWarn = [];
+      const mentions = [];
 
       for (const participant of groupParticipants) {
         const phone = normalizePhone(participant.id.user);
         const jid = participant.id._serialized;
+        
+        if (jid === client.info.wid._serialized) continue;
         
         if (trackerData[phone]) {
           const timeElapsed = now - trackerData[phone];
           if (timeElapsed >= FIVE_DAYS_MS) {
             toRemove.push(jid);
             toRemovePhones.push(phone);
+          } else {
+            const daysElapsed = Math.floor(timeElapsed / (24 * 60 * 60 * 1000));
+            let daysLeft = 5 - daysElapsed;
+            if (daysLeft < 1) daysLeft = 1;
+            toWarn.push({ jid, user: participant.id.user, daysLeft });
+            mentions.push(jid);
           }
         }
       }
 
-      if (toRemove.length === 0) {
-        return `✅ *No hay aventureros para purgar hoy.* Nadie ha superado el límite de 5 días sin ficha.`;
+      let response = '';
+
+      if (toRemove.length > 0) {
+        // Proceder a expulsarlos
+        await chat.removeParticipants(toRemove);
+        
+        // Limpiar del tracker
+        toRemovePhones.forEach(phone => delete trackerData[phone]);
+        saveTrackerData(trackerData);
+
+        response = heraldCard('Purga completada', [
+          `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 5 dias sin ficha:`,
+        ], { icon: '☠️' });
+        response += `\n`;
+        toRemovePhones.forEach(phone => {
+          response += `- +${phone}\n`;
+        });
+
+        recordAdminAction({
+          actorPhone,
+          actorName,
+          action: 'purga',
+          target: `${toRemove.length} expulsados`,
+          detail: `Telefonos: ${toRemovePhones.join(', ')}`,
+          chatId: msg.from,
+        });
       }
 
-      // Proceder a expulsarlos
-      await chat.removeParticipants(toRemove);
-      
-      // Limpiar del tracker
-      toRemovePhones.forEach(phone => delete trackerData[phone]);
-      saveTrackerData(trackerData);
+      if (toWarn.length > 0) {
+        if (response) response += `\n\n`;
+        response += `${heraldSection('Aventureros en riesgo')}\n`;
+        toWarn.forEach(warn => {
+          const dayText = warn.daysLeft === 1 ? '1 dia' : `${warn.daysLeft} dias`;
+          response += `- @${warn.user} ${dayText} para eliminacion\n`;
+        });
+      }
 
-      let response = heraldCard('Purga completada', [
-        `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 5 dias sin ficha:`,
-      ], { icon: '☠️' });
-      response += `\n`;
-      toRemovePhones.forEach(phone => {
-        response += `- +${phone}\n`;
-      });
+      if (toRemove.length === 0 && toWarn.length === 0) {
+        return `✅ *No hay aventureros para purgar hoy.* Nadie está en la lista de pendientes.`;
+      }
 
-      recordAdminAction({
-        actorPhone,
-        actorName,
-        action: 'purga',
-        target: `${toRemove.length} expulsados`,
-        detail: `Telefonos: ${toRemovePhones.join(', ')}`,
-        chatId: msg.from,
-      });
+      if (mentions.length > 0) {
+        await client.sendMessage(msg.from, response, { mentions });
+        return;
+      }
       
       return response;
     } catch (err) {

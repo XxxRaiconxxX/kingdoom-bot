@@ -677,3 +677,31 @@ export async function getPlayerInventory(playerId) {
   }
   return data;
 }
+
+export async function touchPlayerActivity(playerId) {
+  if (!playerId) return false;
+  const { error } = await supabase
+    .from('players')
+    .update({ last_active_at: new Date().toISOString() })
+    .eq('id', playerId);
+    
+  if (error) {
+    console.error('[touchPlayerActivity] Error:', error.message);
+    return false;
+  }
+  return true;
+}
+
+export async function getActivityReport() {
+  const { data, error } = await supabase
+    .from('players')
+    .select('username, last_active_at')
+    .order('last_active_at', { ascending: true, nullsFirst: true });
+
+  if (error) {
+    console.error('[getActivityReport]', error.message);
+    throw new Error('Error al obtener el reporte de actividad.');
+  }
+
+  return data ?? [];
+}
