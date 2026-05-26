@@ -7,7 +7,7 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleDados, handleOraculo } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer, getPlayer, getPlayersByPhone } from './supabase.js';
+import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
 
@@ -224,6 +224,12 @@ client.on('message', async (msg) => {
   if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
 
   const sender = msg.author || msg.from;
+  
+  getPlayer(sender).then(player => {
+    if (player && player.id) {
+      touchPlayerActivity(player.id).catch(console.error);
+    }
+  }).catch(console.error);
   
   const checkIsAdmin = async (user) => {
     if (isAdminUser(user)) return true;

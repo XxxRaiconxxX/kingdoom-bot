@@ -677,3 +677,17 @@ export async function getPlayerInventory(playerId) {
   }
   return data;
 }
+
+export async function touchPlayerActivity(playerId) {
+  if (!playerId) return false;
+  const { error } = await supabase
+    .from('players')
+    .update({ last_active_at: new Date().toISOString() })
+    .eq('id', playerId);
+    
+  if (error) {
+    console.error('[touchPlayerActivity] Error:', error.message);
+    return false;
+  }
+  return true;
+}
