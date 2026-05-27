@@ -84,7 +84,7 @@ export async function askKingdoomAI(history, systemPrompt) {
         const response = await model.generateContent({
           contents,
           generationConfig: {
-            maxOutputTokens: 1024,
+            maxOutputTokens: 2048,
             temperature: 0.85,
           },
         });

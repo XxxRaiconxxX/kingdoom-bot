@@ -52,7 +52,7 @@ TU RESPUESTA DEBE SEGUIR ESTRICTAMENTE ESTA ESTRUCTURA DE BLOQUES:
 4. Cierre Tenso: Termina tu rol dejando la escena en un punto crítico (un cliffhanger o una nueva amenaza) para que los jugadores respondan.
 5. Tags/Estadísticas: Añade etiquetas cortas al final si hubo cambios de HP, estados o eventos.
 
-Manten la coherencia. NO USES MÁS DE 250-300 PALABRAS. NO ROMPAS EL ROL. NO RESPONDAS COMO ASISTENTE SINO COMO NARRADOR OMNISCIENTE.`;
+Manten la coherencia. DEBES COMPLETAR LOS 5 PUNTOS OBLIGATORIAMENTE. Asegúrate de generar una respuesta detallada y completa sin cortarte a la mitad. NO ROMPAS EL ROL. NO RESPONDAS COMO ASISTENTE SINO COMO NARRADOR OMNISCIENTE.`;
 }
 
 /**
