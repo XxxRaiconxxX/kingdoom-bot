@@ -717,14 +717,16 @@ export async function getMissionByShortId(prefix) {
   if (!prefix) return null;
   const { data, error } = await supabase
     .from('realm_missions')
-    .select('*')
-    .ilike('id', `${prefix}%`)
-    .limit(1)
-    .maybeSingle();
+    .select('*');
 
   if (error) {
     console.error('[getMissionByShortId]', error.message);
     return null;
   }
-  return data;
+
+  if (!data) return null;
+
+  const normalizedPrefix = prefix.toLowerCase();
+  const match = data.find(m => m.id.toLowerCase().startsWith(normalizedPrefix));
+  return match || null;
 }
