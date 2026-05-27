@@ -10,7 +10,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 
 const { Client, LocalAuth } = pkg;
@@ -231,33 +231,36 @@ client.on('message', async (msg) => {
   const trackerResult = processTrackerMessage(text, sender);
   if (trackerResult && trackerResult.shouldTriggerGM) {
     try {
-      const gmPrompt = buildGMPrompt(
+      const gmPrompt = buildGMPrompt();
+      const gmUserPayload = buildGMUserPayload(
         trackerResult.missionTitle,
         trackerResult.missionInstructions,
         trackerResult.context
       );
-      
-      await msg.reply(`🎲 *El Game Master está escribiendo la narrativa...*`);
-      
-      const history = [{ role: 'user', content: "Procesa los roles de los jugadores y avanza la historia según tus instrucciones de Game Master." }];
-      const aiResponse = await askKingdoomAI(history, gmPrompt);
-      
+
+      await msg.reply('*El Game Master esta escribiendo la narrativa...*');
+
+      const history = [{ role: 'user', content: gmUserPayload }];
+      const aiResponse = await askKingdoomAI(history, gmPrompt, {
+        maxEstimatedInputTokens: 6000,
+        maxOutputTokens: 2048,
+      });
+
       await client.sendMessage(msg.from, aiResponse);
     } catch (err) {
       console.error('[GM Tracker Error]', err);
-      await msg.reply('❌ Error al generar la narrativa del GM. Intenten de nuevo más tarde o reporten a un administrador.');
+      await msg.reply('Error al generar la narrativa del GM. Intenten de nuevo mas tarde o reporten a un administrador.');
     }
   }
 
   const { command, body, hasPrefix } = parseCommand(text);
-  if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
-  
-  // Track activity for any explicit command from a registered user (with 5 min debounce)
+  if (!hasPrefix) return;
+
   const nowMs = Date.now();
   if (!activityCache.has(sender) || (nowMs - activityCache.get(sender)) > 5 * 60 * 1000) {
     activityCache.set(sender, nowMs);
-    getPlayersByPhone(sender).then(players => {
-      players.forEach(player => {
+    getPlayersByPhone(sender).then((players) => {
+      players.forEach((player) => {
         if (player && player.id) {
           touchPlayerActivity(player.id).catch(console.error);
         }
@@ -292,7 +295,7 @@ client.on('message', async (msg) => {
         client
       );
     } else if (command === 'registrar') {
-      reply = `❌ El comando *!registrar* está restringido únicamente a los Administradores del Reino.`;
+      reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
     } else if (command === 'dados') {
       reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === 'oraculo') {
@@ -328,10 +331,10 @@ client.on('message', async (msg) => {
     if (reply) await msg.reply(reply);
   } catch (err) {
     console.error('Error:', err);
-    await msg.reply('⚔️ El reino esta en llamas... intenta de nuevo en un momento.');
+    await msg.reply('El reino esta en llamas... intenta de nuevo en un momento.');
   }
 });
 
-client.initialize().catch(err => {
+client.initialize().catch((err) => {
   console.error('Failed to initialize client:', err);
 });
