@@ -10,6 +10,8 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
+import { processTrackerMessage, buildGMPrompt } from './gmTracker.js';
+import { askKingdoomAI } from './ai.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -223,10 +225,32 @@ client.on('message', async (msg) => {
   if (msg.fromMe || msg.isStatus) return;
 
   const text = msg.body.trim();
+  const sender = msg.author || msg.from;
+
+  // 0. GM Mission Tracker (Roleplay messages usually don't have ! prefix)
+  const trackerResult = processTrackerMessage(text, sender);
+  if (trackerResult && trackerResult.shouldTriggerGM) {
+    try {
+      const gmPrompt = buildGMPrompt(
+        trackerResult.missionTitle,
+        trackerResult.missionInstructions,
+        trackerResult.context
+      );
+      
+      await msg.reply(`🎲 *El Game Master está escribiendo la narrativa...*`);
+      
+      const history = [{ role: 'user', content: "Procesa los roles de los jugadores y avanza la historia según tus instrucciones de Game Master." }];
+      const aiResponse = await askKingdoomAI(history, gmPrompt);
+      
+      await client.sendMessage(msg.from, aiResponse);
+    } catch (err) {
+      console.error('[GM Tracker Error]', err);
+      await msg.reply('❌ Error al generar la narrativa del GM. Intenten de nuevo más tarde o reporten a un administrador.');
+    }
+  }
+
   const { command, body, hasPrefix } = parseCommand(text);
   if (!hasPrefix) return; // Only respond when explicit commands starting with '!' are used
-
-  const sender = msg.author || msg.from;
   
   // Track activity for any explicit command from a registered user (with 5 min debounce)
   const nowMs = Date.now();
@@ -262,7 +286,7 @@ client.on('message', async (msg) => {
   };
 
   try {
-    if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data'].includes(command)) {
+    if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'].includes(command)) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client

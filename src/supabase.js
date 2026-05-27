@@ -712,3 +712,19 @@ export async function getActivityReport() {
 
   return data ?? [];
 }
+
+export async function getMissionByShortId(prefix) {
+  if (!prefix) return null;
+  const { data, error } = await supabase
+    .from('realm_missions')
+    .select('*')
+    .ilike('id', `${prefix}%`)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[getMissionByShortId]', error.message);
+    return null;
+  }
+  return data;
+}
