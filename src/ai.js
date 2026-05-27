@@ -56,9 +56,29 @@ export async function askKingdoomAI(history, systemPrompt) {
 
       try {
         const genAI = new GoogleGenerativeAI(key);
+        const { HarmCategory, HarmBlockThreshold } = await import('@google/generative-ai');
+
         const model = genAI.getGenerativeModel({
           model: modelName,
           systemInstruction: systemPrompt,
+          safetySettings: [
+            {
+              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+          ]
         });
 
         const response = await model.generateContent({
@@ -68,7 +88,12 @@ export async function askKingdoomAI(history, systemPrompt) {
             temperature: 0.85,
           },
         });
-        return response.response.text();
+        
+        const text = response.response.text();
+        if (!text && response.response.promptFeedback?.blockReason) {
+            console.error('[ai] Prompt bloqueado por seguridad:', response.response.promptFeedback.blockReason);
+        }
+        return text;
       } catch (err) {
         lastError = err;
         console.error(`[ai] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
