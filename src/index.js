@@ -16,6 +16,14 @@ import { askKingdoomAI } from './ai.js';
 const { Client, LocalAuth } = pkg;
 
 const PORT = process.env.PORT || 3000;
+const WHATSAPP_INIT_MAX_RETRIES = Math.max(
+  1,
+  Number.parseInt(process.env.WHATSAPP_INIT_MAX_RETRIES ?? '5', 10) || 5
+);
+const WHATSAPP_INIT_RETRY_DELAY_MS = Math.max(
+  5000,
+  Number.parseInt(process.env.WHATSAPP_INIT_RETRY_DELAY_MS ?? '15000', 10) || 15000
+);
 
 let latestQrDataUrl = '';
 const welcomeConfig = buildWelcomeConfig();
@@ -52,6 +60,23 @@ function ensurePrefixedBody(command, originalBody, parsedBody) {
   }
 
   return `!${command}${parsedBody ? ` ${parsedBody}` : ''}`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatInitializeError(error) {
+  if (!error) {
+    return 'Unknown initialization error';
+  }
+
+  const message = String(error?.message ?? error);
+  if (message.includes('ERR_TIMED_OUT')) {
+    return `${message} | Posible causa: timeout de red saliente hacia web.whatsapp.com en el contenedor.`;
+  }
+
+  return message;
 }
 
 http.createServer(async (req, res) => {
@@ -178,7 +203,7 @@ http.createServer(async (req, res) => {
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '/app/.wwebjs_auth' }),
-  authTimeoutMs: 60000,
+  authTimeoutMs: 120000,
   puppeteer: {
     headless: true,
     args: [
@@ -209,6 +234,18 @@ client.on('ready', () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
   startScheduler(client);
+});
+
+client.on('auth_failure', (message) => {
+  console.error('[whatsapp auth_failure]', message);
+});
+
+client.on('disconnected', (reason) => {
+  console.warn('[whatsapp disconnected]', reason);
+});
+
+client.on('change_state', (state) => {
+  console.log('[whatsapp state]', state);
 });
 
 client.on('group_join', async (notification) => {
@@ -336,6 +373,35 @@ client.on('message', async (msg) => {
   }
 });
 
-client.initialize().catch((err) => {
-  console.error('Failed to initialize client:', err);
-});
+async function initializeClientWithRetry() {
+  for (let attempt = 1; attempt <= WHATSAPP_INIT_MAX_RETRIES; attempt += 1) {
+    try {
+      console.log(
+        `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
+      );
+      await client.initialize();
+      return;
+    } catch (err) {
+      const formattedError = formatInitializeError(err);
+      const isLastAttempt = attempt >= WHATSAPP_INIT_MAX_RETRIES;
+      console.error(
+        `[whatsapp init] Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`
+      );
+
+      if (isLastAttempt) {
+        console.error(
+          '[whatsapp init] Se agotaron los reintentos de inicializacion. Revisar conectividad del contenedor hacia https://web.whatsapp.com/.'
+        );
+        return;
+      }
+
+      const nextDelayMs = WHATSAPP_INIT_RETRY_DELAY_MS * attempt;
+      console.log(
+        `[whatsapp init] Reintentando en ${Math.round(nextDelayMs / 1000)}s...`
+      );
+      await sleep(nextDelayMs);
+    }
+  }
+}
+
+void initializeClientWithRetry();
