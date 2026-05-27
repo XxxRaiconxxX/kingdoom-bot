@@ -8,6 +8,8 @@ const MAX_MISSION_INSTRUCTIONS_CHARS = 6000;
 const MAX_CONTEXT_BLOCK_CHARS = 4000;
 const MISSION_SUMMARY_TRIGGER_CHARS = 3200;
 const MISSION_SUMMARY_TARGET_CHARS = 2200;
+const GM_CONFIG_START = "[GM_CONFIG]";
+const GM_CONFIG_END = "[/GM_CONFIG]";
 
 function sanitizeGMText(value) {
   return String(value ?? '')
@@ -19,6 +21,45 @@ function sanitizeGMText(value) {
 function truncateGMText(value, maxChars) {
   if (!value || value.length <= maxChars) return value;
   return `${value.slice(0, maxChars).trimEnd()}\n...[truncado por limite de contexto]`;
+}
+
+function parseMissionConfig(rawInstructions) {
+  const raw = String(rawInstructions ?? '');
+  const startIndex = raw.indexOf(GM_CONFIG_START);
+  const endIndex = raw.indexOf(GM_CONFIG_END);
+
+  if (startIndex < 0 || endIndex < 0 || endIndex <= startIndex) {
+    return {
+      instructions: raw.trim(),
+      gmConfig: null,
+    };
+  }
+
+  const instructions = raw.slice(0, startIndex).trimEnd();
+  const encodedConfig = raw
+    .slice(startIndex + GM_CONFIG_START.length, endIndex)
+    .trim();
+
+  if (!encodedConfig) {
+    return {
+      instructions: instructions.trim(),
+      gmConfig: null,
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(encodedConfig);
+    const npcs = Array.isArray(parsed?.npcs) ? parsed.npcs : [];
+    return {
+      instructions: instructions.trim(),
+      gmConfig: npcs.length > 0 ? { npcs } : null,
+    };
+  } catch {
+    return {
+      instructions: raw.trim(),
+      gmConfig: null,
+    };
+  }
 }
 
 function summarizeMissionInstructions(value) {
@@ -83,6 +124,78 @@ function formatTrackedContext(context) {
   return lines.join('\n\n') || 'Sin acciones recientes de los jugadores.';
 }
 
+function formatNpcStats(stats) {
+  if (!stats || typeof stats !== 'object') {
+    return 'sin stats declaradas';
+  }
+
+  const parts = [
+    stats.level ? `Lv ${stats.level}` : null,
+    stats.hp ? `HP ${stats.hp}` : null,
+    stats.attack ? `ATK ${stats.attack}` : null,
+    stats.defense ? `DEF ${stats.defense}` : null,
+    stats.speed ? `SPD ${stats.speed}` : null,
+  ].filter(Boolean);
+
+  return parts.join(' | ') || 'sin stats declaradas';
+}
+
+function formatAllowedMagic(gmConfig) {
+  const npcs = Array.isArray(gmConfig?.npcs) ? gmConfig.npcs : [];
+  if (npcs.length === 0) {
+    return '';
+  }
+
+  const npcLines = npcs
+    .map((npc) => {
+      const npcName = sanitizeGMText(npc?.name) || 'NPC sin nombre';
+      const role = sanitizeGMText(npc?.role) || 'elite';
+      const behaviorNotes = sanitizeGMText(npc?.behaviorNotes);
+      const allowedMagic = Array.isArray(npc?.allowedMagic) ? npc.allowedMagic : [];
+      const formattedMagic = allowedMagic.length > 0
+        ? allowedMagic
+            .map((magic) => {
+              const title = sanitizeGMText(magic?.title) || 'Magia sin titulo';
+              const categoryTitle = sanitizeGMText(magic?.categoryTitle);
+              const description = truncateGMText(sanitizeGMText(magic?.description), 220);
+              const abilities = Array.isArray(magic?.abilityNames)
+                ? magic.abilityNames.map((ability) => sanitizeGMText(ability)).filter(Boolean)
+                : [];
+              const abilityLine = abilities.length > 0
+                ? `Habilidades conocidas: ${abilities.slice(0, 5).join(', ')}`
+                : 'Sin habilidades listadas';
+
+              return `- ${title}${categoryTitle ? ` (${categoryTitle})` : ''}: ${description || 'Sin descripcion'} | ${abilityLine}`;
+            })
+            .join('\n')
+        : '- Sin magias permitidas declaradas';
+
+      return [
+        `NPC: ${npcName}`,
+        `Rol tactico: ${role}`,
+        `Stats: ${formatNpcStats(npc?.stats)}`,
+        behaviorNotes ? `Comportamiento: ${behaviorNotes}` : null,
+        'Magias canónicas permitidas:',
+        formattedMagic,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    })
+    .join('\n\n');
+
+  return [
+    'NPCS_CANONICOS_Y_MAGIAS_PERMITIDAS:',
+    '```md',
+    npcLines,
+    '```',
+    '',
+    'REGLA CANONICA DEL ENCOUNTER:',
+    '```md',
+    'Los NPCs solo pueden usar las magias listadas arriba. No inventes nombres de hechizo, escuelas ni poderes nuevos fuera de esa lista. Si falta una magia, resuelve la accion con recursos fisicos, tacticos o con una de las magias permitidas.',
+    '```',
+  ].join('\n');
+}
+
 /**
  * Initiates tracking for a mission.
  * @param {string} shortId - Up to 6 digits of the mission UUID
@@ -94,12 +207,14 @@ export async function startMissionTracker(shortId, maxParticipants) {
     return { success: false, message: `Error: Mision no encontrada con ID que empiece con: ${shortId}` };
   }
 
+  const parsedMission = parseMissionConfig(mission.instructions);
   const normalizedShortId = shortId.toUpperCase();
   activeMissions.set(normalizedShortId, {
     id: mission.id,
     shortId: normalizedShortId,
     title: mission.title,
-    instructions: mission.instructions,
+    instructions: parsedMission.instructions,
+    gmConfig: parsedMission.gmConfig,
     maxParticipants: parseInt(maxParticipants, 10) || 1,
     participantsCounted: new Set(),
     context: [],
@@ -135,13 +250,14 @@ Mantén la coherencia. NO ROMPAS EL ROL. NO RESPONDAS COMO ASISTENTE SINO COMO U
 /**
  * Builds the user payload with mission data and player actions.
  */
-export function buildGMUserPayload(missionTitle, missionInstructions, context) {
+export function buildGMUserPayload(missionTitle, missionInstructions, context, gmConfig = null) {
   const safeTitle = truncateGMText(sanitizeGMText(missionTitle), MAX_MISSION_TITLE_CHARS) || 'Mision sin titulo';
   const safeInstructions = truncateGMText(
     summarizeMissionInstructions(missionInstructions),
     MAX_MISSION_INSTRUCTIONS_CHARS
   ) || 'Sin instrucciones adicionales.';
   const joinedContext = formatTrackedContext(context);
+  const canonicalNpcBlock = formatAllowedMagic(gmConfig);
 
   return [
     'DATOS_DE_MISION:',
@@ -151,13 +267,15 @@ export function buildGMUserPayload(missionTitle, missionInstructions, context) {
     safeInstructions,
     '```',
     '',
+    canonicalNpcBlock,
+    canonicalNpcBlock ? '' : null,
     'ACCIONES_DE_JUGADORES:',
     '```md',
     joinedContext,
     '```',
     '',
     'Genera la siguiente intervencion del Game Master respetando estos datos y avanzando la escena.',
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 /**
@@ -185,6 +303,7 @@ export function processTrackerMessage(text, participantId) {
           missionId: state.id,
           missionTitle: state.title,
           missionInstructions: state.instructions,
+          missionGmConfig: state.gmConfig,
           context: contextToProcess,
           shortId,
         };

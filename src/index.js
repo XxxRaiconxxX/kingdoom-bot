@@ -235,7 +235,8 @@ client.on('message', async (msg) => {
       const gmUserPayload = buildGMUserPayload(
         trackerResult.missionTitle,
         trackerResult.missionInstructions,
-        trackerResult.context
+        trackerResult.context,
+        trackerResult.missionGmConfig
       );
 
       await msg.reply('*El Game Master esta escribiendo la narrativa...*');
