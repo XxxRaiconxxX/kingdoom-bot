@@ -91,12 +91,7 @@ function buildGeminiContents(history) {
 
 async function countInputTokens(model, systemPrompt, contents) {
   try {
-    const result = await model.countTokens({
-      generateContentRequest: {
-        systemInstruction: systemPrompt,
-        contents,
-      },
-    });
+    const result = await model.countTokens({ contents });
     return result?.totalTokens ?? null;
   } catch (err) {
     console.warn('[ai] No se pudo contar tokens oficialmente:', err?.message ?? err);
