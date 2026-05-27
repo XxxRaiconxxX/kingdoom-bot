@@ -188,6 +188,7 @@ _Para todos los aventureros_
               `🔍 \`!data <query>\` — Consulta SQL en la BD\n` +
               `⚙️ \`!staff\` — Vista operativa del staff\n` +
               `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
+              `🎯 \`!misionstart <ID> <Jugadores>\` — Inicia tracking de misión\n` +
               `👑 \`!admin\` — Abre el menú soberano`;
     } else if (isSenderAdmin) {
       menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
@@ -209,6 +210,7 @@ _Para todos los aventureros_
               `🆔 \`!groupid\` — ID de WhatsApp del grupo\n` +
               `⚙️ \`!staff\` — Vista operativa del staff\n` +
               `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
+              `🎯 \`!misionstart <ID> <Jugadores>\` — Inicia tracking de misión\n` +
               `👑 \`!admin\` — Abre el menú admin`;
     }
 

@@ -12,6 +12,7 @@ import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
+import { startMissionTracker } from '../gmTracker.js';
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
@@ -68,6 +69,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
+          heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
         ]),
       ], { icon: '👑' });
     } else {
@@ -90,9 +92,23 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
+          heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
         ]),
       ], { icon: '🛡️' });
     }
+  }
+
+  // Mision Tracker
+  if (cmd === '!misionstart') {
+    const shortId = parts[1];
+    const maxParticipants = parts[2] || 1;
+
+    if (!shortId) {
+      return '❌ Uso: *!misionstart <ID (6 caracteres)> <cantidad de participantes>*';
+    }
+
+    const result = await startMissionTracker(shortId, maxParticipants);
+    return result.message;
   }
 
   // 1. !add admin <nombre/celular> (Owner only!)
