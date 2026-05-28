@@ -85,6 +85,11 @@ function formatInitializeError(error) {
   return message;
 }
 
+function isPuppeteerDeliveryAmbiguousError(error) {
+  const message = String(error?.message ?? error);
+  return message.includes('Protocol error') && message.includes('Promise was collected');
+}
+
 http.createServer(async (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 
@@ -284,6 +289,7 @@ client.on('message', async (msg) => {
   }
 
   if (trackerResult && trackerResult.shouldTriggerGM) {
+    let gmVisibleSendAttempted = false;
     try {
       const gmPrompt = buildGMPrompt();
       const gmUserPayload = buildGMUserPayload(
@@ -334,6 +340,7 @@ client.on('message', async (msg) => {
 
       const resolution = registerGMResponse(trackerResult.shortId, aiResponse);
       const visibleResponse = responseAssessment.visibleResponse || buildVisibleGMResponse(aiResponse);
+      gmVisibleSendAttempted = true;
       await client.sendMessage(msg.from, visibleResponse);
 
       if (resolution.autoClosed && resolution.missionState) {
@@ -344,6 +351,10 @@ client.on('message', async (msg) => {
       }
     } catch (err) {
       console.error('[GM Tracker Error]', err);
+      if (gmVisibleSendAttempted && isPuppeteerDeliveryAmbiguousError(err)) {
+        console.warn('[GM Tracker] WhatsApp reporto un error ambiguo despues de intentar enviar la narrativa; se omite el aviso de error para evitar duplicar/confundir al rol.');
+        return;
+      }
       await msg.reply('Error al generar la narrativa del GM. Intenten de nuevo mas tarde o reporten a un administrador.');
     }
   }
