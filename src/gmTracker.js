@@ -2,7 +2,8 @@ import { getMissionByShortId } from './supabase.js';
 
 const activeMissions = new Map();
 const MAX_TRACKED_CONTEXT_ENTRIES = 8;
-const MAX_TRACKED_MESSAGE_CHARS = 700;
+const MAX_TRACKED_MESSAGE_CHARS = 1800;
+const MAX_IMMEDIATE_SCENE_CHARS = 1800;
 const MAX_MISSION_TITLE_CHARS = 160;
 const MAX_MISSION_INSTRUCTIONS_CHARS = 6000;
 const MAX_CONTEXT_BLOCK_CHARS = 4000;
@@ -37,6 +38,20 @@ function sanitizeGMText(value) {
 function truncateGMText(value, maxChars) {
   if (!value || value.length <= maxChars) return value;
   return `${value.slice(0, maxChars).trimEnd()}\n...[truncado por limite de contexto]`;
+}
+
+function truncateGMTextPreserveEnds(value, maxChars) {
+  const safeText = String(value ?? '');
+  if (!safeText || safeText.length <= maxChars) return safeText;
+
+  const marker = '\n...[centro del rol truncado; se conserva inicio y accion final]...\n';
+  const availableChars = Math.max(maxChars - marker.length, 200);
+  const headChars = Math.floor(availableChars * 0.35);
+  const tailChars = availableChars - headChars;
+  const head = safeText.slice(0, headChars).trimEnd();
+  const tail = safeText.slice(-tailChars).trimStart();
+
+  return `${head}${marker}${tail}`;
 }
 
 function normalizeStringList(value) {
@@ -323,7 +338,7 @@ function formatTrackedContext(context) {
 
   for (const entry of selectedEntries) {
     const safeParticipant = sanitizeGMText(entry.participantId) || 'participante';
-    const safeText = truncateGMText(sanitizeGMText(entry.text), MAX_TRACKED_MESSAGE_CHARS);
+    const safeText = truncateGMTextPreserveEnds(sanitizeGMText(entry.text), MAX_TRACKED_MESSAGE_CHARS);
     if (!safeText) continue;
 
     const line = `Participante ${safeParticipant}: ${safeText}`;
@@ -344,7 +359,7 @@ function formatImmediateSceneState(context) {
   const sceneLines = selectedEntries
     .map((entry) => {
       const safeParticipant = sanitizeGMText(entry?.participantId) || 'participante';
-      const safeText = truncateGMText(sanitizeGMText(entry?.text), 550);
+      const safeText = truncateGMTextPreserveEnds(sanitizeGMText(entry?.text), MAX_IMMEDIATE_SCENE_CHARS);
       if (!safeText) return null;
       return `Ultima escena de ${safeParticipant}: ${safeText}`;
     })
@@ -358,6 +373,7 @@ function formatImmediateSceneState(context) {
     'ESTADO_ACTUAL_DE_ESCENA_CANONICO:',
     '```md',
     ...sceneLines,
+    'El tramo final del rol del usuario suele contener la accion decisiva. Si hay decoracion o ambientacion al inicio, usala como tono; la accion final manda la continuidad inmediata.',
     'Debes continuar exactamente desde esta escena inmediata. No la sustituyas por otra version del punto de encuentro ni retrocedas a una llegada anterior, salvo que expliques narrativamente una transicion real.',
     '```',
   ].join('\n');
@@ -661,7 +677,7 @@ export function processTrackerMessage(text, participantId) {
 
       state.context.push({
         participantId: sanitizeGMText(participantId),
-        text: truncateGMText(sanitizeGMText(text), MAX_TRACKED_MESSAGE_CHARS),
+        text: truncateGMTextPreserveEnds(sanitizeGMText(text), MAX_TRACKED_MESSAGE_CHARS),
       });
       state.playerMessageCount += 1;
       if (state.context.length > MAX_TRACKED_CONTEXT_ENTRIES * 2) {
