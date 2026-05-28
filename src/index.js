@@ -10,7 +10,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 
 const { Client, LocalAuth } = pkg;
@@ -272,6 +272,17 @@ client.on('message', async (msg) => {
 
   // 0. GM Mission Tracker (Roleplay messages usually don't have ! prefix)
   const trackerResult = processTrackerMessage(text, sender);
+  if (trackerResult?.missionClosed) {
+    const finalResult = trackerResult.finalState?.resultado ?? 'resuelta';
+    const finalReason = trackerResult.finalState?.motivo
+      ? ` Motivo: ${trackerResult.finalState.motivo}`
+      : '';
+    await msg.reply(
+      `La mision *${trackerResult.shortId}* ya fue marcada como *${finalResult}*.${finalReason}`
+    );
+    return;
+  }
+
   if (trackerResult && trackerResult.shouldTriggerGM) {
     try {
       const gmPrompt = buildGMPrompt();
@@ -291,7 +302,15 @@ client.on('message', async (msg) => {
         maxOutputTokens: 2048,
       });
 
+      const resolution = registerGMResponse(trackerResult.shortId, aiResponse);
       await client.sendMessage(msg.from, aiResponse);
+
+      if (resolution.autoClosed && resolution.missionState) {
+        await client.sendMessage(
+          msg.from,
+          `*Resultado registrado:* la mision *${trackerResult.shortId}* queda marcada como *${resolution.missionState.resultado}*.`
+        );
+      }
     } catch (err) {
       console.error('[GM Tracker Error]', err);
       await msg.reply('Error al generar la narrativa del GM. Intenten de nuevo mas tarde o reporten a un administrador.');
