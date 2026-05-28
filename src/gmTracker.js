@@ -339,6 +339,30 @@ function formatTrackedContext(context) {
   return lines.join('\n\n') || 'Sin acciones recientes de los jugadores.';
 }
 
+function formatImmediateSceneState(context) {
+  const selectedEntries = Array.isArray(context) ? context.slice(-2) : [];
+  const sceneLines = selectedEntries
+    .map((entry) => {
+      const safeParticipant = sanitizeGMText(entry?.participantId) || 'participante';
+      const safeText = truncateGMText(sanitizeGMText(entry?.text), 550);
+      if (!safeText) return null;
+      return `Ultima escena de ${safeParticipant}: ${safeText}`;
+    })
+    .filter(Boolean);
+
+  if (sceneLines.length === 0) {
+    return '';
+  }
+
+  return [
+    'ESTADO_ACTUAL_DE_ESCENA_CANONICO:',
+    '```md',
+    ...sceneLines,
+    'Debes continuar exactamente desde esta escena inmediata. No la sustituyas por otra version del punto de encuentro ni retrocedas a una llegada anterior, salvo que expliques narrativamente una transicion real.',
+    '```',
+  ].join('\n');
+}
+
 function formatNpcStats(stats) {
   if (!stats || typeof stats !== 'object') {
     return 'sin stats declaradas';
@@ -535,6 +559,8 @@ TU IDENTIDAD ES TRIPLE E INSEPARABLE:
 - Adversario: los NPCs con voluntad propia persiguen objetivos, adaptan estrategia y no regalan victorias.
 
 TU RESPUESTA DEBE SEGUIR ESTA NARRATIVA ORGANICA Y TACTICA (NO uses titulos genericos de asistente ni listas numeradas como "1.", "2.", etc.):
+- La ultima accion y escena concreta del jugador tienen prioridad operativa inmediata. Primero continua y resuelve esa escena; luego guiala hacia lo que la mision necesite.
+- Si el jugador ya puso en marcha una interaccion, hallazgo, encuentro o confrontacion, NO reubiques la escena ni la reemplaces por otra version del entorno. Solo puedes cambiar de marco si narras claramente la transicion.
 - Prioriza responder la accion del jugador antes que expandirte en ambientacion. La ambientacion debe ser breve, util y al servicio de la escena.
 - La apertura ambiental no debe comerse la respuesta. Usa como maximo 1 o 2 parrafos breves de ambientacion antes de entrar en hallazgos, consecuencias o decisiones.
 - Reacciona a cada jugador dirigiendote a ellos por su nombre.
@@ -588,6 +614,7 @@ export function buildGMUserPayload(missionTitle, missionInstructions, context, g
     MAX_MISSION_INSTRUCTIONS_CHARS
   ) || 'Sin instrucciones adicionales.';
   const joinedContext = formatTrackedContext(context);
+  const immediateSceneBlock = formatImmediateSceneState(context);
   const missionRulesBlock = formatMissionRules(gmConfig);
   const canonicalNpcBlock = formatAllowedMagic(gmConfig);
   const runtimeStateBlock = formatRuntimeState(runtimeState);
@@ -600,6 +627,8 @@ export function buildGMUserPayload(missionTitle, missionInstructions, context, g
     safeInstructions,
     '```',
     '',
+    immediateSceneBlock,
+    immediateSceneBlock ? '' : null,
     missionRulesBlock,
     missionRulesBlock ? '' : null,
     canonicalNpcBlock,
