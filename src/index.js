@@ -66,6 +66,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function getRandomDelayMs(minMs, maxMs) {
+  const safeMin = Math.max(0, Math.floor(minMs));
+  const safeMax = Math.max(safeMin, Math.floor(maxMs));
+  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+}
+
 function formatInitializeError(error) {
   if (!error) {
     return 'Unknown initialization error';
@@ -277,6 +283,7 @@ client.on('message', async (msg) => {
       );
 
       await msg.reply('*El Game Master esta escribiendo la narrativa...*');
+      await sleep(getRandomDelayMs(800, 1500));
 
       const history = [{ role: 'user', content: gmUserPayload }];
       const aiResponse = await askKingdoomAI(history, gmPrompt, {
