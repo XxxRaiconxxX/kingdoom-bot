@@ -12,6 +12,11 @@ const GM_CONFIG_START = '[GM_CONFIG]';
 const GM_CONFIG_END = '[/GM_CONFIG]';
 const MISSION_STATE_START = '[ESTADO_MISION]';
 const MISSION_STATE_END = '[/ESTADO_MISION]';
+const TRUNCATED_ENDING_WORDS = new Set([
+  'a', 'al', 'con', 'contra', 'de', 'del', 'desde', 'el', 'en', 'hacia',
+  'la', 'las', 'lo', 'los', 'mientras', 'o', 'para', 'pero', 'por',
+  'que', 'quien', 'se', 'sin', 'su', 'sus', 'un', 'una', 'y',
+]);
 const AUTO_CLOSE_POLICY = {
   combate: { minPlayerMessages: 3, minGmRounds: 2 },
   jefe: { minPlayerMessages: 3, minGmRounds: 2 },
@@ -101,6 +106,66 @@ function removeMissionStateBlock(responseText) {
   const raw = String(responseText ?? '');
   const pattern = /\n*\[ESTADO_MISION\][\s\S]*?(?:\[\/ESTADO_MISION\]|$)/i;
   return raw.replace(pattern, '').trim();
+}
+
+function looksLikeTruncatedVisibleResponse(visibleResponse) {
+  const safeVisible = String(visibleResponse ?? '').trim();
+  if (!safeVisible) {
+    return true;
+  }
+
+  const codeFenceMatches = safeVisible.match(/```/g);
+  if (codeFenceMatches && codeFenceMatches.length % 2 !== 0) {
+    return true;
+  }
+
+  if (/[\\/:;,\-]\s*$/.test(safeVisible)) {
+    return true;
+  }
+
+  const tailMatch = safeVisible.match(/([A-Za-zÁÉÍÓÚáéíóúÑñ]+)\s*$/);
+  if (tailMatch) {
+    const tailWord = tailMatch[1].toLowerCase();
+    if (TRUNCATED_ENDING_WORDS.has(tailWord)) {
+      return true;
+    }
+  }
+
+  return !/[.!?*`"”']\s*$/.test(safeVisible);
+}
+
+function buildMissionStateBlock(missionState) {
+  const safeState = missionState ?? {
+    resultado: 'en_curso',
+    motivo: 'La escena sigue abierta.',
+    siguientePresion: 'Los jugadores deben reaccionar al ultimo movimiento o amenaza activa.',
+  };
+
+  return [
+    '[ESTADO_MISION]',
+    `resultado: ${sanitizeGMText(safeState.resultado) || 'en_curso'}`,
+    `motivo: ${sanitizeGMText(safeState.motivo) || 'La escena sigue abierta.'}`,
+    `siguiente_presion: ${sanitizeGMText(safeState.siguientePresion) || 'Los jugadores deben reaccionar al ultimo movimiento o amenaza activa.'}`,
+    '[/ESTADO_MISION]',
+  ].join('\n');
+}
+
+function finalizeVisibleResponse(visibleResponse) {
+  const trimmed = String(visibleResponse ?? '').trim();
+  if (!trimmed) {
+    return '*La tension no se rompe; el instante queda suspendido en un punto critico que exige una reaccion inmediata.*';
+  }
+
+  if (!looksLikeTruncatedVisibleResponse(trimmed)) {
+    return trimmed;
+  }
+
+  const sanitizedEnding = trimmed.replace(/[\\/:;,\-\s]+$/, '').trim();
+  return [
+    sanitizedEnding || trimmed,
+    '',
+    '*La tension no se rompe; el instante queda suspendido en un punto critico que exige una reaccion inmediata.*',
+  ].join('\n');
 }
 
 function matchesConfiguredCondition(motive, conditions) {
@@ -632,4 +697,34 @@ export function registerGMResponse(shortId, responseText) {
 
 export function buildVisibleGMResponse(responseText) {
   return removeMissionStateBlock(responseText);
+}
+
+export function assessGMResponse(responseText) {
+  const missionState = parseMissionStateBlock(responseText);
+  const visibleResponse = removeMissionStateBlock(responseText);
+  const visibleLooksTruncated = looksLikeTruncatedVisibleResponse(visibleResponse);
+
+  return {
+    missionState,
+    hasMissionState: missionState !== null,
+    visibleResponse,
+    visibleLooksTruncated,
+    needsRepair: missionState === null || visibleLooksTruncated,
+  };
+}
+
+export function buildFallbackCompletedGMResponse(responseText) {
+  const assessed = assessGMResponse(responseText);
+  const safeVisible = finalizeVisibleResponse(assessed.visibleResponse);
+  const safeMissionState = assessed.missionState ?? {
+    resultado: 'en_curso',
+    motivo: 'La escena sigue abierta y la salida del GM fue cerrada con una salvaguarda de continuidad.',
+    siguientePresion: 'Los jugadores deben reaccionar al ultimo movimiento o amenaza activa sin reiniciar la escena.',
+  };
+
+  return [
+    safeVisible,
+    '',
+    buildMissionStateBlock(safeMissionState),
+  ].join('\n');
 }

@@ -10,7 +10,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 
 const { Client, LocalAuth } = pkg;
@@ -298,13 +298,42 @@ client.on('message', async (msg) => {
       await sleep(getRandomDelayMs(800, 1500));
 
       const history = [{ role: 'user', content: gmUserPayload }];
-      const aiResponse = await askKingdoomAI(history, gmPrompt, {
+      let aiResponse = await askKingdoomAI(history, gmPrompt, {
         maxEstimatedInputTokens: 6000,
         maxOutputTokens: 2048,
       });
 
+      let responseAssessment = assessGMResponse(aiResponse);
+      if (responseAssessment.needsRepair) {
+        console.warn('[GM Tracker] La respuesta del GM parece truncada o sin ESTADO_MISION. Intentando una reparacion automatica.');
+        try {
+          const repairHistory = [
+            { role: 'user', content: gmUserPayload },
+            { role: 'assistant', content: aiResponse },
+            {
+              role: 'user',
+              content: 'La respuesta anterior del Game Master quedo truncada o incompleta. Reescribe la intervencion completa desde el inicio de esa misma respuesta, manteniendo continuidad exacta, sin reiniciar la mision, sin contradecir lo ya narrado y terminando obligatoriamente con [ESTADO_MISION].',
+            },
+          ];
+
+          aiResponse = await askKingdoomAI(repairHistory, gmPrompt, {
+            maxEstimatedInputTokens: 6000,
+            maxOutputTokens: 2048,
+          });
+          responseAssessment = assessGMResponse(aiResponse);
+        } catch (repairErr) {
+          console.warn('[GM Tracker] La reparacion automatica del GM tambien fallo:', repairErr?.message ?? repairErr);
+        }
+      }
+
+      if (responseAssessment.needsRepair) {
+        console.warn('[GM Tracker] Se aplicara un cierre de seguridad para preservar continuidad en la mision.');
+        aiResponse = buildFallbackCompletedGMResponse(aiResponse);
+        responseAssessment = assessGMResponse(aiResponse);
+      }
+
       const resolution = registerGMResponse(trackerResult.shortId, aiResponse);
-      const visibleResponse = buildVisibleGMResponse(aiResponse);
+      const visibleResponse = responseAssessment.visibleResponse || buildVisibleGMResponse(aiResponse);
       await client.sendMessage(msg.from, visibleResponse);
 
       if (resolution.autoClosed && resolution.missionState) {
