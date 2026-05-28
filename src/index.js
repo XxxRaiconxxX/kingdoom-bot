@@ -290,7 +290,8 @@ client.on('message', async (msg) => {
         trackerResult.missionTitle,
         trackerResult.missionInstructions,
         trackerResult.context,
-        trackerResult.missionGmConfig
+        trackerResult.missionGmConfig,
+        trackerResult.gmRuntimeState
       );
 
       await msg.reply('*El Game Master esta escribiendo la narrativa...*');
