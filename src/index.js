@@ -10,7 +10,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 
 const { Client, LocalAuth } = pkg;
@@ -304,7 +304,8 @@ client.on('message', async (msg) => {
       });
 
       const resolution = registerGMResponse(trackerResult.shortId, aiResponse);
-      await client.sendMessage(msg.from, aiResponse);
+      const visibleResponse = buildVisibleGMResponse(aiResponse);
+      await client.sendMessage(msg.from, visibleResponse);
 
       if (resolution.autoClosed && resolution.missionState) {
         await client.sendMessage(

@@ -97,6 +97,12 @@ function parseMissionStateBlock(responseText) {
   return parsed;
 }
 
+function removeMissionStateBlock(responseText) {
+  const raw = String(responseText ?? '');
+  const pattern = /\n*\[ESTADO_MISION\][\s\S]*?(?:\[\/ESTADO_MISION\]|$)/i;
+  return raw.replace(pattern, '').trim();
+}
+
 function matchesConfiguredCondition(motive, conditions) {
   const normalizedMotive = sanitizeGMText(motive).toLowerCase();
   if (!normalizedMotive) {
@@ -490,7 +496,7 @@ REGLAS DE RESOLUCION:
 
 REGLAS DE FORMATO Y DECORACION:
 - La ambientacion o apertura sensorial DEBE abrir con formato de cita Markdown usando > al inicio de linea.
-- La narracion principal DEBE ir preferentemente en cursiva usando *texto*.
+- La narracion principal DEBE ir mayoritariamente en cursiva usando *texto*. Si escribes bloques de narracion sin cursiva, que sean la excepcion y no la norma.
 - Las acciones o consecuencias clave DEBEN destacarse en negrita usando **texto**.
 - Cuando haya mas de un jugador, usa texto manuscrito visual con inline code \`texto\` para remarcar acciones puntuales o resoluciones individuales breves.
 - Los dialogos cortos de NPCs pueden ir en cursiva y con guion narrativo.
@@ -622,4 +628,8 @@ export function registerGMResponse(shortId, responseText) {
 
   state.finalState = missionState;
   return { stateChanged: true, missionState, autoClosed: false };
+}
+
+export function buildVisibleGMResponse(responseText) {
+  return removeMissionStateBlock(responseText);
 }
