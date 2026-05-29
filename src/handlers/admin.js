@@ -121,7 +121,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
           heraldCommand('!censo', 'Censo general del reino.'),
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
-          heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!purga', 'Expulsa pendientes de mas de 3 dias.'),
           heraldCommand('!grupos', 'Lista grupos y sus IDs.'),
           heraldCommand('!grupoactual', 'Estado del grupo donde escribes.'),
           heraldCommand('!staff', 'Resumen operativo.'),
@@ -145,7 +145,7 @@ export async function handleAdminCommand(msg, client) {
         heraldList([
           heraldCommand('!censo', 'Censo general del reino.'),
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
-          heraldCommand('!purga', 'Expulsa pendientes de mas de 5 dias.'),
+          heraldCommand('!purga', 'Expulsa pendientes de mas de 3 dias.'),
           heraldCommand('!actividad', 'Reporte de inactividad.'),
           heraldCommand('!staff', 'Resumen operativo.'),
           heraldCommand('!bitacora', 'Ultimas acciones.'),
