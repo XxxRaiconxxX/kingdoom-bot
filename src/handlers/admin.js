@@ -7,12 +7,71 @@ import {
   getActivityReport,
 } from '../supabase.js';
 import { isOwner, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
-import { trackUnregisteredUsers, getTrackerData, saveTrackerData } from '../tracker.js';
+import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker } from '../gmTracker.js';
+
+async function getGroupPendingMembers(chat, client) {
+  const { players, sheets } = await getRealmCensus();
+  const groupParticipants = chat.participants;
+  const registeredPhones = new Set();
+
+  players.forEach((player) => {
+    if (player.phone) {
+      player.phone.split(',').forEach((p) => {
+        const norm = normalizePhone(p.trim());
+        if (norm) registeredPhones.add(norm);
+      });
+    }
+  });
+
+  const unregisteredMembers = [];
+  const registeredWithoutPj = [];
+  const mentions = [];
+
+  for (const participant of groupParticipants) {
+    const phone = normalizePhone(participant.id.user);
+    const jid = participant.id._serialized;
+
+    if (jid === client.info.wid._serialized) continue;
+
+    if (!registeredPhones.has(phone)) {
+      unregisteredMembers.push(participant);
+      mentions.push(jid);
+      continue;
+    }
+
+    const linkedPlayers = players.filter((player) => {
+      if (!player.phone) return false;
+      return player.phone.split(',').some((p) => normalizePhone(p.trim()) === phone);
+    });
+    const hasAnySheet = linkedPlayers.some((player) =>
+      sheets.some((sheet) => {
+        const sheetPlayerId = String(sheet.playerId || sheet.player_id || '').trim();
+        return sheetPlayerId === String(player.id).trim();
+      })
+    );
+
+    if (!hasAnySheet && linkedPlayers.length > 0) {
+      registeredWithoutPj.push({ player: linkedPlayers[0], participant });
+      mentions.push(jid);
+    }
+  }
+
+  return {
+    groupParticipants,
+    unregisteredMembers,
+    registeredWithoutPj,
+    mentions,
+    allPendingPhones: [
+      ...unregisteredMembers.map((member) => normalizePhone(member.id.user)),
+      ...registeredWithoutPj.map((member) => normalizePhone(member.participant.id.user)),
+    ],
+  };
+}
 
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
@@ -630,51 +689,13 @@ export async function handleAdminCommand(msg, client) {
     }
 
     try {
-      const { players, sheets } = await getRealmCensus();
-      
-      const groupParticipants = chat.participants; 
-      const registeredPhones = new Set();
-      players.forEach(player => {
-        if (player.phone) {
-          player.phone.split(',').forEach(p => {
-            const norm = normalizePhone(p.trim());
-            if (norm) registeredPhones.add(norm);
-          });
-        }
-      });
-
-      const unregisteredMembers = [];
-      const registeredWithoutPj = [];
-      const mentions = [];
-
-      for (const participant of groupParticipants) {
-        const phone = normalizePhone(participant.id.user);
-        const jid = participant.id._serialized;
-        
-        // Excluir al propio bot del listado
-        if (jid === client.info.wid._serialized) continue;
-
-        if (!registeredPhones.has(phone)) {
-          unregisteredMembers.push(participant);
-          mentions.push(jid);
-        } else {
-          const linkedPlayers = players.filter((player) => {
-            if (!player.phone) return false;
-            return player.phone.split(',').some(p => normalizePhone(p.trim()) === phone);
-          });
-          const hasAnySheet = linkedPlayers.some((player) =>
-            sheets.some((sheet) => {
-              const sheetPlayerId = String(sheet.playerId || sheet.player_id || '').trim();
-              return sheetPlayerId === String(player.id).trim();
-            })
-          );
-
-          if (!hasAnySheet && linkedPlayers.length > 0) {
-            registeredWithoutPj.push({ player: linkedPlayers[0], participant });
-            mentions.push(jid);
-          }
-        }
-      }
+      const {
+        groupParticipants,
+        unregisteredMembers,
+        registeredWithoutPj,
+        mentions,
+        allPendingPhones,
+      } = await getGroupPendingMembers(chat, client);
 
       let response = heraldCard('Reporte de pendientes del reino', [
         heraldStat('Miembros del grupo', groupParticipants.length),
@@ -708,10 +729,6 @@ export async function handleAdminCommand(msg, client) {
       }
 
       // Rastrear a todos los pendientes
-      const allPendingPhones = [
-        ...unregisteredMembers.map((member) => normalizePhone(member.id.user)),
-        ...registeredWithoutPj.map((member) => normalizePhone(member.participant.id.user))
-      ];
       trackUnregisteredUsers(allPendingPhones);
 
       response += `📢 Completen su ficha y vinculen su cuenta con \`!verificar\`.`;
@@ -734,8 +751,13 @@ export async function handleAdminCommand(msg, client) {
 
     try {
       // Usamos el tracker para ver quiénes llevan más de 5 días
-      const trackerData = getTrackerData();
-      const groupParticipants = chat.participants;
+      const {
+        groupParticipants,
+        unregisteredMembers,
+        registeredWithoutPj,
+        allPendingPhones,
+      } = await getGroupPendingMembers(chat, client);
+      const trackerData = trackUnregisteredUsers(allPendingPhones);
       
       const now = Date.now();
       const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
@@ -751,7 +773,7 @@ export async function handleAdminCommand(msg, client) {
         
         if (jid === client.info.wid._serialized) continue;
         
-        if (trackerData[phone]) {
+        if (allPendingPhones.includes(phone) && trackerData[phone]) {
           const timeElapsed = now - trackerData[phone];
           if (timeElapsed >= FIVE_DAYS_MS) {
             toRemove.push(jid);
