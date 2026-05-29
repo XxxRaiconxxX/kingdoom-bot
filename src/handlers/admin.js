@@ -750,7 +750,7 @@ export async function handleAdminCommand(msg, client) {
     }
 
     try {
-      // Usamos el tracker para ver quiénes llevan más de 5 días
+      // Usamos el tracker para ver quiénes llevan más de 3 días
       const {
         groupParticipants,
         unregisteredMembers,
@@ -760,7 +760,7 @@ export async function handleAdminCommand(msg, client) {
       const trackerData = trackUnregisteredUsers(allPendingPhones);
       
       const now = Date.now();
-      const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
       
       const toRemove = [];
       const toRemovePhones = [];
@@ -775,12 +775,12 @@ export async function handleAdminCommand(msg, client) {
         
         if (allPendingPhones.includes(phone) && trackerData[phone]) {
           const timeElapsed = now - trackerData[phone];
-          if (timeElapsed >= FIVE_DAYS_MS) {
+          if (timeElapsed >= THREE_DAYS_MS) {
             toRemove.push(jid);
             toRemovePhones.push(phone);
           } else {
             const daysElapsed = Math.floor(timeElapsed / (24 * 60 * 60 * 1000));
-            let daysLeft = 5 - daysElapsed;
+            let daysLeft = 3 - daysElapsed;
             if (daysLeft < 1) daysLeft = 1;
             toWarn.push({ jid, user: participant.id.user, daysLeft });
             mentions.push(jid);
@@ -799,7 +799,7 @@ export async function handleAdminCommand(msg, client) {
         saveTrackerData(trackerData);
 
         response = heraldCard('Purga completada', [
-          `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 5 dias sin ficha:`,
+          `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 3 dias sin ficha:`,
         ], { icon: '☠️' });
         response += `\n`;
         toRemovePhones.forEach(phone => {
