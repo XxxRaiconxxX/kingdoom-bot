@@ -722,14 +722,14 @@ export async function handleAdminCommand(msg, client) {
 
       if (unregisteredMembers.length === 0 && registeredWithoutPj.length === 0) {
         // Limpiar tracker si todos están bien
-        trackUnregisteredUsers([]);
+        await trackUnregisteredUsers([]);
         response += `🎉 *¡Increíble! Todos los miembros del grupo están registrados y tienen sus fichas completadas.*`;
         await client.sendMessage(msg.from, response);
         return;
       }
 
       // Rastrear a todos los pendientes
-      trackUnregisteredUsers(allPendingPhones);
+      await trackUnregisteredUsers(allPendingPhones);
 
       response += `📢 Completen su ficha y vinculen su cuenta con \`!verificar\`.`;
 
@@ -757,10 +757,10 @@ export async function handleAdminCommand(msg, client) {
         registeredWithoutPj,
         allPendingPhones,
       } = await getGroupPendingMembers(chat, client);
-      const trackerData = trackUnregisteredUsers(allPendingPhones);
+      const trackerData = await trackUnregisteredUsers(allPendingPhones);
       
       const now = Date.now();
-      const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+      const PURGE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
       
       const toRemove = [];
       const toRemovePhones = [];
@@ -775,7 +775,7 @@ export async function handleAdminCommand(msg, client) {
         
         if (allPendingPhones.includes(phone) && trackerData[phone]) {
           const timeElapsed = now - trackerData[phone];
-          if (timeElapsed >= THREE_DAYS_MS) {
+          if (timeElapsed >= PURGE_DAYS_MS) {
             toRemove.push(jid);
             toRemovePhones.push(phone);
           } else {
@@ -796,7 +796,7 @@ export async function handleAdminCommand(msg, client) {
         
         // Limpiar del tracker
         toRemovePhones.forEach(phone => delete trackerData[phone]);
-        saveTrackerData(trackerData);
+        await saveTrackerData(trackerData);
 
         response = heraldCard('Purga completada', [
           `Se expulsaron ${toRemove.length} aventureros por inactividad de mas de 3 dias sin ficha:`,

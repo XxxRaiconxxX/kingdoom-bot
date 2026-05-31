@@ -1,39 +1,56 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { supabase } from './supabase.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const trackerPath = path.join(__dirname, 'data', 'pending_tracker.json');
+const TRACKER_DOC_ID = 'bot-pending-tracker';
 
-// Ensure directory and file exist
-function initTracker() {
-  const dir = path.dirname(trackerPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(trackerPath)) fs.writeFileSync(trackerPath, '{}', 'utf-8');
+export async function getTrackerData() {
+  try {
+    const { data, error } = await supabase
+      .from('knowledge_documents')
+      .select('content')
+      .eq('id', TRACKER_DOC_ID)
+      .maybeSingle();
+      
+    if (error && error.code !== 'PGRST116') {
+      console.error("Supabase error reading tracker:", error.message);
+    }
+      
+    if (data && data.content) {
+      return JSON.parse(data.content);
+    }
+  } catch (err) {
+    console.error("Error parsing tracker from Supabase:", err);
+  }
+  return {};
 }
 
-export function getTrackerData() {
-  initTracker();
+export async function saveTrackerData(data) {
   try {
-    return JSON.parse(fs.readFileSync(trackerPath, 'utf-8'));
+    const payload = {
+      id: TRACKER_DOC_ID,
+      title: 'Bot Pending Tracker State',
+      type: 'bot_state',
+      category: 'system',
+      tags: ['system', 'hidden'],
+      source: 'system',
+      content: JSON.stringify(data),
+      summary: 'Internal tracker state',
+      visible: false
+    };
+    
+    const { error } = await supabase
+      .from('knowledge_documents')
+      .upsert(payload, { onConflict: 'id' });
+      
+    if (error) {
+      console.error("Error writing tracker to Supabase:", error.message);
+    }
   } catch (err) {
-    console.error("Error reading tracker:", err);
-    return {};
+    console.error("Error writing tracker to Supabase:", err);
   }
 }
 
-export function saveTrackerData(data) {
-  initTracker();
-  try {
-    fs.writeFileSync(trackerPath, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (err) {
-    console.error("Error writing tracker:", err);
-  }
-}
-
-export function trackUnregisteredUsers(phones) {
-  const data = getTrackerData();
+export async function trackUnregisteredUsers(phones) {
+  const data = await getTrackerData();
   const now = Date.now();
   let modified = false;
 
@@ -52,6 +69,6 @@ export function trackUnregisteredUsers(phones) {
     }
   }
 
-  if (modified) saveTrackerData(data);
+  if (modified) await saveTrackerData(data);
   return data;
 }
