@@ -25,21 +25,15 @@ export async function getTrackerData() {
 
 export async function saveTrackerData(data) {
   try {
-    const payload = {
-      id: TRACKER_DOC_ID,
-      title: 'Bot Pending Tracker State',
-      type: 'bot_state',
-      category: 'system',
-      tags: ['system', 'hidden'],
-      source: 'system',
-      content: JSON.stringify(data),
-      summary: 'Internal tracker state',
-      visible: false
-    };
-    
     const { error } = await supabase
       .from('knowledge_documents')
-      .upsert(payload, { onConflict: 'id' });
+      .upsert({
+        id: TRACKER_DOC_ID,
+        title: 'Bot Pending Tracker Data',
+        type: 'other',
+        content: JSON.stringify(data),
+        updated_at: new Date().toISOString()
+      });
       
     if (error) {
       console.error("Error writing tracker to Supabase:", error.message);
