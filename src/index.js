@@ -9,9 +9,10 @@ import { handleDados, handleOraculo } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
-import { isAdminUser } from './adminStore.js';
+import { isAdminUser, isStaffUser } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
+import { handleMarketForgeConversation } from './handlers/marketForge.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -372,7 +373,6 @@ client.on('message', async (msg) => {
   }
 
   const { command, body, hasPrefix } = parseCommand(text);
-  if (!hasPrefix) return;
 
   const nowMs = Date.now();
   if (!activityCache.has(sender) || (nowMs - activityCache.get(sender)) > 5 * 60 * 1000) {
@@ -398,6 +398,8 @@ client.on('message', async (msg) => {
   };
 
   const isAdmin = await checkIsAdmin(sender);
+  const isStaff = isStaffUser(sender);
+  const isPrivileged = isAdmin || isStaff;
   let reply = '';
 
   const wrapMsg = (originalMsg, newBody) => {
@@ -407,7 +409,18 @@ client.on('message', async (msg) => {
   };
 
   try {
-    if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'].includes(command)) {
+    const forgeReply = await handleMarketForgeConversation(msg, {
+      sender,
+      actorName: 'Staff',
+      isAdmin,
+      isPrivileged,
+    });
+
+    if (forgeReply) {
+      reply = forgeReply;
+    } else if (!hasPrefix) {
+      return;
+    } else if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'].includes(command)) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client

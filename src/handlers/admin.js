@@ -123,6 +123,7 @@ export async function handleAdminCommand(msg, client) {
         heraldList([
           heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
           heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!forjaritem <idea> [url]', 'Forja un borrador IA para el mercado.'),
           heraldCommand('!censo', 'Censo general del reino.'),
           heraldCommand('!pendientes', 'No vinculados y sin ficha.'),
           heraldCommand('!purga', 'Expulsa pendientes de mas de 3 dias.'),
@@ -143,6 +144,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!registrar <celular> <nombre> [oro]', 'Registro manual directo.'),
           heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
           heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+          heraldCommand('!forjaritem <idea> [url]', 'Forja un borrador IA para el mercado.'),
           heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
         ]),
         heraldSection('Revision'),

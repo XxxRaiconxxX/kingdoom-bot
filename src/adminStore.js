@@ -7,9 +7,11 @@ const __dirname = path.dirname(__filename);
 
 const OWNER_NUMBER = '595987273405';
 const ADMINS_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'admins.json');
+const STAFF_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'staff.json');
 
 // In-memory cache of admin numbers (excluding @c.us)
 let adminsCache = null;
+let staffCache = null;
 
 export function normalizePhone(phone) {
   let cleaned = String(phone || '')
@@ -71,6 +73,13 @@ export function loadAdmins() {
   return adminsCache;
 }
 
+function parseEnvPhoneList(value) {
+  return String(value || '')
+    .split(',')
+    .map((entry) => normalizePhone(entry))
+    .filter(Boolean);
+}
+
 export function saveAdmins(adminsList) {
   try {
     const normalizedList = [...new Set(adminsList.map(normalizePhone))];
@@ -85,6 +94,28 @@ export function saveAdmins(adminsList) {
     console.error('[saveAdmins] Error saving admins:', err);
     return false;
   }
+}
+
+export function loadStaff() {
+  if (staffCache !== null) return staffCache;
+
+  const defaultStaff = parseEnvPhoneList(process.env.STAFF_NUMBERS);
+
+  try {
+    if (fs.existsSync(STAFF_FILE)) {
+      const data = fs.readFileSync(STAFF_FILE, 'utf8');
+      const loaded = JSON.parse(data);
+      if (Array.isArray(loaded)) {
+        staffCache = [...new Set([...defaultStaff, ...loaded.map(normalizePhone)])];
+        return staffCache;
+      }
+    }
+  } catch (err) {
+    console.error('[loadStaff] Error loading staff:', err);
+  }
+
+  staffCache = defaultStaff;
+  return staffCache;
 }
 
 export function isOwner(whatsappNumber) {
@@ -103,6 +134,13 @@ export function isAdminUser(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
   if (isOwner(whatsappNumber)) return true;
   const list = loadAdmins();
+  return list.includes(phone);
+}
+
+export function isStaffUser(whatsappNumber) {
+  const phone = normalizePhone(whatsappNumber);
+  if (isAdminUser(whatsappNumber)) return true;
+  const list = loadStaff();
   return list.includes(phone);
 }
 
