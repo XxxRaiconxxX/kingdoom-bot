@@ -14,7 +14,12 @@ export async function handleDados(msg) {
 
   const dayOfWeek = new Date().getDay();
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  const maxUsos = isWeekend ? 5 : 3;
+  const maxUsos = isWeekend ? 5 : 4;
+  const maxApuesta = isWeekend ? 500000 : 100000;
+
+  if (apuesta > maxApuesta) {
+    return `🎲 La apuesta maxima por ronda es de *${maxApuesta.toLocaleString('es-PY')} oro*${isWeekend ? ' durante el fin de semana' : ''}.`;
+  }
 
   const currentUsos = await getDadosUsage(player.id);
   if (currentUsos >= maxUsos) {
@@ -24,7 +29,7 @@ export async function handleDados(msg) {
   const d1 = Math.ceil(Math.random() * 6);
   const d2 = Math.ceil(Math.random() * 6);
   const suma = d1 + d2;
-  const gano = suma >= 8;
+  const gano = suma >= 7;
   const delta = gano ? apuesta : -apuesta;
   const nuevoTotal = player.gold + delta; // calculamos antes del await
 
