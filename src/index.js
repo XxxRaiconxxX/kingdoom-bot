@@ -24,9 +24,14 @@ const WHATSAPP_INIT_RETRY_DELAY_MS = Math.max(
   5000,
   Number.parseInt(process.env.WHATSAPP_INIT_RETRY_DELAY_MS ?? '15000', 10) || 15000
 );
+const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
+  120000,
+  Number.parseInt(process.env.WHATSAPP_AUTH_TIMEOUT_MS ?? '300000', 10) || 300000
+);
 
 let latestQrDataUrl = '';
 const welcomeConfig = buildWelcomeConfig();
+let schedulerStarted = false;
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -80,6 +85,9 @@ function formatInitializeError(error) {
   const message = String(error?.message ?? error);
   if (message.includes('ERR_TIMED_OUT')) {
     return `${message} | Posible causa: timeout de red saliente hacia web.whatsapp.com en el contenedor.`;
+  }
+  if (message.toLowerCase().includes('auth timeout')) {
+    return `${message} | Posible causa: autenticacion lenta o sesion de WhatsApp expirada en el contenedor.`;
   }
 
   return message;
@@ -214,7 +222,7 @@ http.createServer(async (req, res) => {
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '/app/.wwebjs_auth' }),
-  authTimeoutMs: 120000,
+  authTimeoutMs: WHATSAPP_AUTH_TIMEOUT_MS,
   puppeteer: {
     headless: true,
     args: [
@@ -244,7 +252,10 @@ client.on('qr', async (qr) => {
 client.on('ready', () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
-  startScheduler(client);
+  if (!schedulerStarted) {
+    startScheduler(client);
+    schedulerStarted = true;
+  }
 });
 
 client.on('auth_failure', (message) => {
@@ -253,6 +264,7 @@ client.on('auth_failure', (message) => {
 
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
+  schedulerStarted = false;
 });
 
 client.on('change_state', (state) => {
@@ -471,5 +483,15 @@ async function initializeClientWithRetry() {
     }
   }
 }
+
+process.on('unhandledRejection', (reason) => {
+  const formattedError = formatInitializeError(reason);
+  console.error(`[process unhandledRejection] ${formattedError}`);
+});
+
+process.on('uncaughtException', (error) => {
+  const formattedError = formatInitializeError(error);
+  console.error(`[process uncaughtException] ${formattedError}`);
+});
 
 void initializeClientWithRetry();
