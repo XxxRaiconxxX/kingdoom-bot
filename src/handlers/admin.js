@@ -87,6 +87,10 @@ export async function handleAdminCommand(msg, client) {
     if (!input) return '';
     return input.replace('@c.us', '').replace(/\D/g, '').trim();
   };
+  const isLikelyPhone = (input) => {
+    const digits = extractPhone(input);
+    return digits.length >= 8;
+  };
 
   const { data: actorPlayers } = await supabase
     .from('players')
@@ -277,6 +281,12 @@ export async function handleAdminCommand(msg, client) {
                `*Opción A (Copiado/Respondiendo):* Cita el mensaje del jugador con: \`!registrar <nombre> [oro]\`\n` +
                `*Opción B (Directo/Manual):* Escribe de forma directa: \`!registrar <celular> <nombre> [oro]\``;
       }
+      if (!isLikelyPhone(parts[1])) {
+        return `âŒ *Registro cancelado por formato invalido.*\n` +
+               `Parece que intentaste usar \`!registrar <nombre> [oro]\` sin citar el mensaje del jugador.\n` +
+               `*OpciÃ³n A:* responde al mensaje del jugador con \`!registrar <nombre> [oro]\`\n` +
+               `*OpciÃ³n B:* usa el formato manual \`!registrar <celular> <nombre> [oro]\``;
+      }
       targetPhone = parts[1];
       username = parts[2];
       if (parts[3]) {
@@ -293,7 +303,7 @@ export async function handleAdminCommand(msg, client) {
     }
 
     const cleanPhone = extractPhone(targetPhone);
-    if (!cleanPhone || isNaN(Number(cleanPhone))) {
+    if (!cleanPhone || isNaN(Number(cleanPhone)) || cleanPhone.length < 8) {
       return `❌ Número de celular no válido.`;
     }
 
