@@ -43,13 +43,13 @@ async function postAssistant(pathname, body) {
 }
 
 export function createMarketForgeDraft(input) {
-  return postAssistant('/api/admin/assistant/market/draft', input);
+  return postAssistant('/api/admin/assistant/market', { ...input, action: 'draft' });
 }
 
 export function reviseMarketForgeDraft(input) {
-  return postAssistant('/api/admin/assistant/market/revise', input);
+  return postAssistant('/api/admin/assistant/market', { ...input, action: 'revise' });
 }
 
 export function confirmMarketForgeDraft(input) {
-  return postAssistant('/api/admin/assistant/market/confirm', input);
+  return postAssistant('/api/admin/assistant/market', { ...input, action: 'confirm' });
 }
