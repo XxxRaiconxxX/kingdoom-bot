@@ -13,6 +13,7 @@ import { isAdminUser, isStaffUser } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
+import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -288,6 +289,28 @@ client.on('message', async (msg) => {
   const text = msg.body.trim();
   const sender = msg.author || msg.from;
 
+  // Intercept Blackjack session replies
+  if (msg.hasQuotedMsg) {
+    try {
+      const quoted = await msg.getQuotedMessage();
+      if (quoted && activeSessions.has(quoted.id._serialized)) {
+        const session = activeSessions.get(quoted.id._serialized);
+        if (sender === session.playerPhone) {
+          const replyText = await handleBlackjackReply(msg, session, quoted.id._serialized);
+          if (replyText) {
+            await msg.reply(replyText);
+          }
+          return;
+        } else {
+          // Ignore replies from other players to prevent interference
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('[Blackjack Reply Intercept Error]', e);
+    }
+  }
+
   // 0. GM Mission Tracker (Roleplay messages usually don't have ! prefix)
   const trackerResult = processTrackerMessage(text, sender);
   if (trackerResult?.missionClosed) {
@@ -431,6 +454,8 @@ client.on('message', async (msg) => {
       reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === 'oraculo') {
       reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+    } else if (command === '21') {
+      reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (
       [
         'oro',

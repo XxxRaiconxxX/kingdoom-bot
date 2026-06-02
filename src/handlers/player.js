@@ -161,6 +161,7 @@ _Para todos los aventureros_
 🎯 \`!mision [nombre]\` — Lista o inspecciona misiones
 🎪 \`!evento [nombre]\` — Lista o inspecciona eventos
 🎲 \`!dados <monto>\` — Apuesta oro en los dados
+🃏 \`!21 <monto>\` — Apuesta oro en el Blackjack
 🔮 \`!oraculo <pregunta>\` — Consulta al Oráculo
 ❓ \`!ayuda\` — Abre este compendio`;
 
