@@ -25,7 +25,9 @@ function isImageMimeType(mime) {
 }
 
 async function extractQuotedReference(msg) {
-  if (!msg.hasQuotedMsg) return { url: '', imageDataUrl: '', quotedText: '' };
+  if (!msg.hasQuotedMsg) {
+    return { url: '', imageDataUrl: '', quotedText: '' };
+  }
 
   const quoted = await msg.getQuotedMessage();
   const quotedText = String(quoted.body || quoted.caption || '').trim();
@@ -86,6 +88,15 @@ function buildRole(context) {
   return context.isAdmin ? 'admin' : 'staff';
 }
 
+function formatForgeError(error) {
+  const message = String(error?.message || '').trim();
+  if (!message) {
+    return 'No pude forjar el item en este momento. Intenta de nuevo en un momento.';
+  }
+
+  return `No pude forjar el item: ${message}`;
+}
+
 function extractCommand(text) {
   const normalized = String(text || '').trim();
   if (!normalized.startsWith('!')) {
@@ -121,30 +132,34 @@ export async function handleMarketForgeConversation(msg, context) {
   if (shouldStartForge(command, body, context.isPrivileged)) {
     const ideaPrompt = getIdeaPromptForDraft(rawText, command);
     if (!ideaPrompt) {
-      return '⚒️ Describe la idea del item junto al comando. Ejemplo: *!forjaritem alabarda maldita con filo de obsidiana https://pin.it/...*';
+      return 'Describe la idea del item junto al comando. Ejemplo: *!forjaritem alabarda maldita con filo de obsidiana https://pin.it/...*';
     }
 
     const reference = await extractReferenceFromMessage(msg);
     if (!reference.url && !reference.imageDataUrl) {
-      return '🖼️ Necesito una referencia visual para forjar el item. Puedes pegar una URL tipo Pinterest o adjuntar una imagen junto al comando.';
+      return 'Necesito una referencia visual para forjar el item. Puedes pegar una URL tipo Pinterest o adjuntar una imagen junto al comando.';
     }
 
-    const payload = await createMarketForgeDraft({
-      ideaPrompt,
-      reference,
-      requestedBy: context.actorName,
-      requestedByPhone: normalizePhone(context.sender),
-      requestedByRole: buildRole(context),
-      originalMessage: rawText,
-      chatId: msg.from,
-    });
+    try {
+      const payload = await createMarketForgeDraft({
+        ideaPrompt,
+        reference,
+        requestedBy: context.actorName,
+        requestedByPhone: normalizePhone(context.sender),
+        requestedByRole: buildRole(context),
+        originalMessage: rawText,
+        chatId: msg.from,
+      });
 
-    setMarketForgeSession(msg.from, context.sender, {
-      draftId: payload.draftId,
-      actorRole: buildRole(context),
-    });
+      setMarketForgeSession(msg.from, context.sender, {
+        draftId: payload.draftId,
+        actorRole: payload?.actor?.role || buildRole(context),
+      });
 
-    return payload.replyText || '⚒️ Borrador forjado.';
+      return payload.replyText || 'Borrador forjado.';
+    } catch (error) {
+      return formatForgeError(error);
+    }
   }
 
   const sessionText = hasPrefix && ['confirmar', 'cancelar'].includes(command)
@@ -161,29 +176,37 @@ export async function handleMarketForgeConversation(msg, context) {
 
   const normalizedText = sessionText.toLowerCase().trim();
   if (normalizedText === 'confirmar') {
-    const payload = await confirmMarketForgeDraft({
+    try {
+      const payload = await confirmMarketForgeDraft({
+        draftId: session.draftId,
+        requestedBy: context.actorName,
+        requestedByPhone: normalizePhone(context.sender),
+        requestedByRole: session.actorRole,
+        originalMessage: sessionText,
+      });
+      clearMarketForgeSession(msg.from, context.sender);
+      return payload.replyText || 'Item publicado.';
+    } catch (error) {
+      return formatForgeError(error);
+    }
+  }
+
+  try {
+    const payload = await reviseMarketForgeDraft({
       draftId: session.draftId,
+      revisionInstruction: sessionText,
       requestedBy: context.actorName,
       requestedByPhone: normalizePhone(context.sender),
       requestedByRole: session.actorRole,
       originalMessage: sessionText,
     });
-    clearMarketForgeSession(msg.from, context.sender);
-    return payload.replyText || '✅ Item publicado.';
+
+    if (payload.status === 'cancelled') {
+      clearMarketForgeSession(msg.from, context.sender);
+    }
+
+    return payload.replyText || 'Borrador ajustado.';
+  } catch (error) {
+    return formatForgeError(error);
   }
-
-  const payload = await reviseMarketForgeDraft({
-    draftId: session.draftId,
-    revisionInstruction: sessionText,
-    requestedBy: context.actorName,
-    requestedByPhone: normalizePhone(context.sender),
-    requestedByRole: session.actorRole,
-    originalMessage: sessionText,
-  });
-
-  if (payload.status === 'cancelled') {
-    clearMarketForgeSession(msg.from, context.sender);
-  }
-
-  return payload.replyText || '⚒️ Borrador ajustado.';
 }
