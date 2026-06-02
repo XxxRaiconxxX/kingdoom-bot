@@ -32,10 +32,20 @@ async function postAssistant(pathname, body) {
     body: JSON.stringify(body),
   });
 
-  const payload = await response.json().catch(() => null);
+  const rawText = await response.text();
+  let payload = null;
+  try {
+    payload = rawText ? JSON.parse(rawText) : null;
+  } catch {
+    payload = null;
+  }
+
   if (!response.ok) {
+    const fallbackMessage = rawText
+      ? `El asistente de mercado respondio ${response.status}. ${rawText.slice(0, 180).trim()}`
+      : `El asistente de mercado respondio ${response.status} sin cuerpo util.`;
     throw new Error(
-      payload?.message || 'El asistente de mercado no devolvio una respuesta valida.'
+      payload?.message || fallbackMessage
     );
   }
 
