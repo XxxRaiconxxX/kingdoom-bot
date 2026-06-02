@@ -94,7 +94,7 @@ export async function handleBlackjack(msg) {
   // Weekday vs Weekend limits
   const dayOfWeek = new Date().getDay();
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-  const maxUsos = isWeekend ? 5 : 3;
+  const maxUsos = isWeekend ? 5 : 5;
   const maxApuesta = isWeekend ? 500000 : 100000;
 
   if (apuesta > maxApuesta) {
