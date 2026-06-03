@@ -14,6 +14,7 @@ import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMRes
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
+import { activeTreasures, handleTreasureReply } from './handlers/treasure.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -289,33 +290,45 @@ client.on('message', async (msg) => {
   const text = msg.body.trim();
   const sender = msg.author || msg.from;
 
-  // Intercept Blackjack session replies
+  // Intercept replies (Blackjack, Tesoros, etc.)
   if (msg.hasQuotedMsg) {
     try {
       const quoted = await msg.getQuotedMessage();
-      if (quoted && activeSessions.has(quoted.id._serialized)) {
-        const session = activeSessions.get(quoted.id._serialized);
-        
-        let isAllowed = false;
-        if (session.isMultiplayer) {
-          isAllowed = session.players.some(p => p.playerPhone === normalizePhone(sender));
-        } else {
-          isAllowed = sender === session.playerPhone;
+      if (quoted) {
+        const quotedId = quoted.id._serialized;
+
+        // Blackjack session replies
+        if (activeSessions.has(quotedId)) {
+          const session = activeSessions.get(quotedId);
+          
+          let isAllowed = false;
+          if (session.isMultiplayer) {
+            isAllowed = session.players.some(p => p.playerPhone === normalizePhone(sender));
+          } else {
+            isAllowed = sender === session.playerPhone;
+          }
+
+          if (isAllowed) {
+            const replyText = await handleBlackjackReply(msg, session, quotedId, client);
+            if (replyText) {
+              await msg.reply(replyText);
+            }
+            return;
+          } else {
+            // Ignore replies from other players to prevent interference
+            return;
+          }
         }
 
-        if (isAllowed) {
-          const replyText = await handleBlackjackReply(msg, session, quoted.id._serialized, client);
-          if (replyText) {
-            await msg.reply(replyText);
-          }
-          return;
-        } else {
-          // Ignore replies from other players to prevent interference
+        // Tesoro Errante replies
+        if (activeTreasures.has(quotedId)) {
+          const treasure = activeTreasures.get(quotedId);
+          await handleTreasureReply(msg, treasure, quotedId);
           return;
         }
       }
     } catch (e) {
-      console.error('[Blackjack Reply Intercept Error]', e);
+      console.error('[Reply Intercept Error]', e);
     }
   }
 

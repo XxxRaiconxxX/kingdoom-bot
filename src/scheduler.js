@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { supabase } from './supabase.js';
 import { normalizePhone } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
+import { scheduleDailyTreasures } from './handlers/treasure.js';
 
 // ✅ Timezone Paraguay (UTC-4, con ajuste horario de verano)
 const TZ = { timezone: 'America/Asuncion' };
@@ -44,10 +45,16 @@ async function sendToAll(client, buildMessage) {
 }
 
 export function startScheduler(client) {
+  
+  // Programar los tesoros para el dia actual al iniciar (si aplica)
+  scheduleDailyTreasures(client);
 
   // Reset diario — medianoche hora Paraguay
   cron.schedule('0 0 * * *', async () => {
     console.log('[scheduler] Enviando reset diario...');
+    
+    // Programar los tesoros diarios del nuevo dia
+    scheduleDailyTreasures(client);
     await sendToAll(client, ({ username }) => 
       `🌙 *La noche cae sobre el Reino de las Sombras...*\n\nSaludos, valiente *${username}*. Tus límites de juego se han reiniciado con el amanecer.\nLevántate, empuña tu arma y forja tu propio destino hoy. ¡A ganar oro, guerrero! ⚔️`
     );
