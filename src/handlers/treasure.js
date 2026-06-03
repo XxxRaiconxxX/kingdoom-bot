@@ -1,175 +1,275 @@
-import { getPlayer, updateGold, touchPlayerActivity } from '../supabase.js';
+import {
+  claimTreasureReward,
+  createTreasureEvent,
+  expireTreasureEvent,
+  getOpenTreasureEvents,
+  getPlayer,
+  getTreasureClaims,
+  touchPlayerActivity,
+} from '../supabase.js';
 
 const TARGET_GROUP = '595971938097-1618930274@g.us';
+const TREASURE_DURATION_MS = 5 * 60 * 1000;
+const TREASURE_START_HOUR = 10;
+const TREASURE_END_HOUR = 22;
 
-// Almacena las sesiones activas indexadas por el ID de mensaje del cofre
 export const activeTreasures = new Map();
 
-// Guardar los temporizadores para poder limpiarlos si es necesario
 let scheduledTimeouts = [];
 
-// Obtener el desfase en milisegundos entre el reloj del servidor y la hora de Asunción, Paraguay
+function randomIntInclusive(min, max) {
+  const safeMin = Math.ceil(min);
+  const safeMax = Math.floor(max);
+  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+}
+
 function getAsuncionOffsetMs() {
   const date = new Date();
-  const asuncionStr = date.toLocaleString('en-US', { timeZone: 'America/Asuncion' });
-  const asuncionDate = new Date(asuncionStr);
-  return asuncionDate.getTime() - date.getTime();
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Asuncion',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    });
+
+    const parts = formatter.formatToParts(date);
+    const partsMap = {};
+    for (const part of parts) {
+      if (part.type !== 'literal') {
+        partsMap[part.type] = parseInt(part.value, 10);
+      }
+    }
+
+    const asuncionUTC = Date.UTC(
+      partsMap.year,
+      partsMap.month - 1,
+      partsMap.day,
+      partsMap.hour === 24 ? 0 : partsMap.hour,
+      partsMap.minute,
+      partsMap.second
+    );
+
+    const systemUTC = Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate(),
+      date.getUTCHours(),
+      date.getUTCMinutes(),
+      date.getUTCSeconds()
+    );
+
+    return asuncionUTC - systemUTC;
+  } catch (error) {
+    console.error('[Treasure] Error al calcular zona horaria de Asuncion, usando fallback -4h:', error);
+    return -4 * 60 * 60 * 1000;
+  }
 }
 
-/**
- * Lanza un evento sorpresa en el grupo principal
- */
+function formatGold(value) {
+  return Number(value ?? 0).toLocaleString('es-PY');
+}
+
+function normalizeTreasureReply(value) {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\*/g, '');
+}
+
+function registerActiveTreasure(event, client) {
+  const existing = activeTreasures.get(event.message_id);
+  if (existing?.timeoutId) {
+    clearTimeout(existing.timeoutId);
+  }
+
+  const remainingMs = Math.max(0, new Date(event.expires_at).getTime() - Date.now());
+  const timeoutId = setTimeout(() => {
+    void closeTreasure(event.message_id, client, { reason: 'expired' });
+  }, remainingMs);
+
+  activeTreasures.set(event.message_id, {
+    messageId: event.message_id,
+    chatId: event.chat_id,
+    maxWinners: event.max_winners,
+    status: event.status,
+    createdAt: event.created_at,
+    expiresAt: event.expires_at,
+    timeoutId,
+  });
+}
+
+async function buildClaimsSummary(messageId) {
+  const claims = await getTreasureClaims(messageId);
+  if (!claims.length) {
+    return null;
+  }
+
+  const winnerLines = claims.map(
+    (claim) => `- ${claim.playerName}: ${formatGold(claim.rewardGold)} oro`
+  );
+
+  return [
+    '*Tesoro reclamado*',
+    '',
+    'Ganadores del Tesoro Errante:',
+    ...winnerLines,
+    '',
+    'El tesoro ha sido vaciado.',
+  ].join('\n');
+}
+
 export async function dropTreasure(client) {
   try {
-    const maxWinners = Math.floor(Math.random() * 3) + 1; // 1 a 3 ganadores
-    const goldAmountPerWinner = Math.floor(Math.random() * 10001) + 10000; // 10,000 a 20,000
+    if ([...activeTreasures.values()].some((treasure) => treasure.chatId === TARGET_GROUP)) {
+      console.log('[Treasure] Ya existe un tesoro abierto en el grupo principal; se omite este disparo.');
+      return null;
+    }
 
-    const text = `👑 *¡TESORO ERRANTE DEL REINO!* 👑\n\n` +
-      `📦 Un cofre misterioso y resplandeciente ha aparecido en el camino real del Reino de las Sombras. ⚔️\n\n` +
-      `✨ *Detalles del Tesoro:*\n` +
-      `• Cupos de recompensa: *${maxWinners} valiente(s)*\n` +
-      `• Recompensa individual: *${goldAmountPerWinner.toLocaleString('es-PY')} monedas de oro* 🪙\n\n` +
-      `🛡️ *¿Cómo abrir el cofre?*\n` +
-      `Para reclamar tu parte, debes **responder directamente (Reply) a este mensaje** con la palabra exacta:\n` +
-      `👉 *reclamar*\n\n` +
-      `⚠️ *Advertencia:* El cofre se desvanecerá en la niebla en *5 minutos*. ¡Rápido, aventureros!`;
+    const maxWinners = randomIntInclusive(1, 3);
+    const text =
+      `🎁 *Tesoro Errante del Reino*\n\n` +
+      `Una recompensa cayo entre las sombras.\n\n` +
+      `Responde a ESTE mensaje con:\n` +
+      `*reclamar*\n\n` +
+      `⏳ Tiempo limite: 5 minutos\n` +
+      `🏆 Ganadores posibles: ${maxWinners}`;
 
     const message = await client.sendMessage(TARGET_GROUP, text);
-    const quotedId = message.id._serialized;
-
-    const treasureSession = {
-      quotedId,
+    const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
+    const event = await createTreasureEvent({
+      chatId: TARGET_GROUP,
+      messageId: message.id._serialized,
       maxWinners,
-      winnersCount: 0,
-      winnersList: [],
-      goldAmountPerWinner,
-      closed: false,
-      lock: false
-    };
+      expiresAt,
+    });
 
-    activeTreasures.set(quotedId, treasureSession);
-    console.log(`[Treasure] Drop lanzado. ID: ${quotedId}, Cupos: ${maxWinners}, Oro: ${goldAmountPerWinner}`);
-
-    // Programar el cierre del cofre a los 5 minutos
-    setTimeout(() => {
-      closeTreasure(quotedId, client);
-    }, 5 * 60 * 1000);
-
+    registerActiveTreasure(event, client);
+    console.log(`[Treasure] Drop persistido. ID mensaje: ${event.message_id}, cupos: ${event.max_winners}`);
+    return event;
   } catch (error) {
     console.error('[Treasure Drop Error]', error);
+    return null;
   }
 }
 
-/**
- * Cierra la sesión del cofre por timeout
- */
-async function closeTreasure(quotedId, client) {
-  const treasure = activeTreasures.get(quotedId);
-  if (!treasure || treasure.closed) return;
-
-  treasure.closed = true;
-  activeTreasures.delete(quotedId);
+export async function closeTreasure(messageId, client, options = {}) {
+  const { reason = 'expired', skipStatusUpdate = false } = options;
+  const cached = activeTreasures.get(messageId);
+  if (cached?.timeoutId) {
+    clearTimeout(cached.timeoutId);
+  }
 
   try {
-    const fadeMessage = `💨 *El cofre del tesoro errante se ha desvanecido en la niebla...*\n` +
-      `Nadie logró reclamar las riquezas a tiempo. ¡Estad más atentos en el próximo viaje! 🗺️`;
-    await client.sendMessage(TARGET_GROUP, fadeMessage);
-    console.log(`[Treasure] Cofre ${quotedId} cerrado por inactividad.`);
+    if (!skipStatusUpdate && reason === 'expired') {
+      await expireTreasureEvent(messageId);
+    }
+
+    const summary = await buildClaimsSummary(messageId);
+    if (summary) {
+      await client.sendMessage(TARGET_GROUP, summary);
+    } else if (reason === 'expired') {
+      await client.sendMessage(
+        TARGET_GROUP,
+        '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
+      );
+    }
   } catch (error) {
     console.error('[Treasure Close Error]', error);
+  } finally {
+    activeTreasures.delete(messageId);
   }
 }
 
-/**
- * Maneja las respuestas directas a los mensajes de tesoro
- */
 export async function handleTreasureReply(msg, treasure, quotedId, client) {
-  const text = msg.body.trim().toLowerCase();
-
-  // Validar comando exacto
-  if (text !== 'reclamar') return;
-
-  // Si está cerrado, ignorar
-  if (treasure.closed || treasure.winnersCount >= treasure.maxWinners) return;
-
-  // Spin-lock básico para evitar race conditions
-  if (treasure.lock) {
-    let retries = 5;
-    while (treasure.lock && retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-      retries--;
-    }
-    if (treasure.lock) return; // Abortar si sigue bloqueado
+  if (msg.from !== TARGET_GROUP || !treasure) {
+    return;
   }
 
-  treasure.lock = true;
+  const text = normalizeTreasureReply(msg.body);
+  if (text !== 'reclamar') {
+    return;
+  }
 
-  // Doble verificación tras adquirir el lock
-  if (treasure.closed || treasure.winnersCount >= treasure.maxWinners) {
-    treasure.lock = false;
+  const sender = msg.author || msg.from;
+  const player = await getPlayer(sender);
+  if (!player) {
+    await msg.reply(
+      '❌ *No estas registrado en los pergaminos del Reino.*\nEscribe *!registrar <nombre>* o hazlo desde la web para poder reclamar tesoros.'
+    );
     return;
   }
 
   try {
-    const sender = msg.author || msg.from;
-    const player = await getPlayer(sender);
+    const result = await claimTreasureReward(quotedId, player.id, TARGET_GROUP);
+    const status = result?.status ?? 'error';
 
-    if (!player) {
-      await msg.reply(`❌ *No estás registrado en los pergaminos del Reino.* \nEscribe *!registrar <nombre>* o hazlo a través de la web para poder reclamar tesoros.`);
-      treasure.lock = false;
+    if (status === 'duplicate') {
+      await msg.reply('⚠️ *Ya has reclamado una recompensa de este tesoro, aventurero.*');
       return;
     }
 
-    // Evitar que el mismo jugador gane dos veces en el mismo cofre
-    if (treasure.winnersList.some(w => w.playerId === player.id)) {
-      await msg.reply(`⚠️ *Ya has reclamado tu recompensa de este cofre, aventurero.*`);
-      treasure.lock = false;
+    if (status === 'expired') {
+      await closeTreasure(quotedId, client, { reason: 'expired', skipStatusUpdate: true });
       return;
     }
 
-    // Asignar premio
-    treasure.winnersCount++;
-    treasure.winnersList.push({ playerId: player.id, username: player.username });
-
-    // Guardar en Supabase
-    await updateGold(player.id, treasure.goldAmountPerWinner);
-    await touchPlayerActivity(player.id);
-
-    await msg.reply(`🎉 ¡Has abierto el cofre, *${player.username}*! Has ganado *+${treasure.goldAmountPerWinner.toLocaleString('es-PY')} monedas de oro* 🪙.`);
-
-    // Si se completaron los ganadores, cerrar cofre
-    if (treasure.winnersCount >= treasure.maxWinners) {
-      treasure.closed = true;
-      activeTreasures.delete(quotedId);
-
-      const ganadoresNombres = treasure.winnersList.map(w => `*${w.username}*`).join(', ');
-      await client.sendMessage(msg.from, `🔒 *El Cofre del Tesoro Errante se ha cerrado.* \n\nGanadores de esta expedición: ${ganadoresNombres}.\n¡Gracias por participar, aventureros! ⚔️`);
+    if (status === 'full' || status === 'claimed') {
+      await closeTreasure(quotedId, client, { reason: 'claimed', skipStatusUpdate: true });
+      return;
     }
 
+    if (status !== 'ok') {
+      return;
+    }
+
+    try {
+      await touchPlayerActivity(player.id);
+    } catch (activityError) {
+      console.error('[Treasure] Error no critico al registrar actividad del jugador:', activityError);
+    }
+
+    await msg.reply(
+      `🎉 ¡Has abierto el cofre, *${player.username}*! Has ganado *+${formatGold(result.reward_gold)} monedas de oro* 🪙.`
+    );
+
+    if (result.event_status === 'claimed' || result.winners_count >= result.max_winners) {
+      await closeTreasure(quotedId, client, { reason: 'claimed', skipStatusUpdate: true });
+    }
   } catch (error) {
     console.error('[handleTreasureReply Error]', error);
-    await msg.reply(`❌ Hubo un problema mágico al abrir el cofre. Inténtalo de nuevo.`);
-    
-    // Revertir en caso de fallo
-    if (treasure.winnersList.length > 0) {
-      const idx = treasure.winnersList.findIndex(w => w.playerId === player.id);
-      if (idx !== -1) {
-        treasure.winnersList.splice(idx, 1);
-        treasure.winnersCount--;
-      }
-    }
-  } finally {
-    treasure.lock = false;
+    await msg.reply('❌ Hubo un problema magico al abrir el cofre. Intentalo de nuevo.');
   }
 }
 
-/**
- * Programa los eventos sorpresa de tesoro diario
- */
+export async function hydrateOpenTreasures(client) {
+  try {
+    const openEvents = await getOpenTreasureEvents(TARGET_GROUP);
+    for (const event of openEvents) {
+      const expiresAtMs = new Date(event.expires_at).getTime();
+      if (expiresAtMs <= Date.now()) {
+        await closeTreasure(event.message_id, client, { reason: 'expired' });
+        continue;
+      }
+
+      registerActiveTreasure(event, client);
+    }
+
+    console.log(`[Treasure] Rehidratados ${openEvents.length} evento(s) abiertos desde Supabase.`);
+  } catch (error) {
+    console.error('[Treasure] Error rehidratando eventos abiertos:', error);
+  }
+}
+
 export function scheduleDailyTreasures(client) {
-  // Cancelar temporizadores existentes para evitar duplicaciones
-  for (const t of scheduledTimeouts) {
-    clearTimeout(t);
+  for (const timeoutId of scheduledTimeouts) {
+    clearTimeout(timeoutId);
   }
   scheduledTimeouts = [];
 
@@ -178,38 +278,41 @@ export function scheduleDailyTreasures(client) {
   const nowAsuncion = new Date(now.getTime() + offsetMs);
 
   const today10 = new Date(nowAsuncion);
-  today10.setHours(10, 0, 0, 0);
+  today10.setHours(TREASURE_START_HOUR, 0, 0, 0);
 
   const today22 = new Date(nowAsuncion);
-  today22.setHours(22, 0, 0, 0);
+  today22.setHours(TREASURE_END_HOUR, 0, 0, 0);
 
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  // Programar de 1 a 2 eventos por día
   const numEvents = Math.floor(Math.random() * 2) + 1;
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
-  for (let i = 0; i < numEvents; i++) {
+  for (let i = 0; i < numEvents; i += 1) {
     const randomTime = system10 + Math.random() * (system22 - system10);
     eventTimes.push(randomTime);
   }
 
-  eventTimes.sort((a, b) => a - b);
+  eventTimes.sort((left, right) => left - right);
 
   for (const time of eventTimes) {
     const delay = time - now.getTime();
-    if (delay > 0) {
-      const dateTargetStr = new Date(time + offsetMs).toLocaleTimeString('es-PY', { hour12: false });
-      console.log(`[Treasure] Evento programado a las ${dateTargetStr} hora Paraguay (en ${Math.round(delay / 60000)} minutos).`);
-      
-      const t = setTimeout(() => {
-        dropTreasure(client);
-      }, delay);
-      scheduledTimeouts.push(t);
-    } else {
-      console.log(`[Treasure] Omitiendo evento programado en el pasado.`);
+    if (delay <= 0) {
+      console.log('[Treasure] Omitiendo evento programado en el pasado.');
+      continue;
     }
+
+    const dateTargetStr = new Date(time + offsetMs).toLocaleTimeString('es-PY', { hour12: false });
+    console.log(
+      `[Treasure] Evento programado a las ${dateTargetStr} hora Paraguay (en ${Math.round(delay / 60000)} minutos).`
+    );
+
+    const timeoutId = setTimeout(() => {
+      void dropTreasure(client);
+    }, delay);
+
+    scheduledTimeouts.push(timeoutId);
   }
 }

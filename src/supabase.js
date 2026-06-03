@@ -442,6 +442,101 @@ export async function updateGold(playerId, amount) {
   }
 }
 
+export async function createTreasureEvent({ chatId, messageId, maxWinners, expiresAt }) {
+  const { data, error } = await supabase
+    .from('bot_treasure_events')
+    .insert({
+      chat_id: chatId,
+      message_id: messageId,
+      max_winners: maxWinners,
+      status: 'open',
+      expires_at: expiresAt,
+    })
+    .select('id, chat_id, message_id, max_winners, status, created_at, expires_at')
+    .single();
+
+  if (error) {
+    console.error('[createTreasureEvent]', error.message);
+    throw new Error('No se pudo crear el evento de tesoro.');
+  }
+
+  return data;
+}
+
+export async function getOpenTreasureEvents(chatId = null) {
+  let query = supabase
+    .from('bot_treasure_events')
+    .select('id, chat_id, message_id, max_winners, status, created_at, expires_at')
+    .eq('status', 'open')
+    .order('created_at', { ascending: true });
+
+  if (chatId) {
+    query = query.eq('chat_id', chatId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('[getOpenTreasureEvents]', error.message);
+    throw new Error('No se pudieron leer los tesoros abiertos.');
+  }
+
+  return data ?? [];
+}
+
+export async function expireTreasureEvent(messageId) {
+  const { data, error } = await supabase
+    .from('bot_treasure_events')
+    .update({
+      status: 'expired',
+      closed_at: new Date().toISOString(),
+    })
+    .eq('message_id', messageId)
+    .eq('status', 'open')
+    .select('id, chat_id, message_id, max_winners, status, created_at, expires_at, closed_at')
+    .maybeSingle();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('[expireTreasureEvent]', error.message);
+    throw new Error('No se pudo expirar el tesoro.');
+  }
+
+  return data ?? null;
+}
+
+export async function getTreasureClaims(messageId) {
+  const { data, error } = await supabase
+    .from('bot_treasure_claims')
+    .select('reward_gold, claimed_at, players(username)')
+    .eq('event_message_id', messageId)
+    .order('claimed_at', { ascending: true });
+
+  if (error) {
+    console.error('[getTreasureClaims]', error.message);
+    throw new Error('No se pudieron leer los claims del tesoro.');
+  }
+
+  return (data ?? []).map((entry) => ({
+    rewardGold: entry.reward_gold,
+    claimedAt: entry.claimed_at,
+    playerName: entry.players?.username ?? 'Aventurero',
+  }));
+}
+
+export async function claimTreasureReward(messageId, playerId, chatId) {
+  const { data, error } = await supabase.rpc('claim_bot_treasure_reward', {
+    p_message_id: messageId,
+    p_player_id: playerId,
+    p_chat_id: chatId,
+  });
+
+  if (error) {
+    console.error('[claimTreasureReward]', error.message);
+    throw new Error('No se pudo reclamar el tesoro.');
+  }
+
+  return data ?? null;
+}
+
 export async function claimDailyReward(playerId, rewardGold) {
   const claimDate = formatAsuncionDateKey();
   const { data, error } = await supabase.rpc('claim_daily_reward', {
