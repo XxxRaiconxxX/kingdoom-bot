@@ -9,7 +9,7 @@ import { handleDados, handleOraculo } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
-import { isAdminUser, isStaffUser } from './adminStore.js';
+import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
@@ -295,8 +295,16 @@ client.on('message', async (msg) => {
       const quoted = await msg.getQuotedMessage();
       if (quoted && activeSessions.has(quoted.id._serialized)) {
         const session = activeSessions.get(quoted.id._serialized);
-        if (sender === session.playerPhone) {
-          const replyText = await handleBlackjackReply(msg, session, quoted.id._serialized);
+        
+        let isAllowed = false;
+        if (session.isMultiplayer) {
+          isAllowed = session.players.some(p => p.playerPhone === normalizePhone(sender));
+        } else {
+          isAllowed = sender === session.playerPhone;
+        }
+
+        if (isAllowed) {
+          const replyText = await handleBlackjackReply(msg, session, quoted.id._serialized, client);
           if (replyText) {
             await msg.reply(replyText);
           }
@@ -455,7 +463,7 @@ client.on('message', async (msg) => {
     } else if (command === 'oraculo') {
       reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === '21') {
-      reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
     } else if (
       [
         'oro',
