@@ -339,43 +339,39 @@ export async function handleBlackjack(msg, client) {
     }
   }
 
-  // Deduct gold and increment usage for all participants
-  try {
-    for (const p of participants) {
-      await updateGold(p.player.id, -apuesta);
-      await incrementBlackjackUsage(p.player.id);
-    }
-  } catch (err) {
-    console.error('[handleBlackjack] updateGold/incrementUsage error:', err.message);
-    return `⚔️ Error al registrar las apuestas de los participantes.`;
-  }
-
-  // Deal exactly 1 card to each player in the first round
-  const deck = shuffle(createDeck());
   const playersState = [];
   for (const p of participants) {
-    const card = deck.pop();
     playersState.push({
       playerId: p.player.id,
       playerPhone: normalizePhone(p.phone),
       username: p.player.username,
-      cards: [card],
-      status: 'playing',
-      responseReceived: false,
-      lastAction: null
+      cards: [],
+      status: p.isHost ? 'accepted' : 'pending',
+      responseReceived: p.isHost ? true : false,
+      lastAction: null,
+      isHost: p.isHost
     });
   }
 
   const session = {
     isMultiplayer: true,
+    state: 'pending',
     bet: apuesta,
     players: playersState,
-    deck,
+    deck: null,
     groupChatId: msg.from,
     timeoutRef: null
   };
 
-  const boardText = formatMultiplayerBoard(session);
+  const invitedNames = playersState.filter(p => !p.isHost).map(p => `*${p.username}*`).join(', ');
+  const boardText = heraldCard('21 (Blackjack PvP) - Reto', [
+    `⚔️ *${hostPlayer.username}* ha desafiado a ${invitedNames} por *${apuesta.toLocaleString('es-PY')} oro*.`,
+    `---`,
+    `💬 Los retados deben responder a este mensaje con:`,
+    `• *aceptar*`,
+    `• *negar*`
+  ], { icon: '⚔️' });
+
   const replyMsg = await msg.reply(boardText);
   const sessionId = replyMsg.id._serialized;
 
@@ -396,6 +392,30 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
 
     if (!playerInSession) {
       return null; // Ignore replies from non-participants
+    }
+
+    if (session.state === 'pending') {
+      if (playerInSession.status !== 'pending') {
+        return `⚔️ *${playerInSession.username}*, ya respondiste a este reto.`;
+      }
+
+      const action = msg.body.trim().toLowerCase();
+      if (action !== 'aceptar' && action !== 'negar') {
+        return `⚔️ Solo podés responder con *aceptar* o *negar*.`;
+      }
+
+      playerInSession.status = action === 'aceptar' ? 'accepted' : 'denied';
+      playerInSession.responseReceived = true;
+
+      try {
+        await msg.react(action === 'aceptar' ? '✅' : '❌');
+      } catch (e) { }
+
+      const pendingPlayers = session.players.filter(p => p.status === 'pending');
+      if (pendingPlayers.length === 0) {
+        await startMultiplayerGame(client, sessionId, session, session.groupChatId);
+      }
+      return null;
     }
 
     if (playerInSession.status !== 'playing') {
@@ -560,6 +580,61 @@ async function runDealerTurn(msg, session) {
   await msg.reply(finalText);
 }
 
+async function startMultiplayerGame(client, sessionId, session, groupChatId) {
+  if (session.timeoutRef) clearTimeout(session.timeoutRef);
+  activeSessions.delete(sessionId);
+
+  const accepted = session.players.filter(p => p.status === 'accepted');
+  if (accepted.length < 2) {
+    await client.sendMessage(groupChatId, `❌ No hay suficientes jugadores para iniciar el Blackjack PvP.`);
+    return;
+  }
+
+  // Deduct gold and setup
+  const finalPlayers = [];
+  for (const p of accepted) {
+    const dbPlayer = await getPlayer(p.playerPhone);
+    const currentUsos = await getBlackjackUsage(p.playerId);
+    if (!dbPlayer || dbPlayer.gold < session.bet || currentUsos >= 5) {
+      await client.sendMessage(groupChatId, `⚠️ *${p.username}* fue excluido porque no tiene oro suficiente o alcanzó el límite de usos.`);
+      continue;
+    }
+    
+    await updateGold(p.playerId, -session.bet);
+    await incrementBlackjackUsage(p.playerId);
+    
+    p.status = 'playing';
+    p.responseReceived = false;
+    p.lastAction = null;
+    finalPlayers.push(p);
+  }
+
+  if (finalPlayers.length < 2) {
+    for (const p of finalPlayers) {
+        await updateGold(p.playerId, session.bet);
+    }
+    await client.sendMessage(groupChatId, `❌ No hay suficientes jugadores válidos para iniciar la partida. Reembolso emitido.`);
+    return;
+  }
+
+  session.players = finalPlayers;
+  session.deck = shuffle(createDeck());
+  for (const p of session.players) {
+    p.cards = [session.deck.pop()];
+  }
+  session.state = 'playing';
+
+  const boardText = formatMultiplayerBoard(session);
+  const replyMsg = await client.sendMessage(groupChatId, boardText);
+  const newSessionId = replyMsg.id._serialized;
+
+  session.timeoutRef = setTimeout(() => {
+    handleMultiplayerTimeout(client, newSessionId);
+  }, 5 * 60 * 1000);
+
+  activeSessions.set(newSessionId, session);
+}
+
 // Resolve the current round in a multiplayer PvP session
 async function resolveMultiplayerRound(client, sessionId, session, groupChatId) {
   if (session.timeoutRef) {
@@ -619,6 +694,21 @@ async function handleMultiplayerTimeout(client, sessionId) {
   try {
     const session = activeSessions.get(sessionId);
     if (!session) return;
+
+    if (session.state === 'pending') {
+      let changed = false;
+      for (const p of session.players) {
+        if (p.status === 'pending') {
+          p.status = 'denied';
+          p.responseReceived = true;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await startMultiplayerGame(client, sessionId, session, session.groupChatId);
+      }
+      return;
+    }
 
     let changed = false;
     for (const p of session.players) {
