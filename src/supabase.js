@@ -572,72 +572,69 @@ export async function hasClaimedDailyReward(playerId) {
 }
 
 export async function getDadosUsage(playerId) {
-  const claimDate = formatAsuncionDateKey();
-  const { data, error } = await supabase
-    .from('bot_daily_claims')
-    .select('reward_gold')
-    .eq('player_id', playerId)
-    .eq('claim_type', 'dados_usage')
-    .eq('claim_date', claimDate)
-    .maybeSingle();
-
-  if (error && error.code !== 'PGRST116') {
-    console.error('[getDadosUsage]', error.message);
-  }
-
-  return data ? data.reward_gold : 0;
+  return getBotUsageCount(playerId, 'dados_usage', 'getDadosUsage');
 }
 
 export async function incrementDadosUsage(playerId) {
-  const claimDate = formatAsuncionDateKey();
-  const current = await getDadosUsage(playerId);
-  
-  const { error } = await supabase
-    .from('bot_daily_claims')
-    .upsert({
-      player_id: playerId,
-      claim_type: 'dados_usage',
-      claim_date: claimDate,
-      reward_gold: current + 1
-    }, { onConflict: 'player_id, claim_type, claim_date' });
-    
-  if (error) {
-    console.error('[incrementDadosUsage]', error.message);
-  }
+  return incrementBotUsageCount(playerId, 'dados_usage', getDadosUsage, 'incrementDadosUsage');
 }
 
 export async function getBlackjackUsage(playerId) {
+  return getBotUsageCount(playerId, 'blackjack_usage', 'getBlackjackUsage');
+}
+
+export async function incrementBlackjackUsage(playerId) {
+  return incrementBotUsageCount(playerId, 'blackjack_usage', getBlackjackUsage, 'incrementBlackjackUsage');
+}
+
+export async function getCofreUsage(playerId) {
+  return getBotUsageCount(playerId, 'cofre_usage', 'getCofreUsage');
+}
+
+export async function incrementCofreUsage(playerId) {
+  return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage');
+}
+
+export async function getTrampaUsage(playerId) {
+  return getBotUsageCount(playerId, 'trampa_usage', 'getTrampaUsage');
+}
+
+export async function incrementTrampaUsage(playerId) {
+  return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage');
+}
+
+async function getBotUsageCount(playerId, claimType, logLabel) {
   const claimDate = formatAsuncionDateKey();
   const { data, error } = await supabase
     .from('bot_daily_claims')
     .select('reward_gold')
     .eq('player_id', playerId)
-    .eq('claim_type', 'blackjack_usage')
+    .eq('claim_type', claimType)
     .eq('claim_date', claimDate)
     .maybeSingle();
 
   if (error && error.code !== 'PGRST116') {
-    console.error('[getBlackjackUsage]', error.message);
+    console.error(`[${logLabel}]`, error.message);
   }
 
   return data ? data.reward_gold : 0;
 }
 
-export async function incrementBlackjackUsage(playerId) {
+async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logLabel) {
   const claimDate = formatAsuncionDateKey();
-  const current = await getBlackjackUsage(playerId);
-  
+  const current = await getCurrentUsage(playerId);
+
   const { error } = await supabase
     .from('bot_daily_claims')
     .upsert({
       player_id: playerId,
-      claim_type: 'blackjack_usage',
+      claim_type: claimType,
       claim_date: claimDate,
       reward_gold: current + 1
     }, { onConflict: 'player_id, claim_type, claim_date' });
-    
+
   if (error) {
-    console.error('[incrementBlackjackUsage]', error.message);
+    console.error(`[${logLabel}]`, error.message);
   }
 }
 

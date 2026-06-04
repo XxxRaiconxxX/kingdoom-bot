@@ -5,7 +5,7 @@ import qrcodeImage from 'qrcode';
 import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
-import { handleDados, handleOraculo } from './handlers/games.js';
+import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
@@ -473,6 +473,10 @@ client.on('message', async (msg) => {
       reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
     } else if (command === 'dados') {
       reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+    } else if (command === 'cofre') {
+      reply = await handleCofre(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+    } else if (command === 'trampa') {
+      reply = await handleTrampa(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === 'oraculo') {
       reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === '21') {

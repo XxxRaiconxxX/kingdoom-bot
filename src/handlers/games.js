@@ -1,6 +1,52 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
+
+const DAILY_MAX_COFRE = 4;
+const DAILY_MAX_TRAMPA = 4;
+
+const COFRE_TABLE = [
+  { chance: 20, gold: 0, label: 'Cofre vacio.' },
+  { chance: 25, gold: 2000, label: '+2.000 oro' },
+  { chance: 20, gold: 5000, label: '+5.000 oro' },
+  { chance: 15, gold: 10000, label: '+10.000 oro' },
+  { chance: 10, gold: 20000, label: '+20.000 oro' },
+  { chance: 7, gold: 35000, label: '+35.000 oro' },
+  { chance: 3, gold: 50000, label: '+50.000 oro' },
+];
+
+const TRAMPA_TABLE = [
+  { chance: 35, multiplier: 0, label: 'Perdiste la apuesta.' },
+  { chance: 25, multiplier: 1, label: 'Recuperaste exactamente tu apuesta.' },
+  { chance: 18, multiplier: 1.25, label: 'Ganaste poco (+25%).' },
+  { chance: 10, multiplier: 1.5, label: 'Ganaste medio (+50%).' },
+  { chance: 7, multiplier: 1.75, label: 'Ganaste alto (+75%).' },
+  { chance: 5, multiplier: 2, label: 'Jackpot x2.' },
+];
+
+function formatGold(value) {
+  return Number(value ?? 0).toLocaleString('es-PY');
+}
+
+function isWeekendDay(date = new Date()) {
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
+}
+
+function resolveWeightedResult(table) {
+  const roll = Math.random() * 100;
+  let threshold = 0;
+
+  for (const entry of table) {
+    threshold += entry.chance;
+    if (roll < threshold) {
+      return entry;
+    }
+  }
+
+  return table[table.length - 1];
+}
+
 
 export async function handleDados(msg) {
   const parts = msg.body.split(' ');
@@ -47,6 +93,90 @@ export async function handleDados(msg) {
     heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
     heraldStat('Usos restantes', `${remainingUsos}/${maxUsos}`),
   ], { icon: '🎲' });
+}
+
+
+export async function handleCofre(msg) {
+  const sender = msg.author || msg.from;
+  const player = await getPlayer(sender);
+
+  if (!player) return `No estas registrado. Escribi *!registrar TuNombre*`;
+
+  const currentUsos = await getCofreUsage(player.id);
+  if (currentUsos >= DAILY_MAX_COFRE) {
+    return `Alcanzaste el limite diario de cofres (${DAILY_MAX_COFRE}/${DAILY_MAX_COFRE}). Vuelve manana para abrir otro.`;
+  }
+
+  const result = resolveWeightedResult(COFRE_TABLE);
+  const nextUsos = currentUsos + 1;
+  const nuevoTotal = player.gold + result.gold;
+
+  try {
+    if (result.gold > 0) {
+      await updateGold(player.id, result.gold);
+    }
+    await incrementCofreUsage(player.id);
+  } catch {
+    return `Error al abrir el cofre. Intenta de nuevo.`;
+  }
+
+  return heraldCard('Cofre del Reino', [
+    `${player.username} abrio un cofre antiguo...`,
+    `Resultado: ${result.label}`,
+    heraldStat('Usos restantes', `${DAILY_MAX_COFRE - nextUsos}/${DAILY_MAX_COFRE}`),
+    heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
+  ], { icon: '' });
+}
+
+export async function handleTrampa(msg) {
+  const parts = msg.body.split(' ');
+  const apuesta = parseInt((parts[1] ?? '').replace(/\./g, ''), 10);
+  const sender = msg.author || msg.from;
+  const player = await getPlayer(sender);
+
+  if (!player) return `No estas registrado. Escribi *!registrar TuNombre*`;
+  if (!apuesta || isNaN(apuesta) || apuesta < 10) return `Usa: *!trampa 100* (minimo 10 oro)`;
+  if (apuesta > player.gold) return `No tenes suficiente oro.\nTenes: ${formatGold(player.gold)}`;
+
+  const weekend = isWeekendDay();
+  const maxApuesta = weekend ? 500000 : 100000;
+  if (apuesta > maxApuesta) {
+    return `La apuesta maxima por ronda es de *${formatGold(maxApuesta)} oro*${weekend ? ' durante el fin de semana' : ''}.`;
+  }
+
+  const currentUsos = await getTrampaUsage(player.id);
+  if (currentUsos >= DAILY_MAX_TRAMPA) {
+    return `Alcanzaste el limite diario de trampas (${DAILY_MAX_TRAMPA}/${DAILY_MAX_TRAMPA}). Vuelve manana para tentar a la suerte.`;
+  }
+
+  const result = resolveWeightedResult(TRAMPA_TABLE);
+  const retorno = Math.floor(apuesta * result.multiplier);
+  const deltaNeto = retorno - apuesta;
+  const nextUsos = currentUsos + 1;
+  const nuevoTotal = player.gold + deltaNeto;
+
+  try {
+    if (deltaNeto !== 0) {
+      await updateGold(player.id, deltaNeto);
+    }
+    await incrementTrampaUsage(player.id);
+  } catch {
+    return `Error al activar la trampa. Intenta de nuevo.`;
+  }
+
+  const resultadoEconomico = deltaNeto > 0
+    ? `+${formatGold(deltaNeto)} oro netos`
+    : deltaNeto < 0
+      ? `-${formatGold(Math.abs(deltaNeto))} oro`
+      : `Sin perdida ni ganancia`;
+
+  return heraldCard('Trampa del Reino', [
+    `${player.username} activo un mecanismo oscuro...`,
+    `Resultado: ${result.label}`,
+    resultadoEconomico,
+    heraldStat('Usos restantes', `${DAILY_MAX_TRAMPA - nextUsos}/${DAILY_MAX_TRAMPA}`),
+    heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
+  ], { icon: '' });
 }
 
 const oraculoMemory = new Map();
