@@ -286,7 +286,7 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 2) + 1;
+  const numEvents = Math.floor(Math.random() * 3) + 2;
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
