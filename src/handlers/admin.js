@@ -279,15 +279,15 @@ export async function handleAdminCommand(msg, client) {
     } else {
       // Caso 2: Sin responder -> !registrar <celular> <nombre> [oro]
       if (parts.length < 3) {
-        return `❌ *Error de registro:*\n` +
-               `*Opción A (Copiado/Respondiendo):* Cita el mensaje del jugador con: \`!registrar <nombre> [oro]\`\n` +
-               `*Opción B (Directo/Manual):* Escribe de forma directa: \`!registrar <celular> <nombre> [oro]\``;
+        return `*Error de registro:*\n` +
+               `*Opcion A (Copiado/Respondiendo):* Cita el mensaje del jugador con: \`!registrar <nombre> [oro]\`\n` +
+               `*Opcion B (Directo/Manual):* Escribe de forma directa: \`!registrar <celular> <nombre> [oro]\``;
       }
       if (!isLikelyPhone(parts[1])) {
-        return `âŒ *Registro cancelado por formato invalido.*\n` +
+        return `*Registro cancelado por formato invalido.*\n` +
                `Parece que intentaste usar \`!registrar <nombre> [oro]\` sin citar el mensaje del jugador.\n` +
-               `*OpciÃ³n A:* responde al mensaje del jugador con \`!registrar <nombre> [oro]\`\n` +
-               `*OpciÃ³n B:* usa el formato manual \`!registrar <celular> <nombre> [oro]\``;
+               `*Opcion A:* responde al mensaje del jugador con \`!registrar <nombre> [oro]\`\n` +
+               `*Opcion B:* usa el formato manual \`!registrar <celular> <nombre> [oro]\``;
       }
       targetPhone = parts[1];
       username = parts[2];
