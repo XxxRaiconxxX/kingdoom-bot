@@ -6,13 +6,13 @@ const DAILY_MAX_COFRE = 4;
 const DAILY_MAX_TRAMPA = 4;
 
 const COFRE_TABLE = [
-  { chance: 20, gold: 0, label: 'Cofre vacio.' },
-  { chance: 25, gold: 2000, label: '+2.000 oro' },
-  { chance: 20, gold: 5000, label: '+5.000 oro' },
+  { chance: 22, gold: 0, label: 'Cofre vacio.' },
+  { chance: 27, gold: 2000, label: '+2.000 oro' },
+  { chance: 22, gold: 5000, label: '+5.000 oro' },
   { chance: 15, gold: 10000, label: '+10.000 oro' },
-  { chance: 10, gold: 20000, label: '+20.000 oro' },
-  { chance: 7, gold: 35000, label: '+35.000 oro' },
-  { chance: 3, gold: 50000, label: '+50.000 oro' },
+  { chance: 8, gold: 20000, label: '+20.000 oro' },
+  { chance: 4, gold: 35000, label: '+35.000 oro' },
+  { chance: 2, gold: 50000, label: '+50.000 oro' },
 ];
 
 const TRAMPA_TABLE = [
