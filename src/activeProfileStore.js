@@ -5,12 +5,19 @@ import { normalizePhone } from './adminStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const storePath = path.join(__dirname, 'data', 'active_profiles.json');
+const legacyStorePath = path.join(__dirname, 'data', 'active_profiles.json');
+const storePath = path.join(__dirname, '..', '.wwebjs_auth', 'state', 'active_profiles.json');
 
 function initStore() {
   const dir = path.dirname(storePath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(storePath)) fs.writeFileSync(storePath, '{}', 'utf-8');
+  if (!fs.existsSync(storePath)) {
+    if (fs.existsSync(legacyStorePath)) {
+      fs.copyFileSync(legacyStorePath, storePath);
+    } else {
+      fs.writeFileSync(storePath, '{}', 'utf-8');
+    }
+  }
 }
 
 export function getActiveProfile(whatsappNumber) {
