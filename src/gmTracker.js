@@ -1,5 +1,4 @@
-import { getMissionByShortId, updateMissionNotebookId, getFormattedGrimoire, getFormattedEncyclopedia } from './supabase.js';
-import { spawn } from 'child_process';
+import { getMissionByShortId } from './supabase.js';
 
 const activeMissions = new Map();
 const MAX_TRACKED_CONTEXT_ENTRIES = 8;
@@ -538,26 +537,7 @@ export async function startMissionTracker(shortId, maxParticipants) {
     return { success: false, message: `Error: Mision no encontrada con ID que empiece con: ${shortId}` };
   }
 
-  // Si no tiene libreta y tenemos cookies configuradas, la creamos en caliente
-  if (!mission.notebook_id && process.env.NOTEBOOKLM_COOKIES) {
-    console.log(`[NotebookLM Auto-Provision] Misión "${mission.title}" no tiene libreta. Iniciando creación en caliente...`);
-    try {
-      const gmPrompt = buildGMPrompt();
-      const grimorio = await getFormattedGrimoire();
-      const enciclopedia = await getFormattedEncyclopedia();
-      
-      const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt, grimorio, enciclopedia);
-      if (notebookId) {
-        const success = await updateMissionNotebookId(mission.id, notebookId);
-        if (success) {
-          console.log(`[NotebookLM Auto-Provision] ✅ Misión "${mission.title}" vinculada con éxito al Notebook ID: ${notebookId}`);
-          mission.notebook_id = notebookId;
-        }
-      }
-    } catch (err) {
-      console.error(`[NotebookLM Auto-Provision] ❌ Error creando libreta para "${mission.title}":`, err.message);
-    }
-  }
+
 
   const parsedMission = parseMissionConfig(mission.instructions);
   const normalizedShortId = shortId.toUpperCase();
@@ -567,8 +547,7 @@ export async function startMissionTracker(shortId, maxParticipants) {
     title: mission.title,
     instructions: parsedMission.instructions,
     gmConfig: parsedMission.gmConfig,
-    notebookId: mission.notebook_id || null,
-    conversationId: null,
+
     playerMessageCount: 0,
     gmRoundCount: 0,
     resolved: false,
@@ -580,54 +559,9 @@ export async function startMissionTracker(shortId, maxParticipants) {
 
   return {
     success: true,
-    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada.\nEl bot Game Master esperara el rol de *${maxParticipants}* participantes antes de intervenir.${mission.notebook_id ? '\n🧠 *Motor:* Google NotebookLM' : '\n🤖 *Motor:* Gemini standard'}`,
+    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada.\nEl bot Game Master esperara el rol de *${maxParticipants}* participantes antes de intervenir.\n🤖 *Motor:* Gemini standard`,
     mission,
   };
-}
-
-function provisionNotebook(title, instructions, gmPrompt, grimorioContent = '', enciclopediaContent = '') {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', ['src/scripts/notebooklm_provisioner.py']);
-    let stdoutData = '';
-    let stderrData = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderrData += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`Python provision process exited with code ${code}. Stderr: ${stderrData}`));
-      }
-      try {
-        const result = JSON.parse(stdoutData.trim());
-        if (result.error) {
-          return reject(new Error(result.error));
-        }
-        resolve(result.notebook_id);
-      } catch (err) {
-        reject(new Error(`Failed to parse Python stdout: ${stdoutData}. Error: ${err.message}`));
-      }
-    });
-
-    pythonProcess.on('error', (err) => {
-      reject(new Error(`Failed to spawn Python provision process: ${err.message}`));
-    });
-
-    const inputPayload = JSON.stringify({
-      title: title,
-      instructions: instructions,
-      gm_prompt: gmPrompt,
-      grimorio_content: grimorioContent,
-      enciclopedia_content: enciclopediaContent
-    });
-    pythonProcess.stdin.write(inputPayload);
-    pythonProcess.stdin.end();
-  });
 }
 
 /**
@@ -881,8 +815,7 @@ export function processTrackerMessage(text, participantId) {
           missionTitle: state.title,
           missionInstructions: state.instructions,
           missionGmConfig: state.gmConfig,
-          notebookId: state.notebookId,
-          conversationId: state.conversationId,
+
           gmRuntimeState: {
             gmRoundCount: state.gmRoundCount,
             playerMessageCount: state.playerMessageCount,
@@ -961,10 +894,4 @@ export function buildFallbackCompletedGMResponse(responseText) {
   ].join('\n');
 }
 
-export function setMissionConversationId(shortId, conversationId) {
-  const normalizedShortId = String(shortId ?? '').toUpperCase();
-  const state = activeMissions.get(normalizedShortId);
-  if (state) {
-    state.conversationId = conversationId;
-  }
-}
+
