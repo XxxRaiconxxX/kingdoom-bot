@@ -1,4 +1,5 @@
-import { getMissionByShortId } from './supabase.js';
+import { getMissionByShortId, updateMissionNotebookId } from './supabase.js';
+import { spawn } from 'child_process';
 
 const activeMissions = new Map();
 const MAX_TRACKED_CONTEXT_ENTRIES = 8;
@@ -532,9 +533,27 @@ function formatRuntimeState(runtimeState) {
  * @param {number} maxParticipants - Wait for this many players
  */
 export async function startMissionTracker(shortId, maxParticipants) {
-  const mission = await getMissionByShortId(shortId);
+  let mission = await getMissionByShortId(shortId);
   if (!mission) {
     return { success: false, message: `Error: Mision no encontrada con ID que empiece con: ${shortId}` };
+  }
+
+  // Si no tiene libreta y tenemos cookies configuradas, la creamos en caliente
+  if (!mission.notebook_id && process.env.NOTEBOOKLM_COOKIES) {
+    console.log(`[NotebookLM Auto-Provision] Misión "${mission.title}" no tiene libreta. Iniciando creación en caliente...`);
+    try {
+      const gmPrompt = buildGMPrompt();
+      const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt);
+      if (notebookId) {
+        const success = await updateMissionNotebookId(mission.id, notebookId);
+        if (success) {
+          console.log(`[NotebookLM Auto-Provision] ✅ Misión "${mission.title}" vinculada con éxito al Notebook ID: ${notebookId}`);
+          mission.notebook_id = notebookId;
+        }
+      }
+    } catch (err) {
+      console.error(`[NotebookLM Auto-Provision] ❌ Error creando libreta para "${mission.title}":`, err.message);
+    }
   }
 
   const parsedMission = parseMissionConfig(mission.instructions);
@@ -558,9 +577,52 @@ export async function startMissionTracker(shortId, maxParticipants) {
 
   return {
     success: true,
-    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada.\nEl bot Game Master esperara el rol de *${maxParticipants}* participantes antes de intervenir.`,
+    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada.\nEl bot Game Master esperara el rol de *${maxParticipants}* participantes antes de intervenir.${mission.notebook_id ? '\n🧠 *Motor:* Google NotebookLM' : '\n🤖 *Motor:* Gemini standard'}`,
     mission,
   };
+}
+
+function provisionNotebook(title, instructions, gmPrompt) {
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python3', ['src/scripts/notebooklm_provisioner.py']);
+    let stdoutData = '';
+    let stderrData = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      stderrData += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`Python provision process exited with code ${code}. Stderr: ${stderrData}`));
+      }
+      try {
+        const result = JSON.parse(stdoutData.trim());
+        if (result.error) {
+          return reject(new Error(result.error));
+        }
+        resolve(result.notebook_id);
+      } catch (err) {
+        reject(new Error(`Failed to parse Python stdout: ${stdoutData}. Error: ${err.message}`));
+      }
+    });
+
+    pythonProcess.on('error', (err) => {
+      reject(new Error(`Failed to spawn Python provision process: ${err.message}`));
+    });
+
+    const inputPayload = JSON.stringify({
+      title: title,
+      instructions: instructions,
+      gm_prompt: gmPrompt
+    });
+    pythonProcess.stdin.write(inputPayload);
+    pythonProcess.stdin.end();
+  });
 }
 
 /**
