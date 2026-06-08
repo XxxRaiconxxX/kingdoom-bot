@@ -11,6 +11,8 @@ async def main():
         title = input_data.get("title")
         instructions = input_data.get("instructions")
         gm_prompt = input_data.get("gm_prompt")
+        grimorio_content = input_data.get("grimorio_content")
+        enciclopedia_content = input_data.get("enciclopedia_content")
 
         if not title or not instructions or not gm_prompt:
             print(json.dumps({"error": "Missing title, instructions or gm_prompt in input"}))
@@ -99,6 +101,22 @@ async def main():
                     text=instructions,
                     title=f"Lore e Indicaciones de la Mision - {title}"
                 )
+
+                # 4. Add Grimoire Source if provided
+                if grimorio_content:
+                    await client.sources.add_text(
+                        notebook_id=nb.id,
+                        text=grimorio_content,
+                        title="Grimorio Oficial de Magias y Hechizos"
+                    )
+
+                # 5. Add Encyclopedia Source if provided
+                if enciclopedia_content:
+                    await client.sources.add_text(
+                        notebook_id=nb.id,
+                        text=enciclopedia_content,
+                        title="Enciclopedia y Codex del Reino"
+                    )
                 
                 # Output success JSON
                 output = {

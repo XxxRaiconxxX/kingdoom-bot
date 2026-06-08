@@ -884,3 +884,77 @@ export async function updateMissionNotebookId(missionId, notebookId) {
   }
   return true;
 }
+
+export async function getFormattedGrimoire() {
+  const { data, error } = await supabase
+    .from('grimoire_magic_styles')
+    .select('category_title, title, description, levels')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[getFormattedGrimoire] Error fetching:', error.message);
+    return '';
+  }
+
+  if (!data || data.length === 0) return 'No hay magias registradas en el grimorio.';
+
+  let text = `# GRIMORIO OFICIAL DE MAGIAS Y HECHIZOS DEL REINO\n\n`;
+  text += `Este documento contiene la lista canónica de escuelas de magia, hechizos, niveles, cooldowns (CD), límites y efectos. El GM debe apegarse estrictamente a esta lista para juzgar el uso de magia por parte de los jugadores.\n\n`;
+
+  for (const style of data) {
+    text += `=========================================\n`;
+    text += `ESCUELA MÁGICA: ${style.title} (${style.category_title || 'General'})\n`;
+    text += `=========================================\n`;
+    text += `${style.description || 'Sin descripción.'}\n\n`;
+
+    if (style.levels && typeof style.levels === 'object') {
+      for (const [lvl, spells] of Object.entries(style.levels)) {
+        text += `### NIVEL ${lvl}\n`;
+        if (Array.isArray(spells)) {
+          for (const spell of spells) {
+            text += `- **Nombre:** ${spell.name || 'Sin nombre'}\n`;
+            text += `  - **Cooldown (CD):** ${spell.cd || 'No especificado'}\n`;
+            text += `  - **Límite/Condición:** ${spell.limit || 'Ninguno'}\n`;
+            text += `  - **Efecto:** ${spell.effect || 'No especificado'}\n`;
+            if (spell.antiManoNegra) {
+              text += `  - **Contra-medida (Anti-Mano Negra):** ${spell.antiManoNegra}\n`;
+            }
+            text += `\n`;
+          }
+        } else {
+          text += `(No hay hechizos declarados para este nivel)\n\n`;
+        }
+      }
+    }
+    text += `\n`;
+  }
+
+  return text;
+}
+
+export async function getFormattedEncyclopedia() {
+  const { data, error } = await supabase
+    .from('knowledge_documents')
+    .select('title, type, category, content')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[getFormattedEncyclopedia] Error fetching:', error.message);
+    return '';
+  }
+
+  if (!data || data.length === 0) return 'No hay documentos de lore registrados en la enciclopedia.';
+
+  let text = `# ENCICLOPEDIA, LORE Y CODEX DEL REINO\n\n`;
+  text += `Este documento contiene la historia oficial, facciones, geopolítica, razas y el reglamento del sistema de combate del reino de KingDoom. El GM debe usar esta información para dar consistencia y coherencia a la narrativa.\n\n`;
+
+  for (const doc of data) {
+    text += `=========================================\n`;
+    text += `DOCUMENTO: ${doc.title} [Tipo: ${doc.type || 'General'} | Categoría: ${doc.category || 'Lore'}]\n`;
+    text += `=========================================\n\n`;
+    text += `${doc.content || 'Sin contenido.'}\n\n`;
+    text += `\n`;
+  }
+
+  return text;
+}

@@ -1,4 +1,4 @@
-import { getMissionByShortId, updateMissionNotebookId } from './supabase.js';
+import { getMissionByShortId, updateMissionNotebookId, getFormattedGrimoire, getFormattedEncyclopedia } from './supabase.js';
 import { spawn } from 'child_process';
 
 const activeMissions = new Map();
@@ -543,7 +543,10 @@ export async function startMissionTracker(shortId, maxParticipants) {
     console.log(`[NotebookLM Auto-Provision] Misión "${mission.title}" no tiene libreta. Iniciando creación en caliente...`);
     try {
       const gmPrompt = buildGMPrompt();
-      const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt);
+      const grimorio = await getFormattedGrimoire();
+      const enciclopedia = await getFormattedEncyclopedia();
+      
+      const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt, grimorio, enciclopedia);
       if (notebookId) {
         const success = await updateMissionNotebookId(mission.id, notebookId);
         if (success) {
@@ -582,7 +585,7 @@ export async function startMissionTracker(shortId, maxParticipants) {
   };
 }
 
-function provisionNotebook(title, instructions, gmPrompt) {
+function provisionNotebook(title, instructions, gmPrompt, grimorioContent = '', enciclopediaContent = '') {
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', ['src/scripts/notebooklm_provisioner.py']);
     let stdoutData = '';
@@ -618,7 +621,9 @@ function provisionNotebook(title, instructions, gmPrompt) {
     const inputPayload = JSON.stringify({
       title: title,
       instructions: instructions,
-      gm_prompt: gmPrompt
+      gm_prompt: gmPrompt,
+      grimorio_content: grimorioContent,
+      enciclopedia_content: enciclopediaContent
     });
     pythonProcess.stdin.write(inputPayload);
     pythonProcess.stdin.end();

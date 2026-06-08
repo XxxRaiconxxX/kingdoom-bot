@@ -8,7 +8,7 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity, getMissionsWithMissingNotebooks, updateMissionNotebookId } from './supabase.js';
+import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity, getMissionsWithMissingNotebooks, updateMissionNotebookId, getFormattedGrimoire, getFormattedEncyclopedia } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, setMissionConversationId } from './gmTracker.js';
@@ -347,11 +347,15 @@ async function autoProvisionMissions() {
 
     console.log(`[NotebookLM Auto-Provision] Se encontraron ${missions.length} misiones pendientes de libreta.`);
     const gmPrompt = buildGMPrompt();
+    
+    // Obtener grimorio y enciclopedia de la base de datos una sola vez
+    const grimorio = await getFormattedGrimoire();
+    const enciclopedia = await getFormattedEncyclopedia();
 
     for (const mission of missions) {
       console.log(`[NotebookLM Auto-Provision] Creando libreta para: "${mission.title}"...`);
       try {
-        const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt);
+        const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt, grimorio, enciclopedia);
         if (notebookId) {
           const success = await updateMissionNotebookId(mission.id, notebookId);
           if (success) {
@@ -367,7 +371,7 @@ async function autoProvisionMissions() {
   }
 }
 
-function provisionNotebook(title, instructions, gmPrompt) {
+function provisionNotebook(title, instructions, gmPrompt, grimorioContent = '', enciclopediaContent = '') {
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', ['src/scripts/notebooklm_provisioner.py']);
     let stdoutData = '';
@@ -404,7 +408,9 @@ function provisionNotebook(title, instructions, gmPrompt) {
     const inputPayload = JSON.stringify({
       title: title,
       instructions: instructions,
-      gm_prompt: gmPrompt
+      gm_prompt: gmPrompt,
+      grimorio_content: grimorioContent,
+      enciclopedia_content: enciclopediaContent
     });
     pythonProcess.stdin.write(inputPayload);
     pythonProcess.stdin.end();
