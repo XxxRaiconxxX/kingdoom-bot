@@ -858,3 +858,29 @@ export async function getMissionByShortId(prefix) {
   const match = data.find(m => m.id.toLowerCase().startsWith(normalizedPrefix));
   return match || null;
 }
+
+export async function getMissionsWithMissingNotebooks() {
+  const { data, error } = await supabase
+    .from('realm_missions')
+    .select('id, title, instructions')
+    .is('notebook_id', null);
+
+  if (error) {
+    console.error('[getMissionsWithMissingNotebooks] Error:', error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export async function updateMissionNotebookId(missionId, notebookId) {
+  const { error } = await supabase
+    .from('realm_missions')
+    .update({ notebook_id: notebookId })
+    .eq('id', missionId);
+
+  if (error) {
+    console.error('[updateMissionNotebookId] Error:', error.message);
+    return false;
+  }
+  return true;
+}
