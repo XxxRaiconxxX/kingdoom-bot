@@ -1,4 +1,5 @@
 import http from 'http';
+import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
@@ -10,7 +11,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, setMissionConversationId } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
@@ -282,6 +283,50 @@ client.on('group_join', async (notification) => {
   }
 });
 
+function askNotebookLM(notebookId, prompt, conversationId = null) {
+  return new Promise((resolve, reject) => {
+    const pythonProcess = spawn('python3', ['src/scripts/notebooklm_helper.py']);
+    let stdoutData = '';
+    let stderrData = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      stdoutData += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      stderrData += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`Python process exited with code ${code}. Stderr: ${stderrData}`));
+      }
+      try {
+        const result = JSON.parse(stdoutData.trim());
+        if (result.error) {
+          return reject(new Error(result.error));
+        }
+        resolve(result);
+      } catch (err) {
+        reject(new Error(`Failed to parse Python stdout: ${stdoutData}. Error: ${err.message}`));
+      }
+    });
+
+    pythonProcess.on('error', (err) => {
+      reject(new Error(`Failed to spawn Python process: ${err.message}`));
+    });
+
+    // Write input JSON to stdin
+    const inputPayload = JSON.stringify({
+      notebook_id: notebookId,
+      conversation_id: conversationId,
+      prompt: prompt
+    });
+    pythonProcess.stdin.write(inputPayload);
+    pythonProcess.stdin.end();
+  });
+}
+
 const activityCache = new Map();
 
 client.on('message', async (msg) => {
@@ -360,11 +405,39 @@ client.on('message', async (msg) => {
       await msg.reply('*El Game Master esta escribiendo la narrativa...*');
       await sleep(getRandomDelayMs(800, 1500));
 
-      const history = [{ role: 'user', content: gmUserPayload }];
-      let aiResponse = await askKingdoomAI(history, gmPrompt, {
-        maxEstimatedInputTokens: 6000,
-        maxOutputTokens: 2048,
-      });
+      let aiResponse = '';
+      let usedNotebookLM = false;
+
+      if (trackerResult.notebookId) {
+        console.log(`[GM Tracker] Iniciando consulta a NotebookLM para la misión ${trackerResult.shortId} (Notebook: ${trackerResult.notebookId})`);
+        try {
+          const combinedPrompt = `${gmPrompt}\n\n${gmUserPayload}`;
+          const notebookResult = await askNotebookLM(
+            trackerResult.notebookId,
+            combinedPrompt,
+            trackerResult.conversationId
+          );
+          
+          if (notebookResult && notebookResult.answer) {
+            aiResponse = notebookResult.answer;
+            if (notebookResult.conversation_id) {
+              setMissionConversationId(trackerResult.shortId, notebookResult.conversation_id);
+              console.log(`[GM Tracker] ID de conversación actualizado/guardado: ${notebookResult.conversation_id}`);
+            }
+            usedNotebookLM = true;
+          }
+        } catch (notebookErr) {
+          console.warn(`[GM Tracker] Error al consultar NotebookLM: ${notebookErr.message}. Realizando fallback a Gemini estándar.`);
+        }
+      }
+
+      if (!usedNotebookLM) {
+        const history = [{ role: 'user', content: gmUserPayload }];
+        aiResponse = await askKingdoomAI(history, gmPrompt, {
+          maxEstimatedInputTokens: 6000,
+          maxOutputTokens: 2048,
+        });
+      }
 
       let responseAssessment = assessGMResponse(aiResponse);
       if (responseAssessment.needsRepair) {

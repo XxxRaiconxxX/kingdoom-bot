@@ -545,6 +545,8 @@ export async function startMissionTracker(shortId, maxParticipants) {
     title: mission.title,
     instructions: parsedMission.instructions,
     gmConfig: parsedMission.gmConfig,
+    notebookId: mission.notebook_id || null,
+    conversationId: null,
     playerMessageCount: 0,
     gmRoundCount: 0,
     resolved: false,
@@ -700,6 +702,8 @@ export function processTrackerMessage(text, participantId) {
           missionTitle: state.title,
           missionInstructions: state.instructions,
           missionGmConfig: state.gmConfig,
+          notebookId: state.notebookId,
+          conversationId: state.conversationId,
           gmRuntimeState: {
             gmRoundCount: state.gmRoundCount,
             playerMessageCount: state.playerMessageCount,
@@ -776,4 +780,12 @@ export function buildFallbackCompletedGMResponse(responseText) {
     '',
     buildMissionStateBlock(safeMissionState),
   ].join('\n');
+}
+
+export function setMissionConversationId(shortId, conversationId) {
+  const normalizedShortId = String(shortId ?? '').toUpperCase();
+  const state = activeMissions.get(normalizedShortId);
+  if (state) {
+    state.conversationId = conversationId;
+  }
 }

@@ -845,7 +845,7 @@ export async function getMissionByShortId(prefix) {
   if (!prefix) return null;
   const { data, error } = await supabase
     .from('realm_missions')
-    .select('id, title, instructions');
+    .select('id, title, instructions, notebook_id');
 
   if (error) {
     console.error('[getMissionByShortId]', error.message);
