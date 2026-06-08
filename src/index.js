@@ -16,6 +16,7 @@ import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
 import { activeTreasures, handleTreasureReply } from './handlers/treasure.js';
+import { getMarketForgeSession } from './marketForgeStore.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -452,9 +453,21 @@ client.on('message', async (msg) => {
     }
   };
 
-  const isAdmin = await checkIsAdmin(sender);
-  const isStaff = isStaffUser(sender);
-  const isPrivileged = isAdmin || isStaff;
+  const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'];
+  const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
+  const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
+  const isPossibleAdminCmd = hasPrefix && ADMIN_COMMANDS.includes(command);
+
+  let isAdmin = false;
+  let isStaff = false;
+  let isPrivileged = false;
+
+  if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd) {
+    isAdmin = await checkIsAdmin(sender);
+    isStaff = isStaffUser(sender);
+    isPrivileged = isAdmin || isStaff;
+  }
+
   let reply = '';
 
   const wrapMsg = (originalMsg, newBody) => {
@@ -475,7 +488,7 @@ client.on('message', async (msg) => {
       reply = forgeReply;
     } else if (!hasPrefix) {
       return;
-    } else if (isAdmin && ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'].includes(command)) {
+    } else if (isAdmin && ADMIN_COMMANDS.includes(command)) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client
