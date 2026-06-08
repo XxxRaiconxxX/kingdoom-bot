@@ -11,7 +11,7 @@ import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
 import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
@@ -253,9 +253,17 @@ client.on('qr', async (qr) => {
   }
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
+  
+  try {
+    await initMissionTracker();
+    console.log('[index.js] Estado de misiones restaurado desde BD.');
+  } catch (error) {
+    console.error('[index.js] Error al restaurar misiones:', error);
+  }
+
   if (!schedulerStarted) {
     startScheduler(client);
     schedulerStarted = true;

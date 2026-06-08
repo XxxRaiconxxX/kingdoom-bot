@@ -1,4 +1,4 @@
-import { getMissionByShortId } from './supabase.js';
+import { getMissionByShortId, saveActiveMissionState, getActiveMissionsFromDb, deleteResolvedMission } from './supabase.js';
 
 const activeMissions = new Map();
 const MAX_TRACKED_CONTEXT_ENTRIES = 8;
@@ -526,6 +526,27 @@ function formatRuntimeState(runtimeState) {
   return lines.join('\n');
 }
 
+export async function initMissionTracker() {
+  const missions = await getActiveMissionsFromDb();
+  for (const m of missions) {
+    activeMissions.set(m.short_id.toUpperCase(), {
+      id: m.mission_id,
+      shortId: m.short_id.toUpperCase(),
+      title: m.title,
+      instructions: m.instructions,
+      gmConfig: m.gm_config,
+      maxParticipants: m.max_participants,
+      playerMessageCount: m.player_message_count || 0,
+      gmRoundCount: m.gm_round_count || 0,
+      context: m.context || [],
+      participantsCounted: new Set(m.participants_counted || []),
+      resolved: m.resolved || false,
+      finalState: m.final_state || null,
+    });
+  }
+  console.log(`[gmTracker] Restored ${missions.length} active missions from DB.`);
+}
+
 /**
  * Initiates tracking for a mission.
  * @param {string} shortId - Up to 6 digits of the mission UUID
@@ -541,7 +562,7 @@ export async function startMissionTracker(shortId, maxParticipants) {
 
   const parsedMission = parseMissionConfig(mission.instructions);
   const normalizedShortId = shortId.toUpperCase();
-  activeMissions.set(normalizedShortId, {
+  const state = {
     id: mission.id,
     shortId: normalizedShortId,
     title: mission.title,
@@ -555,7 +576,10 @@ export async function startMissionTracker(shortId, maxParticipants) {
     maxParticipants: parseInt(maxParticipants, 10) || 1,
     participantsCounted: new Set(),
     context: [],
-  });
+  };
+
+  activeMissions.set(normalizedShortId, state);
+  saveActiveMissionState(state).catch(console.error);
 
   return {
     success: true,
@@ -809,6 +833,8 @@ export function processTrackerMessage(text, participantId) {
         state.participantsCounted.clear();
         state.context = [];
 
+        saveActiveMissionState(state).catch(console.error);
+
         return {
           shouldTriggerGM: true,
           missionId: state.id,
@@ -825,6 +851,8 @@ export function processTrackerMessage(text, participantId) {
           shortId,
         };
       }
+      
+      saveActiveMissionState(state).catch(console.error);
       return {
         shouldTriggerGM: false,
         counted: true,
@@ -847,16 +875,20 @@ export function registerGMResponse(shortId, responseText) {
   state.gmRoundCount += 1;
   const missionState = parseMissionStateBlock(responseText);
   if (!missionState) {
+    saveActiveMissionState(state).catch(console.error);
     return { stateChanged: false, missionState: null, autoClosed: false };
   }
 
   if (canAutoResolveMission(state, missionState)) {
     state.resolved = true;
     state.finalState = missionState;
+    deleteResolvedMission(normalizedShortId).catch(console.error);
+    activeMissions.delete(normalizedShortId);
     return { stateChanged: true, missionState, autoClosed: true };
   }
 
   state.finalState = missionState;
+  saveActiveMissionState(state).catch(console.error);
   return { stateChanged: true, missionState, autoClosed: false };
 }
 
