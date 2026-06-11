@@ -142,15 +142,14 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
   }
 
   const baseModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  // Cadena de fallback: solo modelos reales y vigentes de la API de Google.
+  // (gemini-3.5-flash no existe -> 404 garantizado; gemini-1.5-flash esta retirado)
   const modelsToTry = [baseModel];
   if (baseModel !== 'gemini-2.5-flash') {
     modelsToTry.push('gemini-2.5-flash');
   }
-  if (baseModel !== 'gemini-3.5-flash') {
-    modelsToTry.push('gemini-3.5-flash');
-  }
-  if (baseModel !== 'gemini-1.5-flash') {
-    modelsToTry.push('gemini-1.5-flash');
+  if (baseModel !== 'gemini-2.0-flash') {
+    modelsToTry.push('gemini-2.0-flash');
   }
 
   const {

@@ -845,7 +845,7 @@ export async function getMissionByShortId(prefix) {
   if (!prefix) return null;
   const { data, error } = await supabase
     .from('realm_missions')
-    .select('id, title, instructions, notebook_id');
+    .select('id, title, instructions');
 
   if (error) {
     console.error('[getMissionByShortId]', error.message);
@@ -859,31 +859,9 @@ export async function getMissionByShortId(prefix) {
   return match || null;
 }
 
-export async function getMissionsWithMissingNotebooks() {
-  const { data, error } = await supabase
-    .from('realm_missions')
-    .select('id, title, instructions')
-    .is('notebook_id', null);
-
-  if (error) {
-    console.error('[getMissionsWithMissingNotebooks] Error:', error.message);
-    return [];
-  }
-  return data ?? [];
-}
-
-export async function updateMissionNotebookId(missionId, notebookId) {
-  const { error } = await supabase
-    .from('realm_missions')
-    .update({ notebook_id: notebookId })
-    .eq('id', missionId);
-
-  if (error) {
-    console.error('[updateMissionNotebookId] Error:', error.message);
-    return false;
-  }
-  return true;
-}
+// Las funciones getMissionsWithMissingNotebooks / updateMissionNotebookId se
+// eliminaron junto con la integracion NotebookLM (sin callers). La columna
+// notebook_id sigue existiendo en la BD pero el bot ya no la usa.
 
 export async function getFormattedGrimoire() {
   const { data, error } = await supabase

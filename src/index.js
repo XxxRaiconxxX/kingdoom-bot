@@ -240,7 +240,9 @@ const client = new Client({
       '--disable-gpu',
       '--no-first-run',
       '--no-zygote',
-      '--single-process',
+      // '--single-process' removido: es causa conocida de "Protocol error /
+      // Target closed / Session closed" con whatsapp-web.js, los mismos errores
+      // que disparan los reinicios del contenedor.
       '--disable-extensions',
       '--disable-accelerated-2d-canvas',
     ],
