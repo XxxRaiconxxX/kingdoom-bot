@@ -153,7 +153,15 @@ export async function dropTreasure(client) {
       `⏳ Tiempo limite: 5 minutos\n` +
       `🏆 Ganadores posibles: ${maxWinners}`;
 
-    const message = await client.sendMessage(TARGET_GROUP, text);
+    let message;
+    try {
+      const chat = await client.getChatById(TARGET_GROUP);
+      message = await chat.sendMessage(text);
+    } catch (err) {
+      console.log(`[Treasure] getChatById failed, attempting fallback client.sendMessage... (${err.message})`);
+      message = await client.sendMessage(TARGET_GROUP, text);
+    }
+
     const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
     const event = await createTreasureEvent({
       chatId: TARGET_GROUP,
@@ -166,7 +174,7 @@ export async function dropTreasure(client) {
     console.log(`[Treasure] Drop persistido. ID mensaje: ${event.message_id}, cupos: ${event.max_winners}`);
     return event;
   } catch (error) {
-    console.error('[Treasure Drop Error]', error);
+    console.error('[Treasure Drop Error] Detalle completo:', error.stack || error);
     return null;
   }
 }
