@@ -17,6 +17,13 @@ export const activeTreasures = new Map();
 
 let scheduledTimeouts = [];
 
+export function clearTreasureTimeouts() {
+  for (const timeoutId of scheduledTimeouts) {
+    clearTimeout(timeoutId);
+  }
+  scheduledTimeouts = [];
+}
+
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
@@ -127,6 +134,11 @@ async function buildClaimsSummary(messageId) {
 
 export async function dropTreasure(client) {
   try {
+    if (!client || !client.info) {
+      console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo drop.');
+      return null;
+    }
+
     if ([...activeTreasures.values()].some((treasure) => treasure.chatId === TARGET_GROUP)) {
       console.log('[Treasure] Ya existe un tesoro abierto en el grupo principal; se omite este disparo.');
       return null;
@@ -169,6 +181,11 @@ export async function closeTreasure(messageId, client, options = {}) {
   try {
     if (!skipStatusUpdate && reason === 'expired') {
       await expireTreasureEvent(messageId);
+    }
+
+    if (!client || !client.info) {
+      console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo mensaje de cierre.');
+      return;
     }
 
     const summary = await buildClaimsSummary(messageId);

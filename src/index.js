@@ -1,4 +1,5 @@
 import http from 'http';
+import fs from 'fs';
 import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
@@ -15,7 +16,7 @@ import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMRes
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
-import { activeTreasures, handleTreasureReply } from './handlers/treasure.js';
+import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 
 const { Client, LocalAuth } = pkg;
@@ -225,8 +226,10 @@ http.createServer(async (req, res) => {
   console.log(`Servidor web activo en puerto ${PORT}`);
 });
 
+const authDataPath = process.env.PERSISTENT_DATA_PATH || '/app/.wwebjs_auth';
+
 const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: '/app/.wwebjs_auth' }),
+  authStrategy: new LocalAuth({ dataPath: authDataPath }),
   authTimeoutMs: WHATSAPP_AUTH_TIMEOUT_MS,
   puppeteer: {
     headless: true,
@@ -237,6 +240,7 @@ const client = new Client({
       '--disable-gpu',
       '--no-first-run',
       '--no-zygote',
+      '--single-process',
       '--disable-extensions',
       '--disable-accelerated-2d-canvas',
     ],
@@ -273,11 +277,26 @@ client.on('ready', async () => {
 
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
+  console.error('La sesión de WhatsApp es invalida o expiro. Borrando carpeta de autenticacion...');
+  try {
+    if (fs.existsSync(authDataPath)) {
+      fs.rmSync(authDataPath, { recursive: true, force: true });
+      console.log('Carpeta de autenticacion borrada. Reiniciando el proceso para generar un nuevo QR...');
+    }
+    process.exit(1);
+  } catch (err) {
+    console.error('Error al borrar la carpeta de autenticacion:', err);
+  }
 });
 
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
   schedulerStarted = false;
+  try {
+    clearTreasureTimeouts();
+  } catch (e) {
+    console.error('Error limpiando timeouts de tesoros', e);
+  }
 });
 
 client.on('change_state', (state) => {
@@ -574,11 +593,33 @@ async function initializeClientWithRetry() {
 process.on('unhandledRejection', (reason) => {
   const formattedError = formatInitializeError(reason);
   console.error(`[process unhandledRejection] ${formattedError}`);
+  
+  if (
+    formattedError.includes('auth timeout') || 
+    formattedError.includes('ERR_TIMED_OUT') || 
+    formattedError.includes('Target closed') || 
+    formattedError.includes('Session closed') ||
+    formattedError.includes('Protocol error')
+  ) {
+    console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
+    process.exit(1);
+  }
 });
 
 process.on('uncaughtException', (error) => {
   const formattedError = formatInitializeError(error);
   console.error(`[process uncaughtException] ${formattedError}`);
+  
+  if (
+    formattedError.includes('auth timeout') || 
+    formattedError.includes('ERR_TIMED_OUT') || 
+    formattedError.includes('Target closed') || 
+    formattedError.includes('Session closed') ||
+    formattedError.includes('Protocol error')
+  ) {
+    console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
+    process.exit(1);
+  }
 });
 
 void initializeClientWithRetry();

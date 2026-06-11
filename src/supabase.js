@@ -1007,3 +1007,13 @@ export async function deleteResolvedMission(shortId) {
     console.error('[deleteResolvedMission] Error deleting resolved mission:', error.message);
   }
 }
+
+export async function processMarketInstallments() {
+  const { data, error } = await supabase.rpc('process_market_installments');
+  if (error) {
+    console.error('[processMarketInstallments] Error:', error.message);
+    throw new Error('No se pudieron procesar las cuotas.');
+  }
+  return data;
+}
+

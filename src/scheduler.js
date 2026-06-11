@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { supabase } from './supabase.js';
+import { supabase, processMarketInstallments } from './supabase.js';
 import { normalizePhone } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
@@ -36,6 +36,12 @@ async function sendToAll(client, buildMessage) {
       let activePlayer = linkedPlayers.find(p => p.id === activeId) || linkedPlayers[0];
 
       const msg = typeof buildMessage === 'function' ? buildMessage({ phone, username: activePlayer.username }) : buildMessage;
+      
+      if (!client || !client.info) {
+        console.log(`[scheduler] Cliente no inicializado o en estado zombie. Omitiendo mensaje a ${phone}`);
+        continue;
+      }
+      
       await client.sendMessage(`${phone}@c.us`, msg);
       await new Promise(r => setTimeout(r, 1500)); // anti-spam
     } catch (err) {
@@ -52,7 +58,14 @@ export function startScheduler(client) {
 
   // Reset diario — medianoche hora Paraguay
   cron.schedule('0 0 * * *', async () => {
-    console.log('[scheduler] Enviando reset diario...');
+    console.log('[scheduler] Iniciando reset diario y cobro de cuotas...');
+
+    try {
+      const results = await processMarketInstallments();
+      console.log('[scheduler] Cuotas de mercado procesadas:', results);
+    } catch (err) {
+      console.error('[scheduler] Error procesando cuotas de mercado:', err);
+    }
 
     void hydrateOpenTreasures(client);
 
