@@ -958,3 +958,52 @@ export async function getFormattedEncyclopedia() {
 
   return text;
 }
+
+export async function saveActiveMissionState(state) {
+  const payload = {
+    short_id: state.shortId,
+    mission_id: state.id,
+    title: state.title,
+    instructions: state.instructions,
+    gm_config: state.gmConfig,
+    max_participants: state.maxParticipants,
+    player_message_count: state.playerMessageCount,
+    gm_round_count: state.gmRoundCount,
+    context: state.context,
+    participants_counted: Array.from(state.participantsCounted || []),
+    resolved: state.resolved,
+    final_state: state.finalState
+  };
+
+  const { error } = await supabase
+    .from('bot_active_missions')
+    .upsert(payload, { onConflict: 'short_id' });
+
+  if (error) {
+    console.error('[saveActiveMissionState] Error saving mission state:', error.message);
+  }
+}
+
+export async function getActiveMissionsFromDb() {
+  const { data, error } = await supabase
+    .from('bot_active_missions')
+    .select('*')
+    .eq('resolved', false);
+
+  if (error) {
+    console.error('[getActiveMissionsFromDb] Error fetching active missions:', error.message);
+    return [];
+  }
+  return data ?? [];
+}
+
+export async function deleteResolvedMission(shortId) {
+  const { error } = await supabase
+    .from('bot_active_missions')
+    .delete()
+    .eq('short_id', shortId);
+
+  if (error) {
+    console.error('[deleteResolvedMission] Error deleting resolved mission:', error.message);
+  }
+}

@@ -8,10 +8,10 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity, getMissionsWithMissingNotebooks, updateMissionNotebookId, getFormattedGrimoire, getFormattedEncyclopedia } from './supabase.js';
+import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
-import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, setMissionConversationId } from './gmTracker.js';
+import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
@@ -253,16 +253,21 @@ client.on('qr', async (qr) => {
   }
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
+  
+  try {
+    await initMissionTracker();
+    console.log('[index.js] Estado de misiones restaurado desde BD.');
+  } catch (error) {
+    console.error('[index.js] Error al restaurar misiones:', error);
+  }
+
   if (!schedulerStarted) {
     startScheduler(client);
     schedulerStarted = true;
   }
-  autoProvisionMissions().catch(err => {
-    console.error('Error running auto-provisioning on startup:', err);
-  });
 });
 
 client.on('auth_failure', (message) => {
@@ -286,136 +291,7 @@ client.on('group_join', async (notification) => {
   }
 });
 
-function askNotebookLM(notebookId, prompt, conversationId = null) {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', ['src/scripts/notebooklm_helper.py']);
-    let stdoutData = '';
-    let stderrData = '';
 
-    pythonProcess.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderrData += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`Python process exited with code ${code}. Stderr: ${stderrData}`));
-      }
-      try {
-        const result = JSON.parse(stdoutData.trim());
-        if (result.error) {
-          return reject(new Error(result.error));
-        }
-        resolve(result);
-      } catch (err) {
-        reject(new Error(`Failed to parse Python stdout: ${stdoutData}. Error: ${err.message}`));
-      }
-    });
-
-    pythonProcess.on('error', (err) => {
-      reject(new Error(`Failed to spawn Python process: ${err.message}`));
-    });
-
-    // Write input JSON to stdin
-    const inputPayload = JSON.stringify({
-      notebook_id: notebookId,
-      conversation_id: conversationId,
-      prompt: prompt
-    });
-    pythonProcess.stdin.write(inputPayload);
-    pythonProcess.stdin.end();
-  });
-}
-
-async function autoProvisionMissions() {
-  const cookies = process.env.NOTEBOOKLM_COOKIES;
-  if (!cookies) {
-    console.warn('[NotebookLM Auto-Provision] NOTEBOOKLM_COOKIES no está configurado. Se omite la auto-creación.');
-    return;
-  }
-
-  console.log('[NotebookLM Auto-Provision] Buscando misiones sin libreta de NotebookLM...');
-  try {
-    const missions = await getMissionsWithMissingNotebooks();
-    if (missions.length === 0) {
-      console.log('[NotebookLM Auto-Provision] Todas las misiones ya tienen libreta de NotebookLM.');
-      return;
-    }
-
-    console.log(`[NotebookLM Auto-Provision] Se encontraron ${missions.length} misiones pendientes de libreta.`);
-    const gmPrompt = buildGMPrompt();
-    
-    // Obtener grimorio y enciclopedia de la base de datos una sola vez
-    const grimorio = await getFormattedGrimoire();
-    const enciclopedia = await getFormattedEncyclopedia();
-
-    for (const mission of missions) {
-      console.log(`[NotebookLM Auto-Provision] Creando libreta para: "${mission.title}"...`);
-      try {
-        const notebookId = await provisionNotebook(mission.title, mission.instructions, gmPrompt, grimorio, enciclopedia);
-        if (notebookId) {
-          const success = await updateMissionNotebookId(mission.id, notebookId);
-          if (success) {
-            console.log(`[NotebookLM Auto-Provision] ✅ Misión "${mission.title}" vinculada con éxito al Notebook ID: ${notebookId}`);
-          }
-        }
-      } catch (err) {
-        console.error(`[NotebookLM Auto-Provision] ❌ Error creando libreta para "${mission.title}":`, err.message);
-      }
-    }
-  } catch (err) {
-    console.error('[NotebookLM Auto-Provision] Error en el proceso de auto-provisión:', err.message);
-  }
-}
-
-function provisionNotebook(title, instructions, gmPrompt, grimorioContent = '', enciclopediaContent = '') {
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', ['src/scripts/notebooklm_provisioner.py']);
-    let stdoutData = '';
-    let stderrData = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdoutData += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderrData += data.toString();
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        return reject(new Error(`Python provision process exited with code ${code}. Stderr: ${stderrData}`));
-      }
-      try {
-        const result = JSON.parse(stdoutData.trim());
-        if (result.error) {
-          return reject(new Error(result.error));
-        }
-        resolve(result.notebook_id);
-      } catch (err) {
-        reject(new Error(`Failed to parse Python stdout: ${stdoutData}. Error: ${err.message}`));
-      }
-    });
-
-    pythonProcess.on('error', (err) => {
-      reject(new Error(`Failed to spawn Python provision process: ${err.message}`));
-    });
-
-    // Write input JSON to stdin
-    const inputPayload = JSON.stringify({
-      title: title,
-      instructions: instructions,
-      gm_prompt: gmPrompt,
-      grimorio_content: grimorioContent,
-      enciclopedia_content: enciclopediaContent
-    });
-    pythonProcess.stdin.write(inputPayload);
-    pythonProcess.stdin.end();
-  });
-}
 
 const activityCache = new Map();
 
@@ -495,39 +371,11 @@ client.on('message', async (msg) => {
       await msg.reply('*El Game Master esta escribiendo la narrativa...*');
       await sleep(getRandomDelayMs(800, 1500));
 
-      let aiResponse = '';
-      let usedNotebookLM = false;
-
-      if (trackerResult.notebookId) {
-        console.log(`[GM Tracker] Iniciando consulta a NotebookLM para la misión ${trackerResult.shortId} (Notebook: ${trackerResult.notebookId})`);
-        try {
-          const combinedPrompt = `${gmPrompt}\n\n${gmUserPayload}`;
-          const notebookResult = await askNotebookLM(
-            trackerResult.notebookId,
-            combinedPrompt,
-            trackerResult.conversationId
-          );
-          
-          if (notebookResult && notebookResult.answer) {
-            aiResponse = notebookResult.answer;
-            if (notebookResult.conversation_id) {
-              setMissionConversationId(trackerResult.shortId, notebookResult.conversation_id);
-              console.log(`[GM Tracker] ID de conversación actualizado/guardado: ${notebookResult.conversation_id}`);
-            }
-            usedNotebookLM = true;
-          }
-        } catch (notebookErr) {
-          console.warn(`[GM Tracker] Error al consultar NotebookLM: ${notebookErr.message}. Realizando fallback a Gemini estándar.`);
-        }
-      }
-
-      if (!usedNotebookLM) {
-        const history = [{ role: 'user', content: gmUserPayload }];
-        aiResponse = await askKingdoomAI(history, gmPrompt, {
-          maxEstimatedInputTokens: 6000,
-          maxOutputTokens: 2048,
-        });
-      }
+      const history = [{ role: 'user', content: gmUserPayload }];
+      let aiResponse = await askKingdoomAI(history, gmPrompt, {
+        maxEstimatedInputTokens: 6000,
+        maxOutputTokens: 2048,
+      });
 
       let responseAssessment = assessGMResponse(aiResponse);
       if (responseAssessment.needsRepair) {
