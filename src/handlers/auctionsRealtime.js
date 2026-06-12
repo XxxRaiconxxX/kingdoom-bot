@@ -75,8 +75,9 @@ export function startAuctionsRealtime(client) {
                       `💰 *Puja Acumulada:* 🪙 ${newBid.amount.toLocaleString('es-PY')} oro\n` +
                       `👑 *Líder Actual:* ${bidder.username}\n\n` +
                       `────────────────────────\n` +
-                      `⚠️ *REGLA DE CONTIENDA (FONDO PERDIDO):*\n` +
-                      `Cada puja descuenta el oro *inmediatamente y de forma permanente*. Si eres superado, el oro *no se devuelve*. ¡Sube la oferta con sabiduría!\n` +
+                      `⚠️ *REGLAS DE SUBASTA EN VYRALIS:*\n` +
+                      `• El oro de tu puja se bloquea mientras seas el líder. Si alguien supera tu oferta, tu oro te será **devuelto de inmediato**.\n` +
+                      `• Se descuenta una única **comisión del 25% del valor base del ítem** no reembolsable al ingresar a la subasta.\n` +
                       `────────────────────────\n\n` +
                       `_¡El fuego de la subasta sigue ardiendo! ¿Quién se atreverá a superarlo?_`;
 

@@ -60,7 +60,7 @@ export async function handleSubastas(msg, player, body) {
     response += `────────────────────────\n`;
   });
 
-  response += `⚠️ _Recuerda: Las subastas operan a **Fondo Perdido**. Cada puja que realices descuenta el oro inmediatamente y de forma definitiva. Si alguien supera tu oferta, tu oro **no** será devuelto._`;
+  response += `⚠️ _Recuerda: El oro de tu puja se bloquea mientras seas el líder. Si eres superado, se te **reembolsará** de inmediato. Se cobra una única **comisión del 25% del precio base del ítem** al realizar tu primera puja (no reembolsable)._`;
   return response;
 }
 
@@ -149,7 +149,7 @@ export async function handlePujar(msg, player, body) {
          `Has registrado tu puja por *${targetAuction.item_name}*.\n\n` +
          `💰 *Puja Acumulada:* 🪙 ${targetAmount.toLocaleString('es-PY')} oro\n` +
          `👛 Tu oro restante: *🪙 ${remaining.toLocaleString('es-PY')}*\n\n` +
-         `⚠️ _El oro ha sido transferido a las arcas del reino de forma no reembolsable (Fondo Perdido). ¡Que la fortuna te acompañe!_\n\n` +
+         `⚠️ _El oro de la puja se bloquea mientras seas líder. Si eres superado, se te devolverá. Se descuenta una única comisión del 25% del valor base del ítem no reembolsable por ingresar a la subasta._\n\n` +
          `_La subasta sigue ardiendo en el grupo de anuncios. ¿Podrás defender tu oferta?_`;
 }
 
