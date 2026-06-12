@@ -41,7 +41,7 @@ export async function handleSubastas(msg, player, body) {
   let response = `╔════════════════════════════╗\n`;
   response += `⚖️  *SUBASTAS DEL REINO*  ⚖️\n`;
   response += `╚════════════════════════════╝\n`;
-  response += `_El mercado negro esta en ebullicion. ¡Pujan oro a fondo perdido!_\n\n`;
+  response += `_El mercado negro está en ebullición. ¡Pujas con reembolso y comisión de entrada!_\n\n`;
 
   auctions.forEach((auc, index) => {
     const timeRemaining = formatTimeRemaining(auc.expires_at);
@@ -199,5 +199,5 @@ export async function handleRetirarse(msg, player, body) {
   }
 
   return `🏳️ *Te has retirado de la subasta por ${targetAuction.item_name}.*\n` +
-         `_Ya no podras realizar mas pujas en este articulo. El oro que hayas pujado previamente se ha perdido en el vacio._`;
+         `_Ya no podrás realizar más pujas en este artículo. Si eres el líder actual, tu puja se mantiene bloqueada hasta que seas superado o ganes la subasta._`;
 }
