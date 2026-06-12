@@ -474,7 +474,7 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
     return await handleSubastas(msg, player, body);
   }
 
-  if (command === 'pujar') {
+  if (command === 'pujar' || command === 'puja') {
     return await handlePujar(msg, player, body);
   }
 

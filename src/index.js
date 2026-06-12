@@ -557,6 +557,7 @@ client.on('message', async (msg) => {
         'subasta',
         'subastas',
         'pujar',
+        'puja',
         'retirarse',
       ].includes(command)
     ) {
