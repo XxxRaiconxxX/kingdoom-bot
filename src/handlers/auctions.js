@@ -47,12 +47,13 @@ export async function handleSubastas(msg, player, body) {
     const timeRemaining = formatTimeRemaining(auc.expires_at);
     const highestBidStr = auc.highest_bid > 0
       ? `🪙 ${auc.highest_bid.toLocaleString('es-PY')} oro (${auc.highest_bidder?.username || 'Desconocido'})`
-      : `🪙 ${auc.start_price.toLocaleString('es-PY')} oro (Precio Base)`;
+      : `🪙 0 oro (Sin pujas)`;
 
     response += `*${index + 1}. ${auc.item_name}* [${auc.item_rarity.toUpperCase()}]\n`;
     if (auc.item_description) {
       response += `📜 _${auc.item_description}_\n`;
     }
+    response += `💰 Precio Inicial: 🪙 ${auc.start_price.toLocaleString('es-PY')} oro\n`;
     response += `💰 Puja Acumulada: ${highestBidStr}\n`;
     response += `⏱️ Expira en: ${timeRemaining}\n`;
     response += `⚙️ Pujar con: \`!pujar ${index + 1} <monto>\`\n`;
