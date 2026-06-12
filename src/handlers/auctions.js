@@ -53,13 +53,13 @@ export async function handleSubastas(msg, player, body) {
     if (auc.item_description) {
       response += `📜 _${auc.item_description}_\n`;
     }
-    response += `💰 Puja Actual: ${highestBidStr}\n`;
+    response += `💰 Puja Acumulada: ${highestBidStr}\n`;
     response += `⏱️ Expira en: ${timeRemaining}\n`;
     response += `⚙️ Pujar con: \`!pujar ${index + 1} <monto>\`\n`;
     response += `────────────────────────\n`;
   });
 
-  response += `⚠️ _Recuerda: Las subastas son de coste hundido (el oro pujado se descuenta inmediatamente y no se devuelve si eres superado)._`;
+  response += `⚠️ _Recuerda: Las subastas operan a **Fondo Perdido**. Cada puja que realices descuenta el oro inmediatamente y de forma definitiva. Si alguien supera tu oferta, tu oro **no** será devuelto._`;
   return response;
 }
 
@@ -133,10 +133,14 @@ export async function handlePujar(msg, player, body) {
 
   const remaining = result.remaining_gold ?? (player.gold - amount);
 
-  return `🔥 *¡PUJA REGISTRADA EN LA FORJA!* ⚖️\n\n` +
-         `El aventurero *${player.username}* ha pujado *🪙 ${amount.toLocaleString('es-PY')} oro* por *${targetAuction.item_name}*.\n` +
-         `🪙 Tu oro restante: *${remaining.toLocaleString('es-PY')}*\n\n` +
-         `_La subasta sigue ardiendo. ¿Quien osara superarla?_`;
+  return `╔════════════════════════════╗\n` +
+         `⚖️  *PUJA CONFIRMADA*  ⚖️\n` +
+         `╚════════════════════════════╝\n\n` +
+         `Has registrado tu puja por *${targetAuction.item_name}*.\n\n` +
+         `💰 *Puja Acumulada:* 🪙 ${amount.toLocaleString('es-PY')} oro\n` +
+         `👛 Tu oro restante: *🪙 ${remaining.toLocaleString('es-PY')}*\n\n` +
+         `⚠️ _El oro ha sido transferido a las arcas del reino de forma no reembolsable (Fondo Perdido). ¡Que la fortuna te acompañe!_\n\n` +
+         `_La subasta sigue ardiendo en el grupo de anuncios. ¿Podrás defender tu oferta?_`;
 }
 
 export async function handleRetirarse(msg, player, body) {

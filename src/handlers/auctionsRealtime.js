@@ -67,9 +67,18 @@ export function startAuctionsRealtime(client) {
           if (!bidder || !auction) return;
 
           const chatId = auction.whatsapp_chat_id || '595971938097-1618930274@g.us';
-          const msg = `🔥 *¡NUEVA PUJA REGISTRADA!* ⚖️\n\n` +
-                      `El aventurero *${bidder.username}* ha pujado *🪙 ${newBid.amount.toLocaleString('es-PY')} oro* por *${auction.item_name}*.\n\n` +
-                      `_¡La subasta sigue activa! ¿Quien osara superar esta oferta?_`;
+          const msg = `╔════════════════════════════╗\n` +
+                      `⚖️  *NUEVA PUJA REGISTRADA*  ⚖️\n` +
+                      `╚════════════════════════════╝\n\n` +
+                      `El osado aventurero *${bidder.username}* ha entrado a la contienda por:\n` +
+                      `📦 *${auction.item_name}* [${auction.item_rarity.toUpperCase()}]\n\n` +
+                      `💰 *Puja Acumulada:* 🪙 ${newBid.amount.toLocaleString('es-PY')} oro\n` +
+                      `👑 *Líder Actual:* ${bidder.username}\n\n` +
+                      `────────────────────────\n` +
+                      `⚠️ *REGLA DE CONTIENDA (FONDO PERDIDO):*\n` +
+                      `Cada puja descuenta el oro *inmediatamente y de forma permanente*. Si eres superado, el oro *no se devuelve*. ¡Sube la oferta con sabiduría!\n` +
+                      `────────────────────────\n\n` +
+                      `_¡El fuego de la subasta sigue ardiendo! ¿Quién se atreverá a superarlo?_`;
 
           await client.sendMessage(chatId, msg);
         } catch (err) {
