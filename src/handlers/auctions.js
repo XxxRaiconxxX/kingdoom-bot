@@ -111,16 +111,25 @@ export async function handlePujar(msg, player, body) {
     return `❌ No se encontro ninguna subasta activa que coincida con "${identifier}".`;
   }
 
+  const currentPrice = targetAuction.highest_bid > 0 ? targetAuction.highest_bid : targetAuction.start_price;
+  let targetAmount = amount;
+  
+  // If the user input amount is smaller than the current price (or base price),
+  // treat it as an increment on top of the current price.
+  if (amount < currentPrice) {
+    targetAmount = currentPrice + amount;
+  }
+
   // Check funds locally first to avoid unnecessary database lock
-  if (player.gold < amount) {
-    return `❌ No tienes suficiente oro. Tienes *🪙 ${player.gold.toLocaleString('es-PY')} oro* y quieres pujar *🪙 ${amount.toLocaleString('es-PY')}*.`;
+  if (player.gold < targetAmount) {
+    return `❌ No tienes suficiente oro. Tienes *🪙 ${player.gold.toLocaleString('es-PY')} oro* y quieres pujar un total acumulado de *🪙 ${targetAmount.toLocaleString('es-PY')}*.`;
   }
 
   // Call the database function to place bid
   const { data, error: rpcError } = await supabase.rpc('place_auction_bid', {
     p_player_id: player.id,
     p_auction_id: targetAuction.id,
-    p_amount: amount
+    p_amount: targetAmount
   });
 
   if (rpcError) {
@@ -132,13 +141,13 @@ export async function handlePujar(msg, player, body) {
     return `❌ La puja no devolvio datos confirmatorios.`;
   }
 
-  const remaining = result.remaining_gold ?? (player.gold - amount);
+  const remaining = result.remaining_gold ?? (player.gold - targetAmount);
 
   return `╔════════════════════════════╗\n` +
          `⚖️  *PUJA CONFIRMADA*  ⚖️\n` +
          `╚════════════════════════════╝\n\n` +
          `Has registrado tu puja por *${targetAuction.item_name}*.\n\n` +
-         `💰 *Puja Acumulada:* 🪙 ${amount.toLocaleString('es-PY')} oro\n` +
+         `💰 *Puja Acumulada:* 🪙 ${targetAmount.toLocaleString('es-PY')} oro\n` +
          `👛 Tu oro restante: *🪙 ${remaining.toLocaleString('es-PY')}*\n\n` +
          `⚠️ _El oro ha sido transferido a las arcas del reino de forma no reembolsable (Fondo Perdido). ¡Que la fortuna te acompañe!_\n\n` +
          `_La subasta sigue ardiendo en el grupo de anuncios. ¿Podrás defender tu oferta?_`;
