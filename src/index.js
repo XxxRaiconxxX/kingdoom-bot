@@ -18,6 +18,7 @@ import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
 import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
+import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -38,6 +39,7 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
 let latestQrDataUrl = '';
 const welcomeConfig = buildWelcomeConfig();
 let schedulerStarted = false;
+let realtimeStarted = false;
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -274,6 +276,11 @@ client.on('ready', async () => {
   if (!schedulerStarted) {
     startScheduler(client);
     schedulerStarted = true;
+  }
+
+  if (!realtimeStarted) {
+    startAuctionsRealtime(client);
+    realtimeStarted = true;
   }
 });
 
@@ -547,6 +554,10 @@ client.on('message', async (msg) => {
         'resumen',
         'ayuda',
         'help',
+        'subasta',
+        'subastas',
+        'pujar',
+        'retirarse',
       ].includes(command)
     ) {
       reply = await handlePlayerMessage(wrapMsg(msg, ensurePrefixedBody(command, text, body)));

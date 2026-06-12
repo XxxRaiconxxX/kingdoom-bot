@@ -17,6 +17,7 @@ import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
+import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -467,6 +468,18 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
       `Cierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro`,
       clipText(event.description || event.long_description || event.rewards, 500),
     ], { icon: '🎭' });
+  }
+
+  if (command === 'subasta' || command === 'subastas') {
+    return await handleSubastas(msg, player, body);
+  }
+
+  if (command === 'pujar') {
+    return await handlePujar(msg, player, body);
+  }
+
+  if (command === 'retirarse') {
+    return await handleRetirarse(msg, player, body);
   }
 
   if (command === 'reino' || command === 'resumen') {

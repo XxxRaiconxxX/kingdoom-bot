@@ -56,6 +56,38 @@ export function startScheduler(client) {
   // Programar los tesoros para el dia actual al iniciar (si aplica)
   scheduleDailyTreasures(client);
 
+  // Chequeo de subastas expiradas cada minuto
+  cron.schedule('*/1 * * * *', async () => {
+    try {
+      const { data: expiredAuctions, error } = await supabase
+        .from('market_auctions')
+        .select('id, item_name')
+        .eq('status', 'active')
+        .lte('expires_at', new Date().toISOString());
+
+      if (error) {
+        console.error('[scheduler] Error buscando subastas expiradas:', error.message);
+        return;
+      }
+
+      if (expiredAuctions && expiredAuctions.length > 0) {
+        for (const auc of expiredAuctions) {
+          console.log(`[scheduler] Resolviendo subasta expirada: ${auc.item_name} (${auc.id})`);
+          const { error: resolveError } = await supabase.rpc('resolve_market_auction', {
+            p_auction_id: auc.id
+          });
+          if (resolveError) {
+            console.error(`[scheduler] Error al resolver subasta ${auc.id}:`, resolveError.message);
+          } else {
+            console.log(`[scheduler] Subasta ${auc.id} resuelta exitosamente.`);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[scheduler] Error en el ciclo de subastas:', err);
+    }
+  }, TZ);
+
   // Reset diario — medianoche hora Paraguay
   cron.schedule('0 0 * * *', async () => {
     console.log('[scheduler] Iniciando reset diario y cobro de cuotas...');
