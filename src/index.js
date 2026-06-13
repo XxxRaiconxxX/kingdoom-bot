@@ -588,6 +588,16 @@ async function initializeClientWithRetry() {
         `[whatsapp init] Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`
       );
 
+      if (client.pupBrowser) {
+        try {
+          console.log('[whatsapp init] Cerrando navegador huerfano para liberar el bloqueo de sesion...');
+          await client.pupBrowser.close();
+        } catch (closeErr) {
+          console.error('[whatsapp init] Error al cerrar el navegador:', closeErr);
+        }
+        client.pupBrowser = null;
+      }
+
       if (isLastAttempt) {
         console.error(
           '[whatsapp init] Se agotaron los reintentos de inicializacion. Revisar conectividad del contenedor hacia https://web.whatsapp.com/.'
