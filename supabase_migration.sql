@@ -20,6 +20,9 @@ $$;
 ALTER TABLE players
   ADD COLUMN IF NOT EXISTS banned boolean DEFAULT false;
 
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access on players" ON players FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- 3. Columna 'phone' — asegurarse que existe e indexada
 CREATE INDEX IF NOT EXISTS idx_players_phone ON players(phone);
 
@@ -36,6 +39,9 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
+
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access on bot_daily_claims" ON bot_daily_claims FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,
