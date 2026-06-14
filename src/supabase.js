@@ -241,10 +241,13 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
     };
   }
 
-  // 4. Link by updating phone column
+  // 4. Link by updating phone and last_active_at columns
   const { error: updateErr } = await supabase
     .from('players')
-    .update({ phone })
+    .update({ 
+      phone,
+      last_active_at: new Date().toISOString()
+    })
     .eq('id', targetPlayer.id);
 
   if (updateErr) {
@@ -831,7 +834,8 @@ export async function getActivityReport() {
   const { data, error } = await supabase
     .from('players')
     .select('username, last_active_at')
-    .order('last_active_at', { ascending: true, nullsFirst: true });
+    .not('phone', 'is', null)
+    .order('last_active_at', { ascending: false, nullsLast: true });
 
   if (error) {
     console.error('[getActivityReport]', error.message);
