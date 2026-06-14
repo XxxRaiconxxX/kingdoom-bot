@@ -681,6 +681,10 @@ export async function handleAdminCommand(msg, client) {
           }
         }
         
+        if (!p.phone) {
+          status = 'Sin WA';
+        }
+        
         const uname = (p.username || 'SinNombre').slice(0, 15).padEnd(15, ' ');
         const statStr = status.padEnd(9, ' ');
         response += `${uname} | ${statStr}\n`;

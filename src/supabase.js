@@ -833,8 +833,7 @@ export async function touchPlayerActivity(playerId) {
 export async function getActivityReport() {
   const { data, error } = await supabase
     .from('players')
-    .select('username, last_active_at')
-    .not('phone', 'is', null)
+    .select('username, last_active_at, phone')
     .order('last_active_at', { ascending: false, nullsLast: true });
 
   if (error) {
