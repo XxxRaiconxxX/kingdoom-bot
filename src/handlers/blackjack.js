@@ -277,12 +277,26 @@ export async function handleBlackjack(msg, client) {
 
   // Resolve JID mentions from WhatsApp
   const mentionedIds = msg.mentionedIds || [];
+
+  // First, filter out invalid/duplicate JIDs
+  const validJids = [];
   for (const jid of mentionedIds) {
     const phone = normalizePhone(jid);
     if (phone === normalizePhone(sender)) continue;
     if (participants.some(p => normalizePhone(p.phone) === phone)) continue;
-    
-    const player = await getPlayer(jid);
+    if (validJids.some(v => normalizePhone(v) === phone)) continue;
+    validJids.push(jid);
+  }
+
+  // Fetch all players concurrently (fixes N+1 query)
+  const fetchedPlayers = await Promise.all(
+    validJids.map(async jid => {
+      const player = await getPlayer(jid);
+      return { jid, player, phone: normalizePhone(jid) };
+    })
+  );
+
+  for (const { jid, player, phone } of fetchedPlayers) {
     if (!player) {
       return `❌ El jugador con teléfono *${phone}* no está registrado en el reino.`;
     }
