@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
@@ -72,8 +73,8 @@ export async function handleDados(msg) {
     return `🎲 Alcanzaste el límite diario de dados (${maxUsos}/${maxUsos}). ¡Volvé mañana para probar tu suerte!`;
   }
 
-  const d1 = Math.ceil(Math.random() * 6);
-  const d2 = Math.ceil(Math.random() * 6);
+  const d1 = crypto.randomInt(1, 7);
+  const d2 = crypto.randomInt(1, 7);
   const suma = d1 + d2;
   const gano = suma >= 7;
   const delta = gano ? apuesta : -apuesta;
