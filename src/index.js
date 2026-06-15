@@ -1,6 +1,5 @@
 import http from 'http';
 import fs from 'fs';
-import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
