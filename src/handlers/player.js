@@ -16,7 +16,7 @@ import {
 import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
-import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
+import { heraldCard, heraldStat } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
