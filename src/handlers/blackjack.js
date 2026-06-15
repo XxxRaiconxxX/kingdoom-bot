@@ -610,9 +610,7 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
   }
 
   if (finalPlayers.length < 2) {
-    for (const p of finalPlayers) {
-        await updateGold(p.playerId, session.bet);
-    }
+    await Promise.all(finalPlayers.map(p => updateGold(p.playerId, session.bet)));
     await client.sendMessage(groupChatId, `❌ No hay suficientes jugadores válidos para iniciar la partida. Reembolso emitido.`);
     return;
   }
