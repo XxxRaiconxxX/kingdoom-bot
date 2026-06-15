@@ -9,7 +9,7 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
+import { registerPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
