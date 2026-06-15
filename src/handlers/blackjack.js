@@ -762,9 +762,7 @@ async function finishMultiplayerGame(client, session, groupChatId) {
   if (winners.length > 0) {
     const pot = session.bet * session.players.length;
     const baseShare = Math.floor(pot / winners.length);
-    const results = [];
-
-    for (const w of winners) {
+    const winnerPromises = winners.map(async (w) => {
       const score = calculateHand(w.cards);
       let payout = baseShare;
 
@@ -783,9 +781,10 @@ async function finishMultiplayerGame(client, session, groupChatId) {
 
       const updatedPlayer = await getPlayer(w.playerPhone);
       const newGold = updatedPlayer ? updatedPlayer.gold : 0;
-      results.push(`🏆 *${w.username}* gana *${payout.toLocaleString('es-PY')} oro* (Total: ${newGold.toLocaleString('es-PY')} 🪙)`);
-    }
+      return `🏆 *${w.username}* gana *${payout.toLocaleString('es-PY')} oro* (Total: ${newGold.toLocaleString('es-PY')} 🪙)`;
+    });
 
+    const results = await Promise.all(winnerPromises);
     lines.push(results.join('\n'));
   } else {
     lines.push(`💀 *¡Todos se pasaron de 21!* La casa se queda con el pozo.`);
