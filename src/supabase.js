@@ -39,7 +39,7 @@ function rankNameMatch(item, query) {
   return 0;
 }
 
-function formatAsuncionDateKey(date = new Date()) {
+export function formatAsuncionDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Asuncion',
     year: 'numeric',
