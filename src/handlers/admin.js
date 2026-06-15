@@ -5,8 +5,10 @@ import {
   getRealmCensus,
   getStaffSnapshot,
   getActivityReport,
+  awardManualMissionRankPoints,
+  getPlayersByPhone,
 } from '../supabase.js';
-import { isOwner, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
+import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
@@ -73,14 +75,92 @@ async function getGroupPendingMembers(chat, client) {
   };
 }
 
+const MISSION_POINT_DIFFICULTIES = new Map([
+  ['easy', 'easy'],
+  ['facil', 'easy'],
+  ['fácil', 'easy'],
+  ['medium', 'medium'],
+  ['media', 'medium'],
+  ['medio', 'medium'],
+  ['hard', 'hard'],
+  ['dificil', 'hard'],
+  ['difícil', 'hard'],
+]);
+
+function normalizeMissionDifficulty(value) {
+  const key = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  return MISSION_POINT_DIFFICULTIES.get(key) ?? '';
+}
+
+function getMessageSerializedId(msg) {
+  return msg?.id?._serialized || msg?.id?.id || '';
+}
+
+async function getActorPrivileges(sender) {
+  const actorPhone = normalizePhone(sender);
+  const isSenderOwner = isOwner(sender);
+  const listedAdmin = isAdminUser(sender);
+  const listedStaff = isStaffUser(sender);
+  const actorPlayers = await getPlayersByPhone(sender);
+  const dbAdmin = actorPlayers.some((player) => player?.is_admin === true);
+  const actorName = actorPlayers[0]?.username ?? 'Staff';
+
+  return {
+    actorPhone,
+    actorName,
+    isSenderOwner,
+    isAdmin: isSenderOwner || listedAdmin || dbAdmin,
+    isStaff: listedStaff,
+  };
+}
+
+async function resolveMissionCompletionTargets(msg) {
+  const uniquePhones = [...new Set((msg?.mentionedIds ?? []).map((entry) => normalizePhone(entry)).filter(Boolean))];
+  const resolvedTargets = [];
+  const unresolved = [];
+  const ambiguous = [];
+
+  for (const phone of uniquePhones) {
+    const players = await getPlayersByPhone(phone);
+    if (!players.length) {
+      unresolved.push(phone);
+      continue;
+    }
+    if (players.length > 1) {
+      ambiguous.push(phone);
+      continue;
+    }
+
+    resolvedTargets.push({
+      phone,
+      player: players[0],
+    });
+  }
+
+  return {
+    resolvedTargets,
+    unresolved,
+    ambiguous,
+  };
+}
+
 export async function handleAdminCommand(msg, client) {
   const text = msg.body.trim();
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
   const sender = msg.author || msg.from;
-  const actorPhone = normalizePhone(sender);
-
-  const isSenderOwner = isOwner(sender);
+  const {
+    actorPhone,
+    actorName,
+    isSenderOwner,
+    isAdmin,
+    isStaff,
+  } = await getActorPrivileges(sender);
+  const isPrivileged = isAdmin || isStaff;
 
   // Helper function to extract number from input (remove @c.us if present, only digits)
   const extractPhone = (input) => {
@@ -91,14 +171,6 @@ export async function handleAdminCommand(msg, client) {
     const digits = extractPhone(input);
     return digits.length >= 8;
   };
-
-  const { data: actorPlayers } = await supabase
-    .from('players')
-    .select('username')
-    .eq('phone', actorPhone)
-    .order('created_at', { ascending: true })
-    .limit(1);
-  const actorName = actorPlayers?.[0]?.username ?? 'Staff';
 
   const describeResolutionError = (identifier, result) => {
     if (result?.reason === 'ambiguous') {
@@ -160,6 +232,81 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
         ]),
       ], { icon: '🛡️' });
+    }
+  }
+
+  if (cmd === '!misioncompleta') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden otorgar puntos de misión.';
+    }
+
+    const difficulty = normalizeMissionDifficulty(parts[1]);
+    if (!difficulty) {
+      return '❌ Uso: *!misioncompleta <easy|medium|hard> <@jugadores>*';
+    }
+
+    if (!Array.isArray(msg.mentionedIds) || msg.mentionedIds.length === 0) {
+      return '❌ Debes mencionar al menos a un jugador. Ejemplo: *!misioncompleta easy @jugador1 @jugador2*';
+    }
+
+    const messageId = getMessageSerializedId(msg);
+    if (!messageId) {
+      return '❌ No pude obtener el identificador del mensaje para blindar la entrega. Repite el comando.';
+    }
+
+    const { resolvedTargets, unresolved, ambiguous } = await resolveMissionCompletionTargets(msg);
+    if (!resolvedTargets.length) {
+      return '❌ Ninguna de las menciones corresponde a un jugador vinculado en la base de datos.';
+    }
+    if (unresolved.length || ambiguous.length) {
+      const detail = [
+        unresolved.length ? `Sin vínculo: ${unresolved.map((phone) => `+${phone}`).join(', ')}` : '',
+        ambiguous.length ? `Múltiples perfiles vinculados: ${ambiguous.map((phone) => `+${phone}`).join(', ')}` : '',
+      ].filter(Boolean).join('\n');
+      return `❌ El reparto se canceló para evitar asignaciones incorrectas.\n${detail}`;
+    }
+
+    const uniquePlayerIds = [...new Set(resolvedTargets.map((entry) => entry.player.id))];
+    const externalRef = `mission-complete:${msg.from}:${messageId}`;
+    const targetNames = resolvedTargets.map((entry) => entry.player.username);
+    const notes = `WhatsApp !misioncompleta ${difficulty} | chat ${msg.from} | targets: ${targetNames.join(', ')}`;
+
+    try {
+      const result = await awardManualMissionRankPoints({
+        playerIds: uniquePlayerIds,
+        difficulty,
+        awardedByName: actorName,
+        awardedByPhone: actorPhone,
+        notes,
+        externalRef,
+      });
+
+      const pointsPerPlayer = Number(result?.points_per_player ?? 0);
+      const awardedPlayers = Number(result?.awarded_players ?? uniquePlayerIds.length);
+      const seasonName = result?.season_name ?? 'Temporada activa';
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'mission_complete_points',
+        target: targetNames.join(', '),
+        detail: `Dificultad ${difficulty}. ${pointsPerPlayer} pts por jugador. Ref ${externalRef}.`,
+        chatId: msg.from,
+      });
+
+      return `🏅 *Puntos de misión otorgados*\nTemporada: *${seasonName}*\nDificultad: *${difficulty.toUpperCase()}* — *${pointsPerPlayer} pts* por jugador\nAventureros: *${targetNames.join(', ')}*\nAplicados: *${awardedPlayers}*`;
+    } catch (error) {
+      const rawMessage = String(error?.message ?? error);
+      const duplicateLike =
+        rawMessage.includes('duplicate key value') ||
+        rawMessage.includes('idx_season_rank_awards_external_ref');
+
+      if (duplicateLike) {
+        return '⚠️ Este mensaje ya fue procesado antes. El blindaje impidió otorgar puntos duplicados.';
+      }
+
+      console.error('[admin misioncompleta]', error);
+      return `❌ No se pudieron otorgar los puntos de misión. Motivo: ${rawMessage}`;
     }
   }
 

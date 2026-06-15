@@ -482,9 +482,10 @@ client.on('message', async (msg) => {
   };
 
   const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'];
+  const PRIVILEGED_COMMANDS = ['misioncompleta'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
-  const isPossibleAdminCmd = hasPrefix && ADMIN_COMMANDS.includes(command);
+  const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
 
   let isAdmin = false;
   let isStaff = false;
@@ -516,7 +517,7 @@ client.on('message', async (msg) => {
       reply = forgeReply;
     } else if (!hasPrefix) {
       return;
-    } else if (isAdmin && ADMIN_COMMANDS.includes(command)) {
+    } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {
       reply = await handleAdminCommand(
         wrapMsg(msg, ensurePrefixedBody(command, text, body)),
         client

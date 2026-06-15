@@ -15,7 +15,7 @@ import {
 } from '../supabase.js';
 import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
-import { isAdminUser, isOwner, normalizePhone } from '../adminStore.js';
+import { isAdminUser, isOwner, isStaffUser, normalizePhone } from '../adminStore.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
 
@@ -131,6 +131,7 @@ export async function handlePlayerMessage(msg) {
   if (command === 'ayuda' || command === 'help') {
     const isSenderOwner = isOwner(sender);
     let isSenderAdmin = isAdminUser(sender);
+    const isSenderStaff = isStaffUser(sender);
 
     const player = await getPlayer(sender);
     if (player?.is_admin === true) {
@@ -193,11 +194,12 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
               `⚙️ \`!staff\` — Vista operativa del staff\n` +
               `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
               `🎯 \`!misionstart <ID> <Jugadores>\` — Inicia tracking de misión\n` +
+              `🏅 \`!misioncompleta <easy|medium|hard> <@jugadores>\` — Otorga puntos de temporada\n` +
               `👑 \`!admin\` — Abre el menú soberano`;
-    } else if (isSenderAdmin) {
+    } else if (isSenderAdmin || isSenderStaff) {
       menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-              `🛡️ *COMANDOS DE ADMINISTRADOR*\n` +
-              `_Gestión y Moderación_\n` +
+              `${isSenderAdmin ? '🛡️ *COMANDOS DE ADMINISTRADOR*' : '🧾 *COMANDOS DE STAFF*'}\n` +
+              `_${isSenderAdmin ? 'Gestión y Moderación' : 'Operación y soporte'}_\n` +
               `━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
               `📋 \`!registrar <nombre> [oro]\` — Nuevo jugador\n` +
               `➕ \`!grant <objetivo> <monto>\` — Entrega oro\n` +
@@ -215,6 +217,7 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
               `⚙️ \`!staff\` — Vista operativa del staff\n` +
               `📖 \`!bitacora\` — Últimas acciones del consejo\n` +
               `🎯 \`!misionstart <ID> <Jugadores>\` — Inicia tracking de misión\n` +
+              `🏅 \`!misioncompleta <easy|medium|hard> <@jugadores>\` — Otorga puntos de temporada\n` +
               `👑 \`!admin\` — Abre el menú admin`;
     }
 
@@ -225,6 +228,7 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
     let identityName = 'Jugador';
     if (isSenderOwner) identityName = '👑 Señor Owner';
     else if (isSenderAdmin) identityName = '🛡️ Administrador';
+    else if (isSenderStaff) identityName = '🧾 Staff';
 
     menu += `\n\n*Identidad:* ` + identityName + ` | *Tel:* ` + normalizePhone(sender);
 

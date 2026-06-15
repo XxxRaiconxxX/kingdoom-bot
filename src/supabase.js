@@ -445,6 +445,37 @@ export async function updateGold(playerId, amount) {
   }
 }
 
+export async function awardManualMissionRankPoints({
+  playerIds,
+  difficulty,
+  awardedByName,
+  awardedByPhone = null,
+  notes = '',
+  externalRef = null,
+}) {
+  const uniquePlayerIds = [...new Set((playerIds ?? []).filter(Boolean))];
+
+  if (!uniquePlayerIds.length) {
+    throw new Error('No se recibieron jugadores para premiar.');
+  }
+
+  const { data, error } = await supabase.rpc('award_manual_mission_rank_points', {
+    p_player_ids: uniquePlayerIds,
+    p_difficulty: difficulty,
+    p_awarded_by_name: awardedByName,
+    p_awarded_by_phone: awardedByPhone,
+    p_notes: notes,
+    p_external_ref: externalRef,
+  });
+
+  if (error) {
+    console.error('[awardManualMissionRankPoints]', error.message);
+    throw new Error(error.message || 'No se pudieron asignar puntos de mision.');
+  }
+
+  return Array.isArray(data) ? data[0] ?? null : data ?? null;
+}
+
 export async function createTreasureEvent({ chatId, messageId, maxWinners, expiresAt }) {
   const { data, error } = await supabase
     .from('bot_treasure_events')
