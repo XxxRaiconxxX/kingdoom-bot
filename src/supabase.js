@@ -4,6 +4,68 @@ import { normalizePhone } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
+const SUPABASE_REQUEST_TIMEOUT_MS = Math.max(
+  5000,
+  Number.parseInt(process.env.SUPABASE_REQUEST_TIMEOUT_MS ?? '10000', 10) || 10000
+);
+const PHONE_LOOKUP_TTL_MS = Math.max(
+  10000,
+  Number.parseInt(process.env.PHONE_LOOKUP_TTL_MS ?? '45000', 10) || 45000
+);
+const PHONE_LOOKUP_CACHE_LIMIT = Math.max(
+  50,
+  Number.parseInt(process.env.PHONE_LOOKUP_CACHE_LIMIT ?? '500', 10) || 500
+);
+const PLAYER_SELECT_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned, created_at, last_active_at';
+const PLAYER_IDENTITY_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned';
+const phoneLookupCache = new Map();
+
+async function supabaseTimedFetch(resource, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(resource, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function prunePhoneLookupCache() {
+  if (phoneLookupCache.size < PHONE_LOOKUP_CACHE_LIMIT) {
+    return;
+  }
+
+  const oldestKey = phoneLookupCache.keys().next().value;
+  if (oldestKey) {
+    phoneLookupCache.delete(oldestKey);
+  }
+}
+
+function readPhoneLookupCache(phone) {
+  const cached = phoneLookupCache.get(phone);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    phoneLookupCache.delete(phone);
+    return null;
+  }
+
+  return cached.players;
+}
+
+function writePhoneLookupCache(phone, players) {
+  prunePhoneLookupCache();
+  phoneLookupCache.set(phone, {
+    players,
+    expiresAt: Date.now() + PHONE_LOOKUP_TTL_MS,
+  });
+}
 
 export const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -14,6 +76,9 @@ export const supabase = createClient(
     },
     realtime: {
       transport: ws,
+    },
+    global: {
+      fetch: supabaseTimedFetch,
     },
   }
 );
@@ -55,9 +120,14 @@ export async function getPlayersByPhone(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
   if (!phone) return [];
 
+  const cachedPlayers = readPhoneLookupCache(phone);
+  if (cachedPlayers) {
+    return cachedPlayers;
+  }
+
   const { data, error } = await supabase
     .from('players')
-    .select('*')
+    .select(PLAYER_SELECT_COLUMNS)
     .ilike('phone', `%${phone}%`)
     .order('created_at', { ascending: true });
 
@@ -69,11 +139,14 @@ export async function getPlayersByPhone(whatsappNumber) {
   if (!data) return [];
 
   // Exact match filtering to avoid substring issues (e.g., 59598112345 matching 595981123456)
-  return data.filter(player => {
+  const matchedPlayers = data.filter(player => {
     if (!player.phone) return false;
     const phones = player.phone.split(',').map(p => p.trim());
     return phones.includes(phone);
   });
+
+  writePhoneLookupCache(phone, matchedPlayers);
+  return matchedPlayers;
 }
 
 export async function getPlayer(whatsappNumber) {
@@ -97,7 +170,7 @@ export async function findPlayerByIdentifier(identifier) {
   const normalizedIdentifier = normalizeText(rawIdentifier);
   const normalizedPhone = normalizePhone(rawIdentifier);
   const allPlayersQuery = async () => {
-    const { data, error } = await supabase.from('players').select('*');
+    const { data, error } = await supabase.from('players').select(PLAYER_IDENTITY_COLUMNS);
     if (error) {
       console.error('[findPlayerByIdentifier]', error.message);
       return [];
@@ -117,7 +190,7 @@ export async function findPlayerByIdentifier(identifier) {
 
   const { data: exactPlayer, error: exactError } = await supabase
     .from('players')
-    .select('*')
+    .select(PLAYER_IDENTITY_COLUMNS)
     .ilike('username', rawIdentifier)
     .maybeSingle();
 
@@ -195,7 +268,7 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
   // First attempt: search by exact username (case-insensitive)
   let { data: targetPlayer, error: userErr } = await supabase
     .from('players')
-    .select('*')
+    .select(PLAYER_IDENTITY_COLUMNS)
     .ilike('username', normalizedKey)
     .maybeSingle();
 
@@ -203,7 +276,7 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
   if (!targetPlayer && normalizedKey.length >= 4) {
     const { data: allPlayers, error: allErr } = await supabase
       .from('players')
-      .select('*');
+      .select(PLAYER_IDENTITY_COLUMNS);
 
     if (allPlayers) {
       const matches = allPlayers.filter(p => 
@@ -321,8 +394,8 @@ export async function getMarketItemDetails(query) {
 export async function getRealmSnapshot() {
   const [{ count: totalPlayers }, { count: availableItems }, { data: richest }, { data: weeklyChampion }] =
     await Promise.all([
-      supabase.from('players').select('*', { count: 'exact', head: true }),
-      supabase.from('market_items').select('*', { count: 'exact', head: true }).neq('stock_status', 'sold-out'),
+      supabase.from('players').select('id', { count: 'exact', head: true }),
+      supabase.from('market_items').select('id', { count: 'exact', head: true }).neq('stock_status', 'sold-out'),
       supabase.from('players').select('username, gold').order('gold', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('players').select('username, weekly_gold').order('weekly_gold', { ascending: false }).limit(1).maybeSingle(),
     ]);
@@ -349,9 +422,9 @@ export async function getLinkStatusByWhatsapp(whatsappNumber) {
 export async function getStaffSnapshot() {
   const [{ count: totalPlayers }, { count: linkedPlayers }, { count: totalSheets }, missions, events, richBoard] =
     await Promise.all([
-      supabase.from('players').select('*', { count: 'exact', head: true }),
-      supabase.from('players').select('*', { count: 'exact', head: true }).not('phone', 'is', null),
-      supabase.from('character_sheets').select('*', { count: 'exact', head: true }),
+      supabase.from('players').select('id', { count: 'exact', head: true }),
+      supabase.from('players').select('id', { count: 'exact', head: true }).not('phone', 'is', null),
+      supabase.from('character_sheets').select('playerId', { count: 'exact', head: true }),
       getActiveMissions(10),
       getActiveEvents(10),
       getGoldLeaderboard(3),

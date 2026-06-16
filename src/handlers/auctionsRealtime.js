@@ -60,9 +60,14 @@ export function startAuctionsRealtime(client) {
           const newBid = payload.new;
           console.log('[Realtime] Nueva puja:', newBid);
 
-          // Fetch bidder username and auction details
-          const { data: bidder } = await supabase.from('players').select('username').eq('id', newBid.player_id).single();
-          const { data: auction } = await supabase.from('market_auctions').select('*').eq('id', newBid.auction_id).single();
+          const [{ data: bidder }, { data: auction }] = await Promise.all([
+            supabase.from('players').select('username').eq('id', newBid.player_id).single(),
+            supabase
+              .from('market_auctions')
+              .select('item_name, item_rarity, whatsapp_chat_id')
+              .eq('id', newBid.auction_id)
+              .single(),
+          ]);
 
           if (!bidder || !auction) return;
 

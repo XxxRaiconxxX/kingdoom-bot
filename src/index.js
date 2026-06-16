@@ -457,11 +457,18 @@ client.on('message', async (msg) => {
   }
 
   const { command, body, hasPrefix } = parseCommand(text);
+  let senderPlayersPromise = null;
+  const getSenderPlayers = () => {
+    if (!senderPlayersPromise) {
+      senderPlayersPromise = getPlayersByPhone(sender);
+    }
+    return senderPlayersPromise;
+  };
 
   const nowMs = Date.now();
   if (!activityCache.has(sender) || (nowMs - activityCache.get(sender)) > 5 * 60 * 1000) {
     activityCache.set(sender, nowMs);
-    getPlayersByPhone(sender).then((players) => {
+    getSenderPlayers().then((players) => {
       players.forEach((player) => {
         if (player && player.id) {
           touchPlayerActivity(player.id).catch(console.error);
@@ -473,7 +480,7 @@ client.on('message', async (msg) => {
   const checkIsAdmin = async (user) => {
     if (isAdminUser(user)) return true;
     try {
-      const players = await getPlayersByPhone(user);
+      const players = user === sender ? await getSenderPlayers() : await getPlayersByPhone(user);
       return players.some((player) => player?.is_admin === true);
     } catch (err) {
       console.error('[checkIsAdmin] Error checking DB:', err);
