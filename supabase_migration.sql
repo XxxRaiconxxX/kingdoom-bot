@@ -68,3 +68,34 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- 5. Configurar Row Level Security (RLS) para proteger las tablas principales
+--    El bot accede mediante la 'service_role' key, por lo que necesita acceso total.
+--    Al activar RLS sin políticas públicas, bloqueamos accesos anónimos no deseados.
+
+-- Activar RLS en todas las tablas
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE character_sheets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE player_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE market_auctions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE market_auction_bids ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+
+-- Crear política que garantiza acceso completo (ALL) a la service_role
+CREATE POLICY "Service Role Full Access on players"
+  ON players FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service Role Full Access on character_sheets"
+  ON character_sheets FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service Role Full Access on player_inventory"
+  ON player_inventory FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service Role Full Access on market_auctions"
+  ON market_auctions FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service Role Full Access on market_auction_bids"
+  ON market_auction_bids FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service Role Full Access on bot_daily_claims"
+  ON bot_daily_claims FOR ALL USING (auth.role() = 'service_role');
