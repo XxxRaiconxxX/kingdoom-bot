@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { supabase, processMarketInstallments } from './supabase.js';
-import { normalizePhone } from './adminStore.js';
+import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
 
@@ -63,7 +63,7 @@ async function sendToAll(client, buildMessage) {
         continue;
       }
 
-      await client.sendMessage(`${phone}@c.us`, msg);
+      await client.sendMessage(formatJid(phone), msg);
       await new Promise((resolve) => setTimeout(resolve, 1500));
     } catch (err) {
       console.error(`[scheduler] Error enviando a ${phone}:`, err.message);

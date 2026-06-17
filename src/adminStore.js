@@ -12,6 +12,10 @@ const STAFF_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'staff.json');
 // In-memory cache of admin numbers (excluding @c.us)
 let adminsCache = null;
 let staffCache = null;
+export function formatJid(phone) {
+  const p = String(phone || '').trim();
+  return p.length >= 15 ? `${p}@lid` : `${p}@c.us`;
+}
 
 export function normalizePhone(phone) {
   let cleaned = String(phone || '')

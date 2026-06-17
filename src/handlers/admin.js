@@ -8,7 +8,7 @@ import {
   awardManualMissionRankPoints,
   getPlayersByPhone,
 } from '../supabase.js';
-import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone } from '../adminStore.js';
+import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
@@ -462,7 +462,7 @@ export async function handleAdminCommand(msg, client) {
 
     // Ejecutar registro
     try {
-      const result = await registerPlayer(`${cleanPhone}@c.us`, username.trim(), goldAmount);
+      const result = await registerPlayer(formatJid(cleanPhone), username.trim(), goldAmount);
       if (result.startsWith('✅')) {
         recordAdminAction({
           actorPhone,
@@ -717,7 +717,7 @@ export async function handleAdminCommand(msg, client) {
     try {
       const chat = await msg.getChat();
       if (chat.isGroup && targetPhones.length > 0) {
-        const jidsToKick = targetPhones.map(p => `${p}@c.us`);
+        const jidsToKick = targetPhones.map(p => formatJid(p));
         await chat.removeParticipants(jidsToKick);
         kicked = true;
       }

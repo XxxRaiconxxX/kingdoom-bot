@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/adminStore.js`, `src/scheduler.js`, `src/handlers/admin.js`, `src/handlers/welcome.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Corrección de envíos de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
+*   **Cambios Clave:**
+    *   **[Core - JID Helper]:** Se agregó una función heurística `formatJid` en `adminStore.js` que evalúa la longitud del número de teléfono. Si tiene >= 15 dígitos, asume que es un Local ID encriptado de Comunidad y le añade el sufijo `@lid`. De lo contrario, usa `@c.us`.
+    *   **[Core - Notificaciones]:** Se implementó `formatJid` en `sendToAll` dentro de `scheduler.js`, permitiendo que el mensaje diario/semanal llegue a los IDs enmascarados que fallaban silenciosamente.
+    *   **[Core - Admin]:** Se aplicó el formato dinámico a los comandos `!registrar` y `!kick`.
+    *   **[Core - Welcome]:** Se adaptó `normalizeWhatsappId` en `welcome.js` para retener explícitamente el sufijo `@lid` si un jugador ya entra con ese sufijo desde un grupo de comunidad.
+*   **Notas/Advertencias:** La regla de >= 15 dígitos funciona perfectamente para la región actual del juego (donde los números reales tienen un máximo de 12 a 13 dígitos). Si en el futuro entra un país con una longitud de número E.164 válida de 15 dígitos, la heurística deberá refinarse.
+
+### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/games.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Implementación de soporte para multiplicadores (`xN`) en los comandos `!cofre` y `!trampa`.
 *   **Cambios Clave:**

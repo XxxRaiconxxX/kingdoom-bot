@@ -11,7 +11,7 @@ function normalizeText(value) {
 function normalizeWhatsappId(value) {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
-  return raw.endsWith('@c.us') || raw.endsWith('@g.us') ? raw : `${raw}@c.us`;
+  return raw.endsWith('@c.us') || raw.endsWith('@g.us') || raw.endsWith('@lid') ? raw : `${raw}@c.us`;
 }
 
 function parseAdminIds(value) {
