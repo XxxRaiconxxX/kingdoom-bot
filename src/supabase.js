@@ -698,16 +698,16 @@ export async function getCofreUsage(playerId) {
   return getBotUsageCount(playerId, 'cofre_usage', 'getCofreUsage');
 }
 
-export async function incrementCofreUsage(playerId) {
-  return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage');
+export async function incrementCofreUsage(playerId, amount = 1) {
+  return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage', amount);
 }
 
 export async function getTrampaUsage(playerId) {
   return getBotUsageCount(playerId, 'trampa_usage', 'getTrampaUsage');
 }
 
-export async function incrementTrampaUsage(playerId) {
-  return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage');
+export async function incrementTrampaUsage(playerId, amount = 1) {
+  return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage', amount);
 }
 
 async function getBotUsageCount(playerId, claimType, logLabel) {
@@ -727,7 +727,7 @@ async function getBotUsageCount(playerId, claimType, logLabel) {
   return data ? data.reward_gold : 0;
 }
 
-async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logLabel) {
+async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logLabel, amount = 1) {
   const claimDate = formatAsuncionDateKey();
   const current = await getCurrentUsage(playerId);
 
@@ -737,7 +737,7 @@ async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logL
       player_id: playerId,
       claim_type: claimType,
       claim_date: claimDate,
-      reward_gold: current + 1
+      reward_gold: current + amount
     }, { onConflict: 'player_id, claim_type, claim_date' });
 
   if (error) {

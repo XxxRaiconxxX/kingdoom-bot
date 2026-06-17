@@ -97,6 +97,10 @@ export async function handleDados(msg) {
 
 
 export async function handleCofre(msg) {
+  const parts = msg.body.toLowerCase().split(' ');
+  const multiplierMatch = parts.find(p => p.match(/^x?[1-9]\d*$/));
+  const requestedMultiplier = multiplierMatch ? parseInt(multiplierMatch.replace('x', ''), 10) : 1;
+
   const sender = msg.author || msg.from;
   const player = await getPlayer(sender);
 
@@ -107,36 +111,56 @@ export async function handleCofre(msg) {
     return `Alcanzaste el limite diario de cofres (${DAILY_MAX_COFRE}/${DAILY_MAX_COFRE}). Vuelve manana para abrir otro.`;
   }
 
-  const result = resolveWeightedResult(COFRE_TABLE);
-  const nextUsos = currentUsos + 1;
-  const nuevoTotal = player.gold + result.gold;
-
-  try {
-    if (result.gold > 0) {
-      await updateGold(player.id, result.gold);
-    }
-    await incrementCofreUsage(player.id);
-  } catch {
-    return `Error al abrir el cofre. Intenta de nuevo.`;
+  const runs = Math.min(requestedMultiplier, DAILY_MAX_COFRE - currentUsos);
+  
+  let totalGold = 0;
+  const results = [];
+  
+  for (let i = 0; i < runs; i++) {
+    const result = resolveWeightedResult(COFRE_TABLE);
+    totalGold += result.gold;
+    results.push(result.label);
   }
 
+  const nextUsos = currentUsos + runs;
+  const nuevoTotal = player.gold + totalGold;
+
+  try {
+    if (totalGold > 0) {
+      await updateGold(player.id, totalGold);
+    }
+    await incrementCofreUsage(player.id, runs);
+  } catch {
+    return `Error al abrir los cofres. Intenta de nuevo.`;
+  }
+
+  const resultString = runs === 1 
+    ? `Resultado: ${results[0]}` 
+    : `Resultados: ${results.join(', ')}`;
+
+  const header = runs === 1
+    ? `${player.username} abrio un cofre antiguo...`
+    : `${player.username} abrio ${runs} cofres antiguos simultaneamente...`;
+
   return heraldCard('Cofre del Reino', [
-    `${player.username} abrio un cofre antiguo...`,
-    `Resultado: ${result.label}`,
+    header,
+    resultString,
+    runs > 1 ? `Oro total ganado: +${formatGold(totalGold)}` : '',
     heraldStat('Usos restantes', `${DAILY_MAX_COFRE - nextUsos}/${DAILY_MAX_COFRE}`),
     heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
-  ], { icon: '' });
+  ].filter(Boolean), { icon: '' });
 }
 
 export async function handleTrampa(msg) {
-  const parts = msg.body.split(' ');
+  const parts = msg.body.toLowerCase().split(' ');
   const apuesta = parseInt((parts[1] ?? '').replace(/\./g, ''), 10);
+  const multiplierMatch = parts.slice(2).find(p => p.match(/^x?[1-9]\d*$/));
+  const requestedMultiplier = multiplierMatch ? parseInt(multiplierMatch.replace('x', ''), 10) : 1;
   const sender = msg.author || msg.from;
   const player = await getPlayer(sender);
 
   if (!player) return `No estas registrado. Escribi *!registrar TuNombre*`;
   if (!apuesta || isNaN(apuesta) || apuesta < 10) return `Usa: *!trampa 100* (minimo 10 oro)`;
-  if (apuesta > player.gold) return `No tenes suficiente oro.\nTenes: ${formatGold(player.gold)}`;
 
   const weekend = isWeekendDay();
   const maxApuesta = weekend ? 500000 : 100000;
@@ -149,17 +173,33 @@ export async function handleTrampa(msg) {
     return `Alcanzaste el limite diario de trampas (${DAILY_MAX_TRAMPA}/${DAILY_MAX_TRAMPA}). Vuelve manana para tentar a la suerte.`;
   }
 
-  const result = resolveWeightedResult(TRAMPA_TABLE);
-  const retorno = Math.floor(apuesta * result.multiplier);
-  const deltaNeto = retorno - apuesta;
-  const nextUsos = currentUsos + 1;
+  const runs = Math.min(requestedMultiplier, DAILY_MAX_TRAMPA - currentUsos);
+  const totalApuesta = apuesta * runs;
+
+  if (totalApuesta > player.gold) {
+    return `No tenes suficiente oro para apostar ${formatGold(apuesta)} x${runs} (${formatGold(totalApuesta)} oro en total).\nTenes: ${formatGold(player.gold)}`;
+  }
+
+  let totalRetorno = 0;
+  const results = [];
+
+  for (let i = 0; i < runs; i++) {
+    const result = resolveWeightedResult(TRAMPA_TABLE);
+    const retorno = Math.floor(apuesta * result.multiplier);
+    totalRetorno += retorno;
+    // simplificar la etiqueta (ej. "Recuperaste exactamente tu apuesta." -> "Recuperaste exactamente tu apuesta")
+    results.push(result.label.replace(/\.$/, ''));
+  }
+
+  const deltaNeto = totalRetorno - totalApuesta;
+  const nextUsos = currentUsos + runs;
   const nuevoTotal = player.gold + deltaNeto;
 
   try {
     if (deltaNeto !== 0) {
       await updateGold(player.id, deltaNeto);
     }
-    await incrementTrampaUsage(player.id);
+    await incrementTrampaUsage(player.id, runs);
   } catch {
     return `Error al activar la trampa. Intenta de nuevo.`;
   }
@@ -170,13 +210,22 @@ export async function handleTrampa(msg) {
       ? `-${formatGold(Math.abs(deltaNeto))} oro`
       : `Sin perdida ni ganancia`;
 
+  const resultString = runs === 1 
+    ? `Resultado: ${results[0]}.` 
+    : `Resultados: ${results.join(', ')}.`;
+
+  const header = runs === 1
+    ? `${player.username} activo un mecanismo oscuro...`
+    : `${player.username} activo ${runs} mecanismos oscuros simultaneamente...`;
+
   return heraldCard('Trampa del Reino', [
-    `${player.username} activo un mecanismo oscuro...`,
-    `Resultado: ${result.label}`,
+    header,
+    resultString,
+    runs > 1 ? `Apuesta total: ${formatGold(totalApuesta)}` : '',
     resultadoEconomico,
     heraldStat('Usos restantes', `${DAILY_MAX_TRAMPA - nextUsos}/${DAILY_MAX_TRAMPA}`),
     heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
-  ], { icon: '' });
+  ].filter(Boolean), { icon: '' });
 }
 
 const oraculoMemory = new Map();
