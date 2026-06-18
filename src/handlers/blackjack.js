@@ -591,23 +591,27 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
   }
 
   // Deduct gold and setup
-  const finalPlayers = [];
-  for (const p of accepted) {
-    const dbPlayer = await getPlayer(p.playerPhone);
-    const currentUsos = await getBlackjackUsage(p.playerId);
+  const processedPlayers = await Promise.all(accepted.map(async (p) => {
+    const [dbPlayer, currentUsos] = await Promise.all([
+      getPlayer(p.playerPhone),
+      getBlackjackUsage(p.playerId)
+    ]);
     if (!dbPlayer || dbPlayer.gold < session.bet || currentUsos >= 5) {
       await client.sendMessage(groupChatId, `⚠️ *${p.username}* fue excluido porque no tiene oro suficiente o alcanzó el límite de usos.`);
-      continue;
+      return null;
     }
     
-    await updateGold(p.playerId, -session.bet);
-    await incrementBlackjackUsage(p.playerId);
+    await Promise.all([
+      updateGold(p.playerId, -session.bet),
+      incrementBlackjackUsage(p.playerId)
+    ]);
     
     p.status = 'playing';
     p.responseReceived = false;
     p.lastAction = null;
-    finalPlayers.push(p);
-  }
+    return p;
+  }));
+  const finalPlayers = processedPlayers.filter(p => p !== null);
 
   if (finalPlayers.length < 2) {
     for (const p of finalPlayers) {
