@@ -1,3 +1,5 @@
+import { randomInt } from 'crypto';
+
 import {
   claimTreasureReward,
   createTreasureEvent,
@@ -27,7 +29,7 @@ export function clearTreasureTimeouts() {
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return randomInt(safeMin, safeMax + 1);
 }
 
 function getAsuncionOffsetMs() {
@@ -311,12 +313,12 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 3) + 2;
+  const numEvents = randomInt(2, 5);
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
   for (let i = 0; i < numEvents; i += 1) {
-    const randomTime = system10 + Math.random() * (system22 - system10);
+    const randomTime = system10 + randomInt(0, Math.floor(system22 - system10) + 1);
     eventTimes.push(randomTime);
   }
 
