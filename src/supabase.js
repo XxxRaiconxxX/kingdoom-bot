@@ -19,6 +19,7 @@ const PHONE_LOOKUP_CACHE_LIMIT = Math.max(
 const PLAYER_SELECT_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned, created_at, last_active_at';
 const PLAYER_IDENTITY_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned';
 const phoneLookupCache = new Map();
+const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
 
 async function supabaseTimedFetch(resource, options = {}) {
   const controller = new AbortController();
@@ -67,10 +68,8 @@ function writePhoneLookupCache(phone, players) {
   });
 }
 
-export const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY,
-  {
+function createServiceClient(url, serviceKey) {
+  return createClient(url, serviceKey, {
     auth: {
       persistSession: false,
     },
@@ -80,7 +79,25 @@ export const supabase = createClient(
     global: {
       fetch: supabaseTimedFetch,
     },
-  }
+  });
+}
+
+export const supabase = createServiceClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
+const botStateSupabaseUrl = process.env.BOT_SUPABASE_URL || process.env.SUPABASE_URL;
+const botStateSupabaseServiceKey =
+  process.env.BOT_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+export const botStateSupabase = createServiceClient(
+  botStateSupabaseUrl,
+  botStateSupabaseServiceKey
+);
+
+export const usingDedicatedBotStateSupabase = Boolean(
+  process.env.BOT_SUPABASE_URL && process.env.BOT_SUPABASE_SERVICE_KEY
 );
 
 function normalizeText(value) {
@@ -646,24 +663,49 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
 
 export async function claimDailyReward(playerId, rewardGold) {
   const claimDate = formatAsuncionDateKey();
-  const { data, error } = await supabase.rpc('claim_daily_reward', {
-    p_player_id: playerId,
-    p_claim_date: claimDate,
-    p_reward_gold: rewardGold,
-    p_claim_type: DAILY_CLAIM_TYPE,
-  });
+  const safeRewardGold = Math.max(0, Number(rewardGold) || 0);
+  const { data, error } = await botStateSupabase
+    .from('bot_daily_claims')
+    .insert({
+      player_id: playerId,
+      claim_type: DAILY_CLAIM_TYPE,
+      claim_date: claimDate,
+      reward_gold: safeRewardGold,
+    })
+    .select(BOT_STATE_SELECT_COLUMNS)
+    .single();
 
   if (error) {
+    const duplicateLike =
+      error.code === '23505' || String(error.message ?? '').toLowerCase().includes('duplicate');
+    if (duplicateLike) {
+      return false;
+    }
+
     console.error('[claimDailyReward]', error.message);
     throw new Error('No se pudo registrar la recompensa diaria.');
   }
 
-  return Boolean(data);
+  try {
+    await updateGold(playerId, safeRewardGold);
+    return Boolean(data);
+  } catch (goldError) {
+    const { error: rollbackError } = await botStateSupabase
+      .from('bot_daily_claims')
+      .delete()
+      .eq('id', data.id);
+
+    if (rollbackError) {
+      console.error('[claimDailyReward.rollback]', rollbackError.message);
+    }
+
+    throw goldError;
+  }
 }
 
 export async function hasClaimedDailyReward(playerId) {
   const claimDate = formatAsuncionDateKey();
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_daily_claims')
     .select('id, reward_gold, created_at')
     .eq('player_id', playerId)
@@ -748,7 +790,7 @@ function parseRestrictedGroupViolationRow(row, scopeKey) {
 export async function getRestrictedGroupCommandViolationsForDay(playerId, scopeKey = 'main') {
   const claimDate = formatAsuncionDateKey();
   const prefix = `${buildRestrictedGroupViolationPrefix(scopeKey)}.%`;
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_daily_claims')
     .select('claim_type, reward_gold, created_at')
     .eq('player_id', playerId)
@@ -790,7 +832,7 @@ export async function recordRestrictedGroupCommandViolation({
     const nextStrikeNumber = existingEntries.length + 1;
     const claimType = buildRestrictedGroupViolationClaimType(scopeKey, nextStrikeNumber, commandName);
 
-    const { error } = await supabase
+    const { error } = await botStateSupabase
       .from('bot_daily_claims')
       .insert({
         player_id: playerId,
@@ -820,7 +862,7 @@ export async function recordRestrictedGroupCommandViolation({
 
 async function getBotUsageCount(playerId, claimType, logLabel) {
   const claimDate = formatAsuncionDateKey();
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_daily_claims')
     .select('reward_gold')
     .eq('player_id', playerId)
@@ -839,7 +881,7 @@ async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logL
   const claimDate = formatAsuncionDateKey();
   const current = await getCurrentUsage(playerId);
 
-  const { error } = await supabase
+  const { error } = await botStateSupabase
     .from('bot_daily_claims')
     .upsert({
       player_id: playerId,
@@ -1168,7 +1210,7 @@ export async function saveActiveMissionState(state) {
     final_state: state.finalState
   };
 
-  const { error } = await supabase
+  const { error } = await botStateSupabase
     .from('bot_active_missions')
     .upsert(payload, { onConflict: 'short_id' });
 
@@ -1178,7 +1220,7 @@ export async function saveActiveMissionState(state) {
 }
 
 export async function getActiveMissionsFromDb() {
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_active_missions')
     .select('*')
     .eq('resolved', false);
@@ -1191,7 +1233,7 @@ export async function getActiveMissionsFromDb() {
 }
 
 export async function deleteResolvedMission(shortId) {
-  const { error } = await supabase
+  const { error } = await botStateSupabase
     .from('bot_active_missions')
     .delete()
     .eq('short_id', shortId);

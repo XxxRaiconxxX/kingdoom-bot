@@ -5,6 +5,25 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 19/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `.env.example`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Implementacion del primer split parcial de Supabase para mover estado operativo caliente del bot al proyecto dedicado.
+*   **Cambios Clave:**
+    *   **[Arquitectura - Doble cliente]:** `src/supabase.js` ahora crea un cliente `botStateSupabase` separado, alimentado por `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY`, con fallback automatico al proyecto principal si todavia no se configuran.
+    *   **[Operacion - Estado caliente]:** Se redirigieron a la base dedicada `bot_daily_claims` y `bot_active_missions`, cubriendo recompensa diaria, contadores de `!dados`/`!21`/`!cofre`/`!trampa`, faltas del grupo principal y persistencia del GM tracker.
+    *   **[Economia - Compensacion]:** `claimDailyReward(...)` ya no depende del RPC viejo compartido; primero registra el claim en la base del bot y luego acredita oro en la base principal, con rollback del claim si falla el aumento de oro.
+    *   **[Infra - SQL dedicado]:** Se agrego `supabase_bot_state_migration.sql` con las tablas e indices minimos para montar `bot_daily_claims` y `bot_active_missions` en el nuevo proyecto Supabase del bot.
+*   **Notas/Advertencias:** `bot_treasure_events`, `bot_treasure_claims` y `claim_bot_treasure_reward` se mantienen por ahora en el Supabase principal porque todavia necesitan atomicidad directa con el oro del jugador. El siguiente corte recomendado es migrar variables de entorno reales del deploy y probar claims diarios, usos de minijuegos y GM tracker sobre el proyecto nuevo.
+
+### [Fecha: 19/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `SUPABASE_BOT_SPLIT_DIAGNOSTIC.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Diagnostico tecnico para separar el estado operativo de `kingdoom-bot` a otro proyecto Supabase sin romper la economia compartida con `Kingdoom-sync`.
+*   **Cambios Clave:**
+    *   **[Arquitectura - Diagnostico]:** Se documento el acoplamiento actual del bot a Supabase, separando nucleo economico compartido, estado bot-especifico y contenido/lore.
+    *   **[Arquitectura - Recomendacion]:** Se concluyo que la opcion sana no es mover todo el bot, sino aplicar un split parcial: mantener `players`, `market_*`, `character_sheets`, `player_inventory`, `realm_*` y RPCs core en el proyecto principal, y mover `bot_daily_claims`, `bot_treasure_*` y `bot_active_missions` a un proyecto Supabase secundario del bot.
+    *   **[Operacion - Fases]:** El diagnostico incluye fases concretas de optimizacion previa, split parcial y reevaluacion posterior.
+*   **Notas/Advertencias:** No se implemento aun el split. El documento queda como hoja de ruta para ejecutar una migracion parcial con menor riesgo.
+
+### [Fecha: 19/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/supabase.js`, `src/handlers/admin.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Bloqueo operativo de minijuegos en el grupo principal con advertencia, multa escalada y consulta staff/admin de faltas.
 *   **Cambios Clave:**
