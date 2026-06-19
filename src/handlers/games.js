@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
@@ -36,7 +37,8 @@ function isWeekendDay(date = new Date()) {
 }
 
 function resolveWeightedResult(table) {
-  const roll = Math.random() * 100;
+  // Uses crypto to generate a float [0, 100) exactly like Math.random() * 100
+  const roll = (crypto.randomInt(0, 1000000) / 1000000) * 100;
   let threshold = 0;
 
   for (const entry of table) {
@@ -129,8 +131,8 @@ export async function handleDados(msg) {
   const rolls = [];
 
   for (let index = 0; index < runs; index += 1) {
-    const d1 = Math.ceil(Math.random() * 6);
-    const d2 = Math.ceil(Math.random() * 6);
+    const d1 = crypto.randomInt(1, 7);
+    const d2 = crypto.randomInt(1, 7);
     const suma = d1 + d2;
     const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
     const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
