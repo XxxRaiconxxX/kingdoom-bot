@@ -682,8 +682,8 @@ export async function getDadosUsage(playerId) {
   return getBotUsageCount(playerId, 'dados_usage', 'getDadosUsage');
 }
 
-export async function incrementDadosUsage(playerId) {
-  return incrementBotUsageCount(playerId, 'dados_usage', getDadosUsage, 'incrementDadosUsage');
+export async function incrementDadosUsage(playerId, amount = 1) {
+  return incrementBotUsageCount(playerId, 'dados_usage', getDadosUsage, 'incrementDadosUsage', amount);
 }
 
 export async function getBlackjackUsage(playerId) {

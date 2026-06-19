@@ -62,3 +62,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Compensación Simple:** `!dados`, `!cofre` y `!trampa` ahora comparten un helper que intenta revertir el cambio de oro si el incremento del contador diario falla después del cobro/pago.
     *   **Saldo Reportado:** Tras resolver la jugada, el bot relee el perfil y muestra el oro actualizado real, en vez de depender siempre del cálculo local previo al await.
 *   **Notas/Advertencias:** El blindaje del bot mejora la consistencia, pero sigue siendo recomendable llevar estos minijuegos a una RPC transaccional única si se quiere eliminar por completo cualquier ventana entre oro y uso diario.
+
+### [Fecha: 19/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** src/handlers/games.js, src/supabase.js, AI_CHANGELOG.md
+*   **Resumen de Tareas:** Extension del modo !dados x4 para resolver cuatro tiradas en cadena en un solo mensaje.
+*   **Cambios Clave:**
+    *   **!dados x4 multipase:** El modo x4 ahora ejecuta hasta 4 tiradas reales en la misma respuesta, igualando la ergonomia de !cofre y !trampa.
+    *   **Consumo agrupado:** incrementDadosUsage(...) ahora acepta cantidad, de modo que !dados x4 consume multiples usos diarios en una sola operacion.
+    *   **Saldo de riesgo:** El comando valida que el jugador pueda cubrir el peor caso de las 4 tiradas antes de ejecutar la cadena completa.
+    *   **Resumen consolidado:** La respuesta ahora detalla cada tirada, cuenta victorias y muestra el balance neto total del bloque.
+*   **Notas/Advertencias:** En el modo x4, si al jugador le quedan menos de 4 usos diarios, el comando corre solo las tiradas disponibles restantes en vez de rechazar el intento.

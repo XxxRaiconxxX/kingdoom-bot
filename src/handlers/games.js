@@ -5,6 +5,7 @@ import { heraldCard, heraldStat } from '../formatting.js';
 const DAILY_MAX_COFRE = 4;
 const DAILY_MAX_TRAMPA = 4;
 const DADOS_X4_TARGET = 7;
+const DADOS_X4_RUNS = 4;
 
 const COFRE_TABLE = [
   { chance: 22, gold: 0, label: 'Cofre vacio.' },
@@ -98,9 +99,9 @@ export async function handleDados(msg) {
   const sender = msg.author || msg.from; // msg.from = group ID in group chats
   const player = await getPlayer(sender);
 
-  if (!player) return `⚔️ No estás registrado. Escribí *!registrar TuNombre*`;
-  if (!apuesta || isNaN(apuesta) || apuesta < 10) return `🎲 Usá: *!dados 100* o *!dados 100 x4* (mínimo 10 oro)`;
-  if (apuesta > player.gold) return `❌ No tenés suficiente oro.\n🪙 Tenés: ${player.gold.toLocaleString('es-PY')}`;
+  if (!player) return 'No estas registrado. Escribi *!registrar TuNombre*';
+  if (!apuesta || isNaN(apuesta) || apuesta < 10) return 'Usa: *!dados 100* o *!dados 100 x4* (minimo 10 oro)';
+  if (apuesta > player.gold) return `No tenes suficiente oro.\nTenes: ${player.gold.toLocaleString('es-PY')}`;
 
   const dayOfWeek = new Date().getDay();
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
@@ -108,38 +109,72 @@ export async function handleDados(msg) {
   const maxApuesta = isWeekend ? 500000 : 100000;
 
   if (apuesta > maxApuesta) {
-    return `🎲 La apuesta maxima por ronda es de *${maxApuesta.toLocaleString('es-PY')} oro*${isWeekend ? ' durante el fin de semana' : ''}.`;
+    return `La apuesta maxima por ronda es de *${maxApuesta.toLocaleString('es-PY')} oro*${isWeekend ? ' durante el fin de semana' : ''}.`;
   }
 
   const currentUsos = await getDadosUsage(player.id);
   if (currentUsos >= maxUsos) {
-    return `🎲 Alcanzaste el límite diario de dados (${maxUsos}/${maxUsos}). ¡Volvé mañana para probar tu suerte!`;
+    return `Alcanzaste el limite diario de dados (${maxUsos}/${maxUsos}). Vuelve manana para probar tu suerte.`;
   }
 
-  const d1 = Math.ceil(Math.random() * 6);
-  const d2 = Math.ceil(Math.random() * 6);
-  const suma = d1 + d2;
-  const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
-  const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
+  const runs = x4 ? Math.min(DADOS_X4_RUNS, maxUsos - currentUsos) : 1;
+  const totalExposure = apuesta * runs;
+
+  if (runs > 1 && totalExposure > player.gold) {
+    return `No tenes suficiente oro para jugar *x4* con ${runs} tiradas.\nApuesta total de riesgo: *${formatGold(totalExposure)} oro*\nTenes: ${formatGold(player.gold)}`;
+  }
+
+  let totalDelta = 0;
+  let wins = 0;
+  const rolls = [];
+
+  for (let index = 0; index < runs; index += 1) {
+    const d1 = Math.ceil(Math.random() * 6);
+    const d2 = Math.ceil(Math.random() * 6);
+    const suma = d1 + d2;
+    const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
+    const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
+
+    totalDelta += delta;
+    if (gano) {
+      wins += 1;
+    }
+
+    rolls.push(
+      runs === 1
+        ? `Dados: [${d1}] [${d2}] = *${suma}*`
+        : `Tirada ${index + 1}: [${d1}] [${d2}] = *${suma}* ${gano ? `+${formatGold(delta)}` : `-${formatGold(apuesta)}`}`
+    );
+  }
 
   try {
-    await applyGoldAndUsage(player.id, delta, incrementDadosUsage);
+    await applyGoldAndUsage(player.id, totalDelta, (targetPlayerId) =>
+      incrementDadosUsage(targetPlayerId, runs)
+    );
   } catch {
-    return `⚔️ Error al registrar la apuesta. Intentá de nuevo.`;
+    return 'Error al registrar la apuesta. Intenta de nuevo.';
   }
 
-  const remainingUsos = maxUsos - (currentUsos + 1);
+  const remainingUsos = maxUsos - (currentUsos + runs);
   const refreshedPlayer = await getPlayer(sender);
-  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + delta);
+  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + totalDelta);
+  const resultLine = totalDelta > 0
+    ? `Victoria total: +${formatGold(totalDelta)} oro`
+    : totalDelta < 0
+      ? `Derrota total: -${formatGold(Math.abs(totalDelta))} oro`
+      : 'Resultado neutro: sin ganancia ni perdida';
+
   return heraldCard('Dados del destino', [
-    x4 ? `Modo: *x4* (solo ganas con suma exacta de ${DADOS_X4_TARGET})` : `Modo: *clasico* (ganas con ${DADOS_X4_TARGET} o mas)`,
-    `Dados: [${d1}] [${d2}] = *${suma}*`,
-    gano ? `Victoria ${x4 ? 'x4' : 'clasica'}: +${formatGold(delta)} oro` : `Derrota: -${formatGold(apuesta)} oro`,
+    x4
+      ? `Modo: *x4* (${runs} tiradas en cadena, solo ganas con suma exacta de ${DADOS_X4_TARGET})`
+      : `Modo: *clasico* (ganas con ${DADOS_X4_TARGET} o mas)`,
+    ...rolls,
+    runs > 1 ? `Victorias: *${wins}/${runs}*` : '',
+    resultLine,
     heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
     heraldStat('Usos restantes', `${remainingUsos}/${maxUsos}`),
-  ], { icon: '🎲' });
+  ], { icon: '' });
 }
-
 
 export async function handleCofre(msg) {
   const parts = msg.body.toLowerCase().split(' ');
