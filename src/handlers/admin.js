@@ -7,6 +7,7 @@ import {
   getActivityReport,
   awardManualMissionRankPoints,
   getPlayersByPhone,
+  getRestrictedGroupCommandSummaryForDay,
 } from '../supabase.js';
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
@@ -86,6 +87,7 @@ const MISSION_POINT_DIFFICULTIES = new Map([
   ['dificil', 'hard'],
   ['difícil', 'hard'],
 ]);
+const RESTRICTED_MINIGAME_GROUP_SCOPE_KEY = 'main';
 
 function normalizeMissionDifficulty(value) {
   const key = String(value ?? '')
@@ -206,6 +208,7 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
           heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
+          heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
         ]),
       ], { icon: '👑' });
     } else {
@@ -230,9 +233,69 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
           heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
+          heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
         ]),
       ], { icon: '🛡️' });
     }
+  }
+
+  if (cmd === '!faltasgrupo') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden consultar las faltas del grupo.';
+    }
+
+    if (!Array.isArray(msg.mentionedIds) || msg.mentionedIds.length !== 1) {
+      return '❌ Uso: *!faltasgrupo @jugador*';
+    }
+
+    const { resolvedTargets, unresolved, ambiguous } = await resolveMissionCompletionTargets(msg);
+    if (!resolvedTargets.length) {
+      return unresolved.length
+        ? `❌ La mención no corresponde a un jugador vinculado. Teléfono: +${unresolved.join(', +')}`
+        : '❌ No pude resolver la mención hacia un perfil vinculado.';
+    }
+
+    if (ambiguous.length) {
+      return `⚠️ La mención tiene múltiples perfiles vinculados: +${ambiguous.join(', +')}`;
+    }
+
+    const targetEntry = resolvedTargets[0];
+    const summary = await getRestrictedGroupCommandSummaryForDay(
+      targetEntry.player.id,
+      RESTRICTED_MINIGAME_GROUP_SCOPE_KEY
+    );
+
+    if (!summary.count) {
+      return heraldCard('Faltas del grupo principal', [
+        heraldStat('Aventurero', `*${targetEntry.player.username}*`),
+        heraldStat('Faltas hoy', '*0*'),
+        heraldStat('Multas hoy', '*0 oro*'),
+        'No hay advertencias ni sanciones registradas hoy para este aventurero.',
+      ], { icon: '📘' });
+    }
+
+    const lines = summary.entries.map((entry) => {
+      const when = entry.createdAt
+        ? new Date(entry.createdAt).toLocaleTimeString('es-PY', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            timeZone: 'America/Asuncion',
+          })
+        : '--:--';
+      const amountText = entry.warningOnly
+        ? 'advertencia'
+        : `-${Number(entry.penaltyGold ?? 0).toLocaleString('es-PY')} oro`;
+      return `${entry.strikeNumber}. !${entry.commandName} — ${amountText} — ${when}`;
+    }).join('\n');
+
+    return heraldCard('Faltas del grupo principal', [
+      heraldStat('Aventurero', `*${targetEntry.player.username}*`),
+      heraldStat('Faltas hoy', `*${summary.count}*`),
+      heraldStat('Multas hoy', `*${Number(summary.totalPenaltyGold ?? 0).toLocaleString('es-PY')} oro*`),
+      heraldSection('Detalle'),
+      lines,
+    ], { icon: '📘' });
   }
 
   if (cmd === '!misioncompleta') {

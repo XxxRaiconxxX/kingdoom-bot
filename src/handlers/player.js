@@ -169,6 +169,8 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
 🔮 \`!oraculo <pregunta>\` — Consulta al Oráculo
 ❓ \`!ayuda\` — Abre este compendio`;
 
+    menu += `\n\n⚠️ *Nota del Heraldo:* \`!cofre\`, \`!trampa\` y \`!21\` deben jugarse por privado con el bot.`;
+
     if (isSenderOwner) {
       menu += `\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n` +
               `👑 *COMANDOS DEL SOBERANO*\n` +

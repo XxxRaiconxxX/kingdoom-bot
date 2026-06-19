@@ -9,9 +9,17 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { registerPlayer, getPlayer, getPlayersByPhone, touchPlayerActivity } from './supabase.js';
+import {
+  registerPlayer,
+  getPlayer,
+  getPlayersByPhone,
+  touchPlayerActivity,
+  updateGold,
+  getRestrictedGroupCommandViolationsForDay,
+  recordRestrictedGroupCommandViolation,
+} from './supabase.js';
 import { startScheduler } from './scheduler.js';
-import { isAdminUser, isStaffUser, normalizePhone } from './adminStore.js';
+import { isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
@@ -40,6 +48,10 @@ let latestQrDataUrl = '';
 const welcomeConfig = buildWelcomeConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
+const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
+const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
+const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
+const restrictedGroupLocks = new Map();
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -77,6 +89,73 @@ function ensurePrefixedBody(command, originalBody, parsedBody) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function runRestrictedGroupSerial(key, task) {
+  const previous = restrictedGroupLocks.get(key) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(task);
+
+  restrictedGroupLocks.set(
+    key,
+    next.finally(() => {
+      if (restrictedGroupLocks.get(key) === next) {
+        restrictedGroupLocks.delete(key);
+      }
+    })
+  );
+
+  return next;
+}
+
+function formatGoldAmount(value) {
+  return Number(value ?? 0).toLocaleString('es-PY');
+}
+
+function getRestrictedCommandPenalty(previousViolationsCount) {
+  if (previousViolationsCount <= 0) {
+    return 0;
+  }
+
+  return 5000 * (2 ** (previousViolationsCount - 1));
+}
+
+function buildRestrictedGroupWarningReply(commandName) {
+  return [
+    `⚠️ El comando *!${commandName}* no puede usarse en este grupo principal.`,
+    'Por favor envia mensaje al privado para continuar con este comando.',
+    'Esta fue tu advertencia gratuita de hoy.',
+  ].join('\n');
+}
+
+function buildRestrictedGroupPenaltyReply(commandName, desiredPenalty, appliedPenalty, availableGoldAfter) {
+  const baseLines = [
+    `⛔ El comando *!${commandName}* no puede usarse en este grupo principal.`,
+    'Por favor envia mensaje al privado para continuar con este comando.',
+  ];
+
+  if (appliedPenalty <= 0) {
+    baseLines.push(`No se pudo descontar oro porque no habia saldo disponible. Multa prevista: *${formatGoldAmount(desiredPenalty)} oro*.`);
+    return baseLines.join('\n');
+  }
+
+  if (appliedPenalty < desiredPenalty) {
+    baseLines.push(`Se descontaron *${formatGoldAmount(appliedPenalty)} oro* (todo tu saldo disponible).`);
+  } else {
+    baseLines.push(`Se descontaron *${formatGoldAmount(appliedPenalty)} oro* por reincidir hoy.`);
+  }
+
+  baseLines.push(`Oro restante: *${formatGoldAmount(availableGoldAfter)}*`);
+  return baseLines.join('\n');
+}
+
+function buildRestrictedGroupPrivateReply(commandName) {
+  return [
+    `⚠️ *!${commandName}* no se usa en el grupo principal del reino.`,
+    'Reenvia aqui ese comando por privado y el bot lo atendera sin problemas.',
+    'En el grupo principal las reincidencias generan multa de oro durante el dia.',
+  ].join('\n');
 }
 
 function getRandomDelayMs(minMs, maxMs) {
@@ -489,16 +568,20 @@ client.on('message', async (msg) => {
   };
 
   const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'];
-  const PRIVILEGED_COMMANDS = ['misioncompleta'];
+  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
+  const isRestrictedMainGroupMinigame =
+    hasPrefix &&
+    msg.from === RESTRICTED_MINIGAME_GROUP_ID &&
+    RESTRICTED_MINIGAME_COMMANDS.has(command);
 
   let isAdmin = false;
   let isStaff = false;
   let isPrivileged = false;
 
-  if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd) {
+  if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd || isRestrictedMainGroupMinigame) {
     isAdmin = await checkIsAdmin(sender);
     isStaff = isStaffUser(sender);
     isPrivileged = isAdmin || isStaff;
@@ -522,6 +605,46 @@ client.on('message', async (msg) => {
 
     if (forgeReply) {
       reply = forgeReply;
+    } else if (isRestrictedMainGroupMinigame && !isPrivileged) {
+      const lockKey = `${RESTRICTED_MINIGAME_SCOPE_KEY}:${normalizePhone(sender)}`;
+      reply = await runRestrictedGroupSerial(lockKey, async () => {
+        const player = await getPlayer(sender);
+        const violations = player?.id
+          ? await getRestrictedGroupCommandViolationsForDay(player.id, RESTRICTED_MINIGAME_SCOPE_KEY)
+          : [];
+        const desiredPenalty = getRestrictedCommandPenalty(violations.length);
+        const availableGold = Math.max(0, Number(player?.gold ?? 0));
+        const appliedPenalty = Math.min(availableGold, desiredPenalty);
+
+        if (player?.id) {
+          if (appliedPenalty > 0) {
+            await updateGold(player.id, -appliedPenalty);
+          }
+
+          await recordRestrictedGroupCommandViolation({
+            playerId: player.id,
+            scopeKey: RESTRICTED_MINIGAME_SCOPE_KEY,
+            commandName: command,
+            penaltyGold: appliedPenalty,
+          });
+        }
+
+        try {
+          await client.sendMessage(
+            formatJid(normalizePhone(sender)),
+            buildRestrictedGroupPrivateReply(command)
+          );
+        } catch (privateError) {
+          console.error('[restricted command private notify]', privateError);
+        }
+
+        if (desiredPenalty <= 0) {
+          return buildRestrictedGroupWarningReply(command);
+        }
+
+        const availableGoldAfter = Math.max(0, availableGold - appliedPenalty);
+        return buildRestrictedGroupPenaltyReply(command, desiredPenalty, appliedPenalty, availableGoldAfter);
+      });
     } else if (!hasPrefix) {
       return;
     } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {

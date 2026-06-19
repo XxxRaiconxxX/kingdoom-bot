@@ -710,6 +710,114 @@ export async function incrementTrampaUsage(playerId, amount = 1) {
   return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage', amount);
 }
 
+function buildRestrictedGroupViolationPrefix(scopeKey = 'main') {
+  return `grpviol.${String(scopeKey || 'main').trim().toLowerCase()}`;
+}
+
+function buildRestrictedGroupViolationClaimType(scopeKey, strikeNumber, commandName) {
+  const safeStrike = String(Math.max(1, Number(strikeNumber) || 1)).padStart(4, '0');
+  const safeCommand = String(commandName || 'unknown')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unknown';
+
+  return `${buildRestrictedGroupViolationPrefix(scopeKey)}.${safeStrike}.${safeCommand}`;
+}
+
+function parseRestrictedGroupViolationRow(row, scopeKey) {
+  const prefix = `${buildRestrictedGroupViolationPrefix(scopeKey)}.`;
+  const claimType = String(row?.claim_type ?? '');
+
+  if (!claimType.startsWith(prefix)) {
+    return null;
+  }
+
+  const [, rawStrike = '0', commandName = 'unknown'] = claimType.slice(prefix.length).split('.');
+  const strikeNumber = Number.parseInt(rawStrike, 10);
+
+  return {
+    strikeNumber: Number.isFinite(strikeNumber) ? strikeNumber : 0,
+    commandName,
+    penaltyGold: Number(row?.reward_gold ?? 0),
+    createdAt: row?.created_at ?? null,
+    warningOnly: Number(row?.reward_gold ?? 0) <= 0,
+  };
+}
+
+export async function getRestrictedGroupCommandViolationsForDay(playerId, scopeKey = 'main') {
+  const claimDate = formatAsuncionDateKey();
+  const prefix = `${buildRestrictedGroupViolationPrefix(scopeKey)}.%`;
+  const { data, error } = await supabase
+    .from('bot_daily_claims')
+    .select('claim_type, reward_gold, created_at')
+    .eq('player_id', playerId)
+    .eq('claim_date', claimDate)
+    .like('claim_type', prefix)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[getRestrictedGroupCommandViolationsForDay]', error.message);
+    return [];
+  }
+
+  return (data ?? [])
+    .map((row) => parseRestrictedGroupViolationRow(row, scopeKey))
+    .filter(Boolean)
+    .sort((left, right) => left.strikeNumber - right.strikeNumber);
+}
+
+export async function getRestrictedGroupCommandSummaryForDay(playerId, scopeKey = 'main') {
+  const entries = await getRestrictedGroupCommandViolationsForDay(playerId, scopeKey);
+
+  return {
+    count: entries.length,
+    totalPenaltyGold: entries.reduce((total, entry) => total + Math.max(0, Number(entry.penaltyGold ?? 0)), 0),
+    entries,
+  };
+}
+
+export async function recordRestrictedGroupCommandViolation({
+  playerId,
+  scopeKey = 'main',
+  commandName,
+  penaltyGold = 0,
+}) {
+  const claimDate = formatAsuncionDateKey();
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existingEntries = await getRestrictedGroupCommandViolationsForDay(playerId, scopeKey);
+    const nextStrikeNumber = existingEntries.length + 1;
+    const claimType = buildRestrictedGroupViolationClaimType(scopeKey, nextStrikeNumber, commandName);
+
+    const { error } = await supabase
+      .from('bot_daily_claims')
+      .insert({
+        player_id: playerId,
+        claim_type: claimType,
+        claim_date: claimDate,
+        reward_gold: Math.max(0, Number(penaltyGold) || 0),
+      });
+
+    if (!error) {
+      return {
+        strikeNumber: nextStrikeNumber,
+        commandName,
+        penaltyGold: Math.max(0, Number(penaltyGold) || 0),
+        warningOnly: Math.max(0, Number(penaltyGold) || 0) <= 0,
+      };
+    }
+
+    const conflictLike = error.code === '23505' || String(error.message ?? '').toLowerCase().includes('duplicate');
+    if (!conflictLike) {
+      console.error('[recordRestrictedGroupCommandViolation]', error.message);
+      throw new Error('No se pudo registrar la falta del grupo.');
+    }
+  }
+
+  throw new Error('No se pudo blindar el registro de la falta del grupo.');
+}
+
 async function getBotUsageCount(playerId, claimType, logLabel) {
   const claimDate = formatAsuncionDateKey();
   const { data, error } = await supabase

@@ -4,6 +4,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 19/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/supabase.js`, `src/handlers/admin.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Bloqueo operativo de minijuegos en el grupo principal con advertencia, multa escalada y consulta staff/admin de faltas.
+*   **Cambios Clave:**
+    *   **[Bot - Moderacion de grupo]:** Se bloqueo `!cofre`, `!trampa` y `!21` para usuarios normales dentro del grupo principal `595971938097-1618930274@g.us`, manteniendo exentos a admin y staff.
+    *   **[Bot - Sancion progresiva]:** La primera falta diaria ahora deja una advertencia gratuita y las reincidencias aplican multa escalada compartida entre los tres comandos (`5k -> 10k -> 20k -> 40k -> ...`), descontando todo el saldo disponible si el jugador no alcanza.
+    *   **[Bot - Persistencia ligera]:** Se reutilizo `bot_daily_claims` como bitacora diaria ligera para registrar advertencias y multas del grupo principal, con helpers nuevos en `supabase.js` para leer resumenes y registrar faltas blindadas.
+    *   **[Bot - Staff/Admin]:** Se agrego `!faltasgrupo @jugador` para consultar desde WhatsApp el detalle del dia, el total de faltas y el oro descontado.
+    *   **[Bot - UX]:** El bot responde visiblemente en el grupo, intenta avisar por privado al infractor y agrega una nota en `!ayuda` indicando que esos minijuegos deben jugarse por DM.
+*   **Notas/Advertencias:** La bitacora de faltas usa `bot_daily_claims` como solucion MVP persistente. Si luego se necesitan perdones manuales, historiales mas ricos o dashboards dedicados, conviene migrar a una tabla especifica.
+
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/scheduler.js`, `src/handlers/admin.js`, `src/handlers/welcome.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Corrección de envíos de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
