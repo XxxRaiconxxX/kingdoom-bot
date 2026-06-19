@@ -4,6 +4,7 @@ import { heraldCard, heraldStat } from '../formatting.js';
 
 const DAILY_MAX_COFRE = 4;
 const DAILY_MAX_TRAMPA = 4;
+const DADOS_X4_TARGET = 7;
 
 const COFRE_TABLE = [
   { chance: 22, gold: 0, label: 'Cofre vacio.' },
@@ -47,15 +48,58 @@ function resolveWeightedResult(table) {
   return table[table.length - 1];
 }
 
+function parseGoldToken(value) {
+  return parseInt(String(value ?? '').replace(/\./g, ''), 10);
+}
+
+function parseDadosBetConfig(body) {
+  const tokens = String(body ?? '')
+    .trim()
+    .split(/\s+/)
+    .slice(1)
+    .filter(Boolean);
+
+  const x4 = tokens.some((token) => token.toLowerCase() === 'x4');
+  const amountToken = tokens.find((token) => /^\d[\d.]*$/.test(token)) ?? '';
+
+  return {
+    x4,
+    amount: parseGoldToken(amountToken),
+  };
+}
+
+async function applyGoldAndUsage(playerId, delta, consumeUsage) {
+  let goldApplied = false;
+
+  try {
+    if (delta !== 0) {
+      await updateGold(playerId, delta);
+      goldApplied = true;
+    }
+
+    await consumeUsage(playerId);
+    return true;
+  } catch (error) {
+    if (goldApplied && delta !== 0) {
+      try {
+        await updateGold(playerId, -delta);
+      } catch (rollbackError) {
+        console.error('[applyGoldAndUsage rollback]', rollbackError?.message ?? rollbackError);
+      }
+    }
+
+    throw error;
+  }
+}
+
 
 export async function handleDados(msg) {
-  const parts = msg.body.split(' ');
-  const apuesta = parseInt(parts[1]);
+  const { amount: apuesta, x4 } = parseDadosBetConfig(msg.body);
   const sender = msg.author || msg.from; // msg.from = group ID in group chats
   const player = await getPlayer(sender);
 
   if (!player) return `⚔️ No estás registrado. Escribí *!registrar TuNombre*`;
-  if (!apuesta || isNaN(apuesta) || apuesta < 10) return `🎲 Usá: *!dados 100* (mínimo 10 oro)`;
+  if (!apuesta || isNaN(apuesta) || apuesta < 10) return `🎲 Usá: *!dados 100* o *!dados 100 x4* (mínimo 10 oro)`;
   if (apuesta > player.gold) return `❌ No tenés suficiente oro.\n🪙 Tenés: ${player.gold.toLocaleString('es-PY')}`;
 
   const dayOfWeek = new Date().getDay();
@@ -75,21 +119,22 @@ export async function handleDados(msg) {
   const d1 = Math.ceil(Math.random() * 6);
   const d2 = Math.ceil(Math.random() * 6);
   const suma = d1 + d2;
-  const gano = suma >= 7;
-  const delta = gano ? apuesta : -apuesta;
-  const nuevoTotal = player.gold + delta; // calculamos antes del await
+  const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
+  const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
 
   try {
-    await updateGold(player.id, delta);
-    await incrementDadosUsage(player.id);
+    await applyGoldAndUsage(player.id, delta, incrementDadosUsage);
   } catch {
     return `⚔️ Error al registrar la apuesta. Intentá de nuevo.`;
   }
 
   const remainingUsos = maxUsos - (currentUsos + 1);
+  const refreshedPlayer = await getPlayer(sender);
+  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + delta);
   return heraldCard('Dados del destino', [
+    x4 ? `Modo: *x4* (solo ganas con suma exacta de ${DADOS_X4_TARGET})` : `Modo: *clasico* (ganas con ${DADOS_X4_TARGET} o mas)`,
     `Dados: [${d1}] [${d2}] = *${suma}*`,
-    gano ? `✨ *Victoria* +${apuesta} oro` : `💀 *Derrota* -${apuesta} oro`,
+    gano ? `Victoria ${x4 ? 'x4' : 'clasica'}: +${formatGold(delta)} oro` : `Derrota: -${formatGold(apuesta)} oro`,
     heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
     heraldStat('Usos restantes', `${remainingUsos}/${maxUsos}`),
   ], { icon: '🎲' });
@@ -112,10 +157,10 @@ export async function handleCofre(msg) {
   }
 
   const runs = Math.min(requestedMultiplier, DAILY_MAX_COFRE - currentUsos);
-  
+
   let totalGold = 0;
   const results = [];
-  
+
   for (let i = 0; i < runs; i++) {
     const result = resolveWeightedResult(COFRE_TABLE);
     totalGold += result.gold;
@@ -123,16 +168,17 @@ export async function handleCofre(msg) {
   }
 
   const nextUsos = currentUsos + runs;
-  const nuevoTotal = player.gold + totalGold;
 
   try {
-    if (totalGold > 0) {
-      await updateGold(player.id, totalGold);
-    }
-    await incrementCofreUsage(player.id, runs);
+    await applyGoldAndUsage(player.id, totalGold, (targetPlayerId) =>
+      incrementCofreUsage(targetPlayerId, runs)
+    );
   } catch {
     return `Error al abrir los cofres. Intenta de nuevo.`;
   }
+
+  const refreshedPlayer = await getPlayer(sender);
+  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + totalGold);
 
   const resultString = runs === 1 
     ? `Resultado: ${results[0]}` 
@@ -193,16 +239,17 @@ export async function handleTrampa(msg) {
 
   const deltaNeto = totalRetorno - totalApuesta;
   const nextUsos = currentUsos + runs;
-  const nuevoTotal = player.gold + deltaNeto;
 
   try {
-    if (deltaNeto !== 0) {
-      await updateGold(player.id, deltaNeto);
-    }
-    await incrementTrampaUsage(player.id, runs);
+    await applyGoldAndUsage(player.id, deltaNeto, (targetPlayerId) =>
+      incrementTrampaUsage(targetPlayerId, runs)
+    );
   } catch {
     return `Error al activar la trampa. Intenta de nuevo.`;
   }
+
+  const refreshedPlayer = await getPlayer(sender);
+  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + deltaNeto);
 
   const resultadoEconomico = deltaNeto > 0
     ? `+${formatGold(deltaNeto)} oro netos`

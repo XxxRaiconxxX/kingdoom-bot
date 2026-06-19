@@ -162,7 +162,7 @@ _Para todos los aventureros_
 🗡️ \`!item <nombre>\` — Ficha de un objeto
 🎯 \`!mision [nombre]\` — Lista o inspecciona misiones
 🎪 \`!evento [nombre]\` — Lista o inspecciona eventos
-🎲 \`!dados <monto>\` — Apuesta oro en los dados
+🎲 \`!dados <monto> [x4]\` — Apuesta oro en los dados (x4 exige suma exacta de 7)
 CHEST \`!cofre\` - Abre un cofre del reino
 TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
 🃏 \`!21 <monto>\` — Apuesta oro en el Blackjack
