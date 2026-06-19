@@ -20,6 +20,22 @@ $$;
 ALTER TABLE players
   ADD COLUMN IF NOT EXISTS banned boolean DEFAULT false;
 
+-- 2.5 Habilitar RLS explícitamente en tablas y permitir service_role
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'players' AND policyname = 'service_role_all_players'
+  ) THEN
+    CREATE POLICY service_role_all_players ON players
+      FOR ALL
+      TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;
+
 -- 3. Columna 'phone' — asegurarse que existe e indexada
 CREATE INDEX IF NOT EXISTS idx_players_phone ON players(phone);
 
@@ -36,6 +52,22 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
+
+-- Habilitar RLS en la tabla de reclamaciones
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'bot_daily_claims' AND policyname = 'service_role_all_claims'
+  ) THEN
+    CREATE POLICY service_role_all_claims ON bot_daily_claims
+      FOR ALL
+      TO service_role
+      USING (true)
+      WITH CHECK (true);
+  END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,

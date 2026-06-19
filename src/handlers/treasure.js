@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 import {
   claimTreasureReward,
   createTreasureEvent,
@@ -8,7 +10,7 @@ import {
   touchPlayerActivity,
 } from '../supabase.js';
 
-const TARGET_GROUP = '595971938097-1618930274@g.us';
+const TARGET_GROUP = process.env.TARGET_GROUP_ID;
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;
@@ -27,7 +29,7 @@ export function clearTreasureTimeouts() {
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function getAsuncionOffsetMs() {
@@ -139,6 +141,11 @@ export async function dropTreasure(client) {
       return null;
     }
 
+    if (!TARGET_GROUP) {
+      console.warn('[Treasure] TARGET_GROUP_ID no está configurado. Omitiendo drop.');
+      return null;
+    }
+
     if ([...activeTreasures.values()].some((treasure) => treasure.chatId === TARGET_GROUP)) {
       console.log('[Treasure] Ya existe un tesoro abierto en el grupo principal; se omite este disparo.');
       return null;
@@ -181,6 +188,11 @@ export async function dropTreasure(client) {
 
 export async function closeTreasure(messageId, client, options = {}) {
   const { reason = 'expired', skipStatusUpdate = false } = options;
+
+  if (!TARGET_GROUP) {
+    console.warn('[Treasure] TARGET_GROUP_ID no está configurado. Omitiendo mensaje de cierre.');
+  }
+
   const cached = activeTreasures.get(messageId);
   if (cached?.timeoutId) {
     clearTimeout(cached.timeoutId);
@@ -196,14 +208,16 @@ export async function closeTreasure(messageId, client, options = {}) {
       return;
     }
 
-    const summary = await buildClaimsSummary(messageId);
-    if (summary) {
-      await client.sendMessage(TARGET_GROUP, summary);
-    } else if (reason === 'expired') {
-      await client.sendMessage(
-        TARGET_GROUP,
-        '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
-      );
+    if (TARGET_GROUP) {
+      const summary = await buildClaimsSummary(messageId);
+      if (summary) {
+        await client.sendMessage(TARGET_GROUP, summary);
+      } else if (reason === 'expired') {
+        await client.sendMessage(
+          TARGET_GROUP,
+          '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
+        );
+      }
     }
   } catch (error) {
     console.error('[Treasure Close Error]', error);
@@ -311,12 +325,12 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 3) + 2;
+  const numEvents = crypto.randomInt(0, 3) + 2;
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
   for (let i = 0; i < numEvents; i += 1) {
-    const randomTime = system10 + Math.random() * (system22 - system10);
+    const randomTime = system10 + crypto.randomInt(0, Math.floor(system22 - system10) + 1);
     eventTimes.push(randomTime);
   }
 
