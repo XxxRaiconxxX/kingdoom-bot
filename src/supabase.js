@@ -665,7 +665,36 @@ export async function getTreasureClaims(messageId) {
 }
 
 export async function claimTreasureReward(messageId, playerId, chatId) {
-  const rewardGold = Math.floor(Math.random() * (500 - 150 + 1)) + 150;
+  // Configurar la recompensa entre 1000 y 20000
+  const rewardGold = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
+
+  // Primero verificar el evento y los ganadores actuales
+  const { data: event, error: eventError } = await botStateSupabase
+    .from('bot_treasure_events')
+    .select('max_winners, status, expires_at')
+    .eq('message_id', messageId)
+    .single();
+
+  if (eventError || !event) {
+    return { status: 'error' };
+  }
+
+  if (event.status !== 'open') {
+    return { status: 'full' };
+  }
+
+  if (new Date(event.expires_at).getTime() < Date.now()) {
+    return { status: 'expired' };
+  }
+
+  const { count: currentCount } = await botStateSupabase
+    .from('bot_treasure_claims')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_message_id', messageId);
+
+  if (currentCount >= event.max_winners) {
+    return { status: 'full' };
+  }
 
   const { data: claim, error: claimError } = await botStateSupabase
     .from('bot_treasure_claims')
@@ -678,27 +707,9 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     .maybeSingle();
 
   if (claimError) {
-    if (claimError.code === '23505') return null;
+    if (claimError.code === '23505') return { status: 'duplicate' };
     console.error('[claimTreasureReward]', claimError.message);
-    throw new Error('No se pudo reclamar el tesoro.');
-  }
-
-  const { count } = await botStateSupabase
-    .from('bot_treasure_claims')
-    .select('*', { count: 'exact', head: true })
-    .eq('event_message_id', messageId);
-
-  const { data: event } = await botStateSupabase
-    .from('bot_treasure_events')
-    .select('max_winners')
-    .eq('message_id', messageId)
-    .single();
-
-  if (!event || count > event.max_winners) {
-    if (claim) {
-      await botStateSupabase.from('bot_treasure_claims').delete().eq('id', claim.id);
-    }
-    return null;
+    return { status: 'error' };
   }
 
   try {
@@ -706,17 +717,26 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
   } catch (goldError) {
     await botStateSupabase.from('bot_treasure_claims').delete().eq('id', claim.id);
     console.error('[claimTreasureReward.rollback]', goldError.message);
-    throw new Error('Error de compensacion al reclamar tesoro.');
+    return { status: 'error' };
   }
 
-  if (count === event.max_winners) {
+  const newCount = currentCount + 1;
+  const isFull = newCount >= event.max_winners;
+
+  if (isFull) {
     await botStateSupabase
       .from('bot_treasure_events')
       .update({ status: 'closed', closed_at: new Date().toISOString() })
       .eq('message_id', messageId);
   }
 
-  return { reward_gold: rewardGold };
+  return { 
+    status: 'ok', 
+    reward_gold: rewardGold,
+    winners_count: newCount,
+    max_winners: event.max_winners,
+    event_status: isFull ? 'claimed' : 'open'
+  };
 }
 
 export async function claimDailyReward(playerId, rewardGold) {
