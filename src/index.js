@@ -46,6 +46,7 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
 );
 
 let latestQrDataUrl = '';
+let appStatus = 'Inicializando servidor...';
 const welcomeConfig = buildWelcomeConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
