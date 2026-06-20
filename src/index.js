@@ -199,23 +199,22 @@ http.createServer(async (req, res) => {
           <style>
             body {
               display: flex;
-              flex-direction: column;
               align-items: center;
               justify-content: center;
               height: 100vh;
+              background-color: #121212;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               margin: 0;
-              background: #121214;
-              color: #ffffff;
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              color: #f5f5f7;
             }
             .container {
               text-align: center;
-              background: #1a1a1e;
-              padding: 30px;
+              background: #1e1e1e;
+              padding: 40px;
               border-radius: 16px;
-              box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-              max-width: 90%;
-              width: 360px;
+              box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+              max-width: 400px;
+              width: 90%;
             }
             h2 {
               margin-top: 0;
@@ -228,26 +227,15 @@ http.createServer(async (req, res) => {
               display: inline-block;
               margin: 20px 0;
             }
-            img {
-              width: 250px;
-              height: 250px;
+            .qr-wrapper img {
               display: block;
             }
-            p {
-              color: #a3a3a8;
-              font-size: 14px;
-              margin: 10px 0 0 0;
-            }
           </style>
-          <script>
-            setTimeout(() => {
-              window.location.reload();
-            }, 10000);
-          </script>
         </head>
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
+            <p>Estado actual: <strong style="color: #ffc107;">${appStatus}</strong></p>
             <p>Escanea este codigo QR con WhatsApp:</p>
             <div class="qr-wrapper">
               <img src="${latestQrDataUrl}" />
@@ -257,54 +245,54 @@ http.createServer(async (req, res) => {
         </body>
       </html>
     `);
-    return;
+  } else {
+    res.end(`
+      <html>
+        <head>
+          <title>Kingdoom Bot - Estado</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta http-equiv="refresh" content="10">
+          <style>
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              background-color: #121212;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              margin: 0;
+              color: #f5f5f7;
+            }
+            .container {
+              text-align: center;
+              background: #1e1e1e;
+              padding: 40px;
+              border-radius: 16px;
+              box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+              max-width: 400px;
+              width: 90%;
+            }
+            h2 {
+              margin-top: 0;
+              color: #4caf50;
+            }
+            p {
+              color: #a3a3a8;
+              font-size: 16px;
+              line-height: 1.5;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>Kingdoom Bot</h2>
+            <p>Estado del sistema: <strong style="color: #4caf50;">${appStatus}</strong></p>
+            <p>Si la pagina no carga el QR, el bot esta procesando la conexion o ya se conecto exitosamente.</p>
+          </div>
+        </body>
+      </html>
+    `);
   }
-
-  res.end(`
-    <html>
-      <head>
-        <title>Kingdoom Bot - Activo</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background: #121214;
-            color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          }
-          .container {
-            text-align: center;
-            background: #1a1a1e;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-            max-width: 90%;
-            width: 360px;
-          }
-          h2 {
-            margin-top: 0;
-            color: #4cd964;
-          }
-          p {
-            color: #a3a3a8;
-            font-size: 16px;
-            line-height: 1.5;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h2>Bot Conectado</h2>
-          <p>El Archivista confirma que <strong>Kingdoom Bot</strong> esta activo y respondiendo mensajes en WhatsApp.</p>
-        </div>
-      </body>
-    </html>
-  `);
 }).listen(parseInt(PORT, 10), '0.0.0.0', () => {
   console.log(`Servidor web activo en puerto ${PORT}`);
 });
@@ -334,6 +322,7 @@ const client = new Client({
 
 client.on('qr', async (qr) => {
   console.log('Escanea este QR:');
+  appStatus = 'Esperando escaneo de codigo QR...';
   qrcode.generate(qr, { small: true });
 
   try {
