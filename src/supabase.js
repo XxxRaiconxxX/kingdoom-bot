@@ -524,14 +524,19 @@ export async function getEventDetails(query) {
 }
 
 export async function updateGold(playerId, amount) {
-  const { error } = await supabase.rpc('increment_gold', {
-    player_id: playerId,
-    amount,
+  const { data, error } = await supabase.rpc('increment_gold', {
+    p_player_id: playerId,
+    p_amount: Math.trunc(amount),
   });
 
   if (error) {
     console.error('[updateGold]', error.message);
     throw new Error('No se pudo actualizar el oro.');
+  }
+
+  if (Array.isArray(data) && data[0] && !data[0].success) {
+    console.error('[updateGold] Logic Error:', data[0].message);
+    throw new Error(data[0].message || 'No se pudo actualizar el oro.');
   }
 }
 
