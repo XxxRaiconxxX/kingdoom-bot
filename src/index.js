@@ -195,6 +195,7 @@ http.createServer(async (req, res) => {
         <head>
           <title>Kingdoom Bot - Escanear QR</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
+          <meta http-equiv="refresh" content="10">
           <style>
             body {
               display: flex;
