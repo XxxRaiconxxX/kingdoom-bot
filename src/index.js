@@ -449,7 +449,7 @@ client.on('message', async (msg) => {
         // Tesoro Errante replies
         if (activeTreasures.has(quotedId)) {
           const treasure = activeTreasures.get(quotedId);
-          await handleTreasureReply(msg, treasure, quotedId);
+          await handleTreasureReply(msg, treasure, quotedId, client);
           return;
         }
       }
