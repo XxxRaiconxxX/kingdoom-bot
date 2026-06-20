@@ -404,9 +404,24 @@ client.on('group_join', async (notification) => {
 
 
 const activityCache = new Map();
+const processedMessages = new Set(); // deduplication cache
 
 client.on('message', async (msg) => {
   if (msg.fromMe || msg.isStatus) return;
+
+  // Deduplication check
+  if (msg.id && msg.id._serialized) {
+    if (processedMessages.has(msg.id._serialized)) {
+      return; // Already processed
+    }
+    processedMessages.add(msg.id._serialized);
+    
+    // Prevent memory leak by keeping only the last 1000 messages
+    if (processedMessages.size > 1000) {
+      const firstItem = processedMessages.values().next().value;
+      processedMessages.delete(firstItem);
+    }
+  }
 
   const text = msg.body.trim();
   const sender = msg.author || msg.from;
