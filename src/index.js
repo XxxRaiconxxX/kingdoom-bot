@@ -304,7 +304,7 @@ http.createServer(async (req, res) => {
       </body>
     </html>
   `);
-}).listen(PORT, () => {
+}).listen(parseInt(PORT, 10), '0.0.0.0', () => {
   console.log(`Servidor web activo en puerto ${PORT}`);
 });
 
