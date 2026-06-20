@@ -567,7 +567,7 @@ export async function awardManualMissionRankPoints({
 }
 
 export async function createTreasureEvent({ chatId, messageId, maxWinners, expiresAt }) {
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_treasure_events')
     .insert({
       chat_id: chatId,
@@ -588,7 +588,7 @@ export async function createTreasureEvent({ chatId, messageId, maxWinners, expir
 }
 
 export async function getOpenTreasureEvents(chatId = null) {
-  let query = supabase
+  let query = botStateSupabase
     .from('bot_treasure_events')
     .select('id, chat_id, message_id, max_winners, status, created_at, expires_at')
     .eq('status', 'open')
@@ -608,7 +608,7 @@ export async function getOpenTreasureEvents(chatId = null) {
 }
 
 export async function expireTreasureEvent(messageId) {
-  const { data, error } = await supabase
+  const { data, error } = await botStateSupabase
     .from('bot_treasure_events')
     .update({
       status: 'expired',
@@ -628,9 +628,9 @@ export async function expireTreasureEvent(messageId) {
 }
 
 export async function getTreasureClaims(messageId) {
-  const { data, error } = await supabase
+  const { data: claims, error } = await botStateSupabase
     .from('bot_treasure_claims')
-    .select('reward_gold, claimed_at, players(username)')
+    .select('player_id, reward_gold, claimed_at')
     .eq('event_message_id', messageId)
     .order('claimed_at', { ascending: true });
 
@@ -639,26 +639,79 @@ export async function getTreasureClaims(messageId) {
     throw new Error('No se pudieron leer los claims del tesoro.');
   }
 
-  return (data ?? []).map((entry) => ({
-    rewardGold: entry.reward_gold,
-    claimedAt: entry.claimed_at,
-    playerName: entry.players?.username ?? 'Aventurero',
+  if (!claims || claims.length === 0) return [];
+
+  const playerIds = claims.map((c) => c.player_id);
+  const { data: players } = await supabase
+    .from('players')
+    .select('id, username')
+    .in('id', playerIds);
+
+  const playerMap = {};
+  if (players) {
+    players.forEach((p) => { playerMap[p.id] = p.username; });
+  }
+
+  return claims.map((claim) => ({
+    playerName: playerMap[claim.player_id] || 'Jugador Desconocido',
+    rewardGold: claim.reward_gold,
+    claimedAt: claim.claimed_at,
   }));
 }
 
 export async function claimTreasureReward(messageId, playerId, chatId) {
-  const { data, error } = await supabase.rpc('claim_bot_treasure_reward', {
-    p_message_id: messageId,
-    p_player_id: playerId,
-    p_chat_id: chatId,
-  });
+  const rewardGold = Math.floor(Math.random() * (500 - 150 + 1)) + 150;
 
-  if (error) {
-    console.error('[claimTreasureReward]', error.message);
+  const { data: claim, error: claimError } = await botStateSupabase
+    .from('bot_treasure_claims')
+    .insert({
+      event_message_id: messageId,
+      player_id: playerId,
+      reward_gold: rewardGold,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (claimError) {
+    if (claimError.code === '23505') return null;
+    console.error('[claimTreasureReward]', claimError.message);
     throw new Error('No se pudo reclamar el tesoro.');
   }
 
-  return data ?? null;
+  const { count } = await botStateSupabase
+    .from('bot_treasure_claims')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_message_id', messageId);
+
+  const { data: event } = await botStateSupabase
+    .from('bot_treasure_events')
+    .select('max_winners')
+    .eq('message_id', messageId)
+    .single();
+
+  if (!event || count > event.max_winners) {
+    if (claim) {
+      await botStateSupabase.from('bot_treasure_claims').delete().eq('id', claim.id);
+    }
+    return null;
+  }
+
+  try {
+    await updateGold(playerId, rewardGold);
+  } catch (goldError) {
+    await botStateSupabase.from('bot_treasure_claims').delete().eq('id', claim.id);
+    console.error('[claimTreasureReward.rollback]', goldError.message);
+    throw new Error('Error de compensacion al reclamar tesoro.');
+  }
+
+  if (count === event.max_winners) {
+    await botStateSupabase
+      .from('bot_treasure_events')
+      .update({ status: 'closed', closed_at: new Date().toISOString() })
+      .eq('message_id', messageId);
+  }
+
+  return { reward_gold: rewardGold };
 }
 
 export async function claimDailyReward(playerId, rewardGold) {

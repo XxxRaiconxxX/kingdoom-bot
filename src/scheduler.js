@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { supabase, processMarketInstallments } from './supabase.js';
+import { supabase, botStateSupabase, processMarketInstallments } from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
@@ -9,6 +9,7 @@ const schedulerState = {
   expiredAuctionsRunning: false,
   dailyResetRunning: false,
   weeklyResetRunning: false,
+  notificationQueueRunning: false,
 };
 
 async function runScheduledJob(key, label, task) {
@@ -48,6 +49,7 @@ async function sendToAll(client, buildMessage) {
     }
   });
 
+  const queueInserts = [];
   for (const [phone, linkedPlayers] of phoneMap.entries()) {
     try {
       const activeId = getActiveProfile(phone);
@@ -58,15 +60,24 @@ async function sendToAll(client, buildMessage) {
           ? buildMessage({ phone, username: activePlayer.username })
           : buildMessage;
 
-      if (!client || !client.info) {
-        console.log(`[scheduler] Cliente no inicializado o en estado zombie. Omitiendo mensaje a ${phone}`);
-        continue;
-      }
-
-      await client.sendMessage(formatJid(phone), msg);
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      queueInserts.push({
+        player_phone: phone,
+        message: msg,
+      });
     } catch (err) {
-      console.error(`[scheduler] Error enviando a ${phone}:`, err.message);
+      console.error(`[scheduler] Error construyendo mensaje para ${phone}:`, err.message);
+    }
+  }
+
+  if (queueInserts.length > 0) {
+    const { error: insertError } = await botStateSupabase
+      .from('bot_notifications_queue')
+      .insert(queueInserts);
+
+    if (insertError) {
+      console.error('[scheduler] Error encolando notificaciones:', insertError.message);
+    } else {
+      console.log(`[scheduler] ${queueInserts.length} mensajes encolados exitosamente.`);
     }
   }
 }
@@ -108,6 +119,49 @@ export function startScheduler(client) {
           }
         } catch (err) {
           console.error('[scheduler] Error en el ciclo de subastas:', err);
+        }
+      });
+    },
+    TZ
+  );
+
+  cron.schedule(
+    '*/1 * * * *',
+    async () => {
+      await runScheduledJob('notificationQueueRunning', 'procesador de notificaciones', async () => {
+        if (!client || !client.info) return;
+
+        try {
+          const { data: pending, error } = await botStateSupabase
+            .from('bot_notifications_queue')
+            .select('id, player_phone, message')
+            .eq('sent', false)
+            .order('created_at', { ascending: true })
+            .limit(5);
+
+          if (error) {
+            console.error('[scheduler] Error leyendo cola:', error.message);
+            return;
+          }
+
+          if (pending && pending.length > 0) {
+            for (const item of pending) {
+              try {
+                await client.sendMessage(formatJid(item.player_phone), item.message);
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                await botStateSupabase
+                  .from('bot_notifications_queue')
+                  .update({ sent: true, sent_at: new Date().toISOString() })
+                  .eq('id', item.id);
+              } catch (err) {
+                console.error(`[scheduler] Error despachando a ${item.player_phone}:`, err.message);
+                // Mark as sent anyway to avoid blocking the queue if it's an invalid number
+                await botStateSupabase.from('bot_notifications_queue').update({ sent: true }).eq('id', item.id);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[scheduler] Error general procesando cola:', err.message);
         }
       });
     },

@@ -17,6 +17,7 @@ import {
   updateGold,
   getRestrictedGroupCommandViolationsForDay,
   recordRestrictedGroupCommandViolation,
+  botStateSupabase,
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
@@ -554,6 +555,19 @@ client.on('message', async (msg) => {
         }
       });
     }).catch(console.error);
+  }
+
+  // Analytics: Log command usage asynchronously
+  if (hasPrefix && command) {
+    botStateSupabase
+      .from('bot_command_logs')
+      .insert({ player_phone: sender, command: command })
+      .then(({ error }) => {
+        if (error) console.error('[CommandLog] Error:', error.message);
+      })
+      .catch((err) => {
+        console.error('[CommandLog] Catch:', err.message);
+      });
   }
 
   const checkIsAdmin = async (user) => {

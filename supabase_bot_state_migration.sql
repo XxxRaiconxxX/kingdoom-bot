@@ -56,3 +56,47 @@ create trigger trg_bot_active_missions_updated_at
 before update on public.bot_active_missions
 for each row
 execute function public.set_bot_active_missions_updated_at();
+
+-- ETAPA A: Nuevas tablas (Tesoros, Notificaciones, Analíticas)
+
+create table if not exists public.bot_treasure_events (
+  id uuid primary key default gen_random_uuid(),
+  chat_id text not null,
+  message_id text unique not null,
+  max_winners integer not null default 1,
+  status text not null default 'open',
+  expires_at timestamptz not null,
+  closed_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.bot_treasure_claims (
+  id uuid primary key default gen_random_uuid(),
+  event_message_id text not null references public.bot_treasure_events(message_id) on delete cascade,
+  player_id uuid not null,
+  reward_gold integer not null,
+  claimed_at timestamptz not null default timezone('utc', now()),
+  unique (event_message_id, player_id)
+);
+
+create table if not exists public.bot_notifications_queue (
+  id uuid primary key default gen_random_uuid(),
+  player_phone text not null,
+  message text not null,
+  sent boolean not null default false,
+  sent_at timestamptz,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_bot_notifications_queue_unsent
+  on public.bot_notifications_queue (sent) where sent = false;
+
+create table if not exists public.bot_command_logs (
+  id uuid primary key default gen_random_uuid(),
+  player_phone text,
+  command text not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_bot_command_logs_created
+  on public.bot_command_logs (created_at desc);
