@@ -951,7 +951,16 @@ export async function getRealmCensus() {
   return { players: players ?? [], sheets: sheets ?? [] };
 }
 
+let knowledgeCache = null;
+let knowledgeCacheExpiresAt = 0;
+const KNOWLEDGE_CACHE_TTL_MS = 1000 * 60 * 15; // 15 minutos
+
 export async function getKnowledgeDocuments() {
+  const now = Date.now();
+  if (knowledgeCache && now < knowledgeCacheExpiresAt) {
+    return knowledgeCache;
+  }
+
   const { data, error } = await supabase
     .from('knowledge_documents')
     .select('id, title, type, category, tags, source, content, summary, visible')
@@ -961,7 +970,10 @@ export async function getKnowledgeDocuments() {
     console.error('[getKnowledgeDocuments]', error.message);
     return [];
   }
-  return data || [];
+  
+  knowledgeCache = data || [];
+  knowledgeCacheExpiresAt = now + KNOWLEDGE_CACHE_TTL_MS;
+  return knowledgeCache;
 }
 
 export function slugifyKnowledgeId(value, fallback = "documento") {
@@ -997,6 +1009,8 @@ export async function upsertKnowledgeDocument(doc) {
     console.error('[upsertKnowledgeDocument]', error.message);
     return false;
   }
+  
+  knowledgeCache = null;
   return true;
 }
 

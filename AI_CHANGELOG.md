@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 19/06/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Verificación del split parcial y optimización de lecturas (Fase 0) mediante caché para el grimorio/oráculo.
+*   **Cambios Clave:**
+    *   **[Optimización - Caché]:** Se implementó un caché local en memoria de 15 minutos (`KNOWLEDGE_CACHE_TTL_MS`) para `getKnowledgeDocuments()` en `src/supabase.js`. Esto reduce drásticamente las lecturas repetidas a la tabla `knowledge_documents` cuando los usuarios consultan el `!oraculo` constantemente.
+    *   **[Optimización - Invalidación]:** Se añadió limpieza automática de caché (`knowledgeCache = null`) dentro de `upsertKnowledgeDocument` para asegurar que las actualizaciones del staff impacten inmediatamente.
+    *   **[Verificación - Split Parcial]:** Se validó exhaustivamente el código del bloque operativo (`cofre`, `trampa`, `dados`, `21`, `faltasgrupo`, `bot_active_missions`, `heraldo_daily`). Todos los accesos ya operan correctamente mediante `botStateSupabase` sobre la base dedicada, sin fugas al cliente principal. No se requiere migrar tablas de tesoros por restricciones de atomicidad.
+*   **Notas/Advertencias:** El código está 100% listo para el split. El próximo paso operativo debe ser inyectar las variables de entorno `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY` en producción y monitorear.
+
+
 ### [Fecha: 19/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/supabase.js`, `.env.example`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Implementacion del primer split parcial de Supabase para mover estado operativo caliente del bot al proyecto dedicado.
