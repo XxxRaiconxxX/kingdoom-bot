@@ -33,7 +33,12 @@ export function startAuctionsRealtime(client) {
         try {
           const newAuction = payload.new;
           console.log('[Realtime] Nueva subasta creada:', newAuction);
-          const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const targetGroup = process.env.TARGET_GROUP_ID || '';
+          const chatId = newAuction.whatsapp_chat_id || targetGroup;
+          if (!chatId) {
+            console.log('[Realtime] target group id not set, skipping new auction alert');
+            return;
+          }
           const msg = `📢 *NUEVA SUBASTA EN EL REINO* ⚖️\n\n` +
                       `Se ha abierto la puja por *${newAuction.item_name}* [${newAuction.item_rarity.toUpperCase()}]\n` +
                       (newAuction.item_description ? `📜 _${newAuction.item_description}_\n` : '') +
@@ -71,7 +76,12 @@ export function startAuctionsRealtime(client) {
 
           if (!bidder || !auction) return;
 
-          const chatId = auction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const targetGroup = process.env.TARGET_GROUP_ID || '';
+          const chatId = auction.whatsapp_chat_id || targetGroup;
+          if (!chatId) {
+            console.log('[Realtime] target group id not set, skipping bid alert');
+            return;
+          }
           const msg = `╔════════════════════════════╗\n` +
                       `⚖️  *NUEVA PUJA REGISTRADA*  ⚖️\n` +
                       `╚════════════════════════════╝\n\n` +
@@ -115,7 +125,12 @@ export function startAuctionsRealtime(client) {
             if (winner) winnerName = winner.username;
           }
 
-          const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const targetGroup = process.env.TARGET_GROUP_ID || '';
+          const chatId = newAuction.whatsapp_chat_id || targetGroup;
+          if (!chatId) {
+             console.log('[Realtime] target group id not set, skipping auction finalization alert');
+             return;
+          }
           let msg = `🏆 *SUBASTA FINALIZADA* ⚖️\n\n` +
                     `La subasta de *${newAuction.item_name}* ha concluido.\n`;
 
