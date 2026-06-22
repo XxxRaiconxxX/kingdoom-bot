@@ -1,4 +1,4 @@
-import { heraldCard, heraldList, heraldSection } from '../formatting.js';
+import { heraldCard, heraldList } from '../formatting.js';
 
 function normalizeText(value) {
   return String(value ?? '')
