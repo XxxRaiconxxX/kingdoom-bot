@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import http from 'http';
 import fs from 'fs';
 import { spawn } from 'child_process';
@@ -165,7 +166,7 @@ function buildRestrictedGroupPrivateReply(commandName) {
 function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function formatInitializeError(error) {

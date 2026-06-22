@@ -68,3 +68,6 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON players FOR ALL TO service_role USING (true) WITH CHECK (true);
