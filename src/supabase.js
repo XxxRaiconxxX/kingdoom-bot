@@ -540,6 +540,50 @@ export async function updateGold(playerId, amount) {
   }
 }
 
+export async function placeBet(playerId, amount, gameType) {
+  const { data, error } = await supabase.rpc('place_bet', {
+    p_player_id: playerId,
+    p_amount: Math.trunc(amount),
+    p_game_type: gameType,
+  });
+
+  if (error) {
+    console.error('[placeBet]', error.message);
+    throw new Error(error.message || 'No se pudo procesar la apuesta.');
+  }
+
+  return data; // Returns the bet_id UUID
+}
+
+export async function resolveBet(betId, payout) {
+  const { data, error } = await supabase.rpc('resolve_bet', {
+    p_bet_id: betId,
+    p_payout: Math.trunc(payout),
+  });
+
+  if (error) {
+    console.error('[resolveBet]', error.message);
+    throw new Error(error.message || 'No se pudo resolver la apuesta.');
+  }
+
+  return data;
+}
+
+export async function getUnresolvedBets(minutesOld = 10) {
+  const cutoffTime = new Date(Date.now() - minutesOld * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('bot_active_bets')
+    .select('id, player_id, amount, game_type, created_at, players(phone)')
+    .eq('resolved', false)
+    .lt('created_at', cutoffTime);
+
+  if (error) {
+    console.error('[getUnresolvedBets]', error.message);
+    return [];
+  }
+  return data;
+}
+
 export async function awardManualMissionRankPoints({
   playerIds,
   difficulty,

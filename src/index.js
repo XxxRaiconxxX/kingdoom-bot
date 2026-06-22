@@ -18,6 +18,8 @@ import {
   getRestrictedGroupCommandViolationsForDay,
   recordRestrictedGroupCommandViolation,
   botStateSupabase,
+  getUnresolvedBets,
+  resolveBet,
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
@@ -343,6 +345,31 @@ client.on('ready', async () => {
   } catch (error) {
     console.error('[index.js] Error al restaurar misiones:', error);
   }
+
+  // --- ESCROW RECOVERY SYSTEM ---
+  try {
+    const orphanedBets = await getUnresolvedBets(10); // older than 10 mins
+    if (orphanedBets && orphanedBets.length > 0) {
+      console.log(`[Escrow] Recuperando ${orphanedBets.length} apuestas huerfanas...`);
+      for (const bet of orphanedBets) {
+        // Resolve bet with the original amount (refund)
+        await resolveBet(bet.id, bet.amount);
+        
+        // Notify player via WhatsApp if we have their phone
+        if (bet.players && bet.players.phone) {
+          const jid = formatJid(bet.players.phone);
+          const msgText = `🔮 *¡Intervención Divina!*\nEl oráculo detectó que tu partida de *${bet.game_type}* se interrumpió abruptamente debido a una falla espacio-temporal.\n\n🪙 Se han devuelto de forma segura *${bet.amount.toLocaleString('es-PY')} oro* a tus reservas.`;
+          await client.sendMessage(jid, msgText).catch(err => {
+            console.error(`[Escrow] Error al notificar a ${bet.players.phone}:`, err.message);
+          });
+        }
+      }
+      console.log(`[Escrow] Apuestas huérfanas recuperadas exitosamente.`);
+    }
+  } catch (escrowErr) {
+    console.error('[index.js] Error al recuperar apuestas del escrow:', escrowErr);
+  }
+  // ------------------------------
 
   if (!schedulerStarted) {
     startScheduler(client);

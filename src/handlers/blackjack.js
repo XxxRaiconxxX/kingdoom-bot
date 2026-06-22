@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getBlackjackUsage, incrementBlackjackUsage } from '../supabase.js';
+import { getPlayer, updateGold, getBlackjackUsage, incrementBlackjackUsage, placeBet, resolveBet } from '../supabase.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
@@ -171,11 +171,12 @@ export async function handleBlackjack(msg, client) {
       return `🃏 Alcanzaste el límite diario de Blackjack (${maxUsos}/${maxUsos}). ¡Volvé mañana para probar tu suerte!`;
     }
 
+    let betId;
     try {
-      await updateGold(player.id, -apuesta);
+      betId = await placeBet(player.id, apuesta, 'blackjack');
       await incrementBlackjackUsage(player.id);
     } catch (err) {
-      console.error('[handleBlackjack] updateGold error:', err.message);
+      console.error('[handleBlackjack] placeBet error:', err.message);
       return `⚔️ Error al registrar la apuesta. Intentá de nuevo.`;
     }
 
@@ -204,8 +205,10 @@ export async function handleBlackjack(msg, client) {
         outcomeText = `💀 *¡El crupier tiene Blackjack Natural!* Perdiste.\nPerdiste *${apuesta.toLocaleString('es-PY')} oro*.`;
       }
 
-      if (finalPayout > 0) {
-        await updateGold(player.id, finalPayout);
+      try {
+        await resolveBet(betId, finalPayout);
+      } catch (err) {
+        console.error('[handleBlackjack] resolveBet error:', err);
       }
 
       const updatedPlayer = await getPlayer(sender);
@@ -244,6 +247,7 @@ export async function handleBlackjack(msg, client) {
 
     const replyMsg = await msg.reply(boardText);
     activeSessions.set(replyMsg.id._serialized, {
+      betId,
       isMultiplayer: false,
       playerId: player.id,
       playerPhone: sender,
@@ -551,12 +555,10 @@ async function runDealerTurn(msg, session) {
     resultText = `💀 *¡El crupier tiene mejor mano! Derrota.*\nPerdiste *${session.bet.toLocaleString('es-PY')} oro*.`;
   }
 
-  if (payout > 0) {
-    try {
-      await updateGold(session.playerId, payout);
-    } catch (err) {
-      console.error('[runDealerTurn] updateGold error:', err.message);
-    }
+  try {
+    await resolveBet(session.betId, payout);
+  } catch (err) {
+    console.error('[runDealerTurn] resolveBet error:', err.message);
   }
 
   const updatedPlayer = await getPlayer(session.playerPhone);
@@ -600,8 +602,13 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
       continue;
     }
     
-    await updateGold(p.playerId, -session.bet);
-    await incrementBlackjackUsage(p.playerId);
+    try {
+      p.betId = await placeBet(p.playerId, session.bet, 'blackjack_pvp');
+      await incrementBlackjackUsage(p.playerId);
+    } catch (err) {
+      await client.sendMessage(groupChatId, `⚠️ Error al procesar apuesta de *${p.username}*. Fue excluido de la ronda.`);
+      continue;
+    }
     
     p.status = 'playing';
     p.responseReceived = false;
@@ -611,7 +618,11 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
 
   if (finalPlayers.length < 2) {
     for (const p of finalPlayers) {
-        await updateGold(p.playerId, session.bet);
+      try {
+        await resolveBet(p.betId, session.bet);
+      } catch (err) {
+        console.error('[startMultiplayerGame] resolveBet rollback error:', err);
+      }
     }
     await client.sendMessage(groupChatId, `❌ No hay suficientes jugadores válidos para iniciar la partida. Reembolso emitido.`);
     return;
@@ -776,9 +787,9 @@ async function finishMultiplayerGame(client, session, groupChatId) {
       }
 
       try {
-        await updateGold(w.playerId, payout);
+        await resolveBet(w.betId, payout);
       } catch (err) {
-        console.error(`[finishMultiplayerGame] updateGold error for ${w.username}:`, err.message);
+        console.error(`[finishMultiplayerGame] resolveBet error for ${w.username}:`, err.message);
       }
 
       const updatedPlayer = await getPlayer(w.playerPhone);
@@ -786,8 +797,26 @@ async function finishMultiplayerGame(client, session, groupChatId) {
       results.push(`🏆 *${w.username}* gana *${payout.toLocaleString('es-PY')} oro* (Total: ${newGold.toLocaleString('es-PY')} 🪙)`);
     }
 
+    // Resolve losers with 0 payout
+    const losers = session.players.filter(p => !winners.includes(p));
+    for (const l of losers) {
+      try {
+        await resolveBet(l.betId, 0);
+      } catch (err) {
+        console.error(`[finishMultiplayerGame] resolveBet error for loser ${l.username}:`, err.message);
+      }
+    }
+
     lines.push(results.join('\n'));
   } else {
+    // Everyone lost
+    for (const p of session.players) {
+      try {
+        await resolveBet(p.betId, 0);
+      } catch (err) {
+        console.error(`[finishMultiplayerGame] resolveBet error for ${p.username}:`, err.message);
+      }
+    }
     lines.push(`💀 *¡Todos se pasaron de 21!* La casa se queda con el pozo.`);
   }
 

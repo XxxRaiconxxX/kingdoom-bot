@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents } from '../supabase.js';
+import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -124,9 +124,18 @@ export async function handleDados(msg) {
     return `No tenes suficiente oro para jugar *x4* con ${runs} tiradas.\nApuesta total de riesgo: *${formatGold(totalExposure)} oro*\nTenes: ${formatGold(player.gold)}`;
   }
 
+  let betId;
+  try {
+    betId = await placeBet(player.id, totalExposure, 'dados');
+    await incrementDadosUsage(player.id, runs);
+  } catch {
+    return 'Error al registrar la apuesta. Intenta de nuevo.';
+  }
+
   let totalDelta = 0;
   let wins = 0;
   const rolls = [];
+  let payout = 0;
 
   for (let index = 0; index < runs; index += 1) {
     const d1 = Math.ceil(Math.random() * 6);
@@ -134,6 +143,10 @@ export async function handleDados(msg) {
     const suma = d1 + d2;
     const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
     const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
+    
+    if (gano) {
+      payout += apuesta + (apuesta * (x4 ? 4 : 1)); // Exposure + winnings
+    }
 
     totalDelta += delta;
     if (gano) {
@@ -148,11 +161,9 @@ export async function handleDados(msg) {
   }
 
   try {
-    await applyGoldAndUsage(player.id, totalDelta, (targetPlayerId) =>
-      incrementDadosUsage(targetPlayerId, runs)
-    );
-  } catch {
-    return 'Error al registrar la apuesta. Intenta de nuevo.';
+    await resolveBet(betId, payout);
+  } catch (err) {
+    console.error('[handleDados] resolveBet error:', err);
   }
 
   const remainingUsos = maxUsos - (currentUsos + runs);
@@ -261,6 +272,14 @@ export async function handleTrampa(msg) {
     return `No tenes suficiente oro para apostar ${formatGold(apuesta)} x${runs} (${formatGold(totalApuesta)} oro en total).\nTenes: ${formatGold(player.gold)}`;
   }
 
+  let betId;
+  try {
+    betId = await placeBet(player.id, totalApuesta, 'trampa');
+    await incrementTrampaUsage(player.id, runs);
+  } catch {
+    return `Error al activar la trampa. Intenta de nuevo.`;
+  }
+
   let totalRetorno = 0;
   const results = [];
 
@@ -276,11 +295,9 @@ export async function handleTrampa(msg) {
   const nextUsos = currentUsos + runs;
 
   try {
-    await applyGoldAndUsage(player.id, deltaNeto, (targetPlayerId) =>
-      incrementTrampaUsage(targetPlayerId, runs)
-    );
-  } catch {
-    return `Error al activar la trampa. Intenta de nuevo.`;
+    await resolveBet(betId, totalRetorno);
+  } catch (err) {
+    console.error('[handleTrampa] resolveBet error:', err);
   }
 
   const refreshedPlayer = await getPlayer(sender);
