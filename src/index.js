@@ -716,7 +716,7 @@ client.on('message', async (msg) => {
       if (fs.existsSync(apkPath)) {
         const media = MessageMedia.fromFilePath(apkPath);
         await client.sendMessage(msg.from, media, { 
-          caption: '📲 *Kingdoom App v5.0.1*\n\n1️⃣ Descarga el archivo adjunto.\n2️⃣ Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.\n3️⃣ ¡Abre la app, vincula tu cuenta y disfruta del Reino!' 
+          caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
         });
       } else {
         reply = '⚠️ El archivo APK de la versión 5.0.1 aún no ha sido cargado en el servidor del bot.';

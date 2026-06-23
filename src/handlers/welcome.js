@@ -217,7 +217,7 @@ para comenzar tu camino en las sombras.
     if (fs.existsSync(apkPath)) {
       const media = MessageMedia.fromFilePath(apkPath);
       await chat.sendMessage(media, { 
-        caption: '📲 *¡Descarga la App Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
+        caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
       });
     }
   } catch (error) {
