@@ -716,14 +716,22 @@ client.on('message', async (msg) => {
     } else if (command === 'apk' || command === 'app') {
       const __filename = fileURLToPath(import.meta.url);
       const __dirname = path.dirname(__filename);
-      const apkPath = path.join(__dirname, '..', 'releases', 'Kingdoom_5.0.1.apk');
-      if (fs.existsSync(apkPath)) {
-        const media = MessageMedia.fromFilePath(apkPath);
+      const p1 = path.join(__dirname, '..', 'releases', 'Kingdoom_5.0.1.apk');
+      const p2 = path.resolve(process.cwd(), 'releases', 'Kingdoom_5.0.1.apk');
+      const p3 = '/app/releases/Kingdoom_5.0.1.apk';
+      
+      let foundPath = fs.existsSync(p1) ? p1 : fs.existsSync(p2) ? p2 : fs.existsSync(p3) ? p3 : null;
+
+      if (foundPath) {
+        const media = MessageMedia.fromFilePath(foundPath);
         await client.sendMessage(msg.from, media, { 
           caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
         });
       } else {
-        reply = '⚠️ El archivo APK de la versión 5.0.1 aún no ha sido cargado en el servidor del bot.';
+        const dir = path.join(__dirname, '..', 'releases');
+        let files = 'Carpeta no leida';
+        try { files = fs.readdirSync(dir).join(', '); } catch(e) {}
+        reply = `⚠️ El APK 5.0.1 no está en el servidor.\nBuscado en: ${dir}\nArchivos encontrados allí: ${files || 'Ninguno'}`;
       }
     } else if (
       [
