@@ -31,7 +31,7 @@ import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './h
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
 
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 
 const PORT = process.env.PORT || 3000;
 const WHATSAPP_INIT_MAX_RETRIES = Math.max(
@@ -711,6 +711,16 @@ client.on('message', async (msg) => {
       reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
     } else if (command === '21') {
       reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
+    } else if (command === 'apk' || command === 'app') {
+      const apkPath = './releases/Kingdoom_5.0.1.apk';
+      if (fs.existsSync(apkPath)) {
+        const media = MessageMedia.fromFilePath(apkPath);
+        await client.sendMessage(msg.from, media, { 
+          caption: '📲 *Kingdoom App v5.0.1*\n\n1️⃣ Descarga el archivo adjunto.\n2️⃣ Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.\n3️⃣ ¡Abre la app, vincula tu cuenta y disfruta del Reino!' 
+        });
+      } else {
+        reply = '⚠️ El archivo APK de la versión 5.0.1 aún no ha sido cargado en el servidor del bot.';
+      }
     } else if (
       [
         'oro',

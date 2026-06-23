@@ -1,0 +1,5 @@
+Para que el bot pueda enviar la aplicación a los usuarios, debes colocar el archivo APK exactamente en esta carpeta con el siguiente nombre:
+
+👉 Kingdoom_5.0.1.apk
+
+Una vez que el archivo esté aquí, cuando cualquier jugador escriba el comando `!apk` o `!app`, el bot cargará este archivo y se lo enviará por WhatsApp automáticamente con las instrucciones de instalación.
