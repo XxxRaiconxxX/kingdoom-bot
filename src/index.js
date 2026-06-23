@@ -1,5 +1,7 @@
 import http from 'http';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
@@ -712,7 +714,9 @@ client.on('message', async (msg) => {
     } else if (command === '21') {
       reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
     } else if (command === 'apk' || command === 'app') {
-      const apkPath = './releases/Kingdoom_5.0.1.apk';
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const apkPath = path.join(__dirname, '..', 'releases', 'Kingdoom_5.0.1.apk');
       if (fs.existsSync(apkPath)) {
         const media = MessageMedia.fromFilePath(apkPath);
         await client.sendMessage(msg.from, media, { 

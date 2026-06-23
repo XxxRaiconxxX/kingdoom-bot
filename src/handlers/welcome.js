@@ -1,4 +1,6 @@
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
 
@@ -213,7 +215,9 @@ para comenzar tu camino en las sombras.
     await chat.sendMessage(secondMessage);
 
     await new Promise((r) => setTimeout(r, 1500));
-    const apkPath = './releases/Kingdoom_5.0.1.apk';
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    const apkPath = path.join(__dirname, '..', '..', 'releases', 'Kingdoom_5.0.1.apk');
     if (fs.existsSync(apkPath)) {
       const media = MessageMedia.fromFilePath(apkPath);
       await chat.sendMessage(media, { 
