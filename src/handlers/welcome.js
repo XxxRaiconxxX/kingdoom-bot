@@ -215,14 +215,14 @@ para comenzar tu camino en las sombras.
     await chat.sendMessage(secondMessage);
 
     await new Promise((r) => setTimeout(r, 1500));
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    const apkPath = path.join(__dirname, '..', '..', 'releases', 'Kingdoom_5.0.1.apk');
-    if (fs.existsSync(apkPath)) {
-      const media = MessageMedia.fromFilePath(apkPath);
+    try {
+      const apkUrl = 'https://huggingface.co/spaces/axel785/kingdoom-whatsapp/resolve/main/releases/Kingdoom_5.0.1.apk';
+      const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true });
       await chat.sendMessage(media, { 
         caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
       });
+    } catch (e) {
+      console.error('Error enviando APK de bienvenida:', e.message);
     }
   } catch (error) {
     console.error('[welcome] failed to send welcome messages:', error.message);

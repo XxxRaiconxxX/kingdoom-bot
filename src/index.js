@@ -714,24 +714,15 @@ client.on('message', async (msg) => {
     } else if (command === '21') {
       reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
     } else if (command === 'apk' || command === 'app') {
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = path.dirname(__filename);
-      const p1 = path.join(__dirname, '..', 'releases', 'Kingdoom_5.0.1.apk');
-      const p2 = path.resolve(process.cwd(), 'releases', 'Kingdoom_5.0.1.apk');
-      const p3 = '/app/releases/Kingdoom_5.0.1.apk';
-      
-      let foundPath = fs.existsSync(p1) ? p1 : fs.existsSync(p2) ? p2 : fs.existsSync(p3) ? p3 : null;
-
-      if (foundPath) {
-        const media = MessageMedia.fromFilePath(foundPath);
+      try {
+        const apkUrl = 'https://huggingface.co/spaces/axel785/kingdoom-whatsapp/resolve/main/releases/Kingdoom_5.0.1.apk';
+        const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true });
+        
         await client.sendMessage(msg.from, media, { 
           caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
         });
-      } else {
-        const dir = path.join(__dirname, '..', 'releases');
-        let files = 'Carpeta no leida';
-        try { files = fs.readdirSync(dir).join(', '); } catch(e) {}
-        reply = `⚠️ El APK 5.0.1 no está en el servidor.\nBuscado en: ${dir}\nArchivos encontrados allí: ${files || 'Ninguno'}`;
+      } catch (e) {
+        reply = `⚠️ Hubo un error al intentar descargar el APK desde el repositorio: ${e.message}`;
       }
     } else if (
       [
