@@ -1,4 +1,8 @@
+import fs from 'fs';
+import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
+
+const { MessageMedia } = pkg;
 
 function normalizeText(value) {
   return String(value ?? '')
@@ -207,6 +211,15 @@ para comenzar tu camino en las sombras.
     await new Promise((r) => setTimeout(r, 1500));
     
     await chat.sendMessage(secondMessage);
+
+    await new Promise((r) => setTimeout(r, 1500));
+    const apkPath = './releases/Kingdoom_5.0.1.apk';
+    if (fs.existsSync(apkPath)) {
+      const media = MessageMedia.fromFilePath(apkPath);
+      await chat.sendMessage(media, { 
+        caption: '📲 *¡Descarga la App Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
+      });
+    }
   } catch (error) {
     console.error('[welcome] failed to send welcome messages:', error.message);
   }
