@@ -15,14 +15,31 @@ const APK_CAPTION =
 
 export async function sendLatestApk(target, options = {}) {
   const apkUrl = await getLatestApkUrl();
-  const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true, filename: 'Kingdoom-Fichas.apk' });
-  const sendOptions = {
-    caption: options.caption ?? APK_CAPTION,
-  };
+  
+  try {
+    const response = await fetch(apkUrl);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64data = buffer.toString('base64');
+    
+    const media = new MessageMedia(
+      'application/vnd.android.package-archive',
+      base64data,
+      'Kingdoom-Fichas.apk'
+    );
+    
+    const sendOptions = {
+      caption: options.caption ?? APK_CAPTION,
+    };
 
-  await target.sendMessage(media, sendOptions);
-
-  return apkUrl;
+    await target.sendMessage(media, sendOptions);
+    return apkUrl;
+  } catch (err) {
+    console.error(`[sendLatestApk] Error fetching or sending: ${err.message}`);
+    throw err;
+  }
 }
 
 function normalizeText(value) {
