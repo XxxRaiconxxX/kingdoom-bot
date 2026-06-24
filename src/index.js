@@ -10,12 +10,7 @@ import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
-<<<<<<< HEAD
 import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
-=======
-import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
-import { getLatestApkUrl } from './services/apkService.js';
->>>>>>> 938a004 (feat: automatic latest apk fetching from github releases)
 import {
   registerPlayer,
   getPlayer,
