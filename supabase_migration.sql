@@ -3,6 +3,13 @@
 -- Correr una sola vez en el SQL Editor de Supabase
 -- =============================================
 
+-- Habilitar RLS en players y otorgar permisos totales a service_role
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "service_role_all_players" ON players;
+CREATE POLICY "service_role_all_players" ON players
+  USING (current_user = 'service_role' OR current_role = 'service_role')
+  WITH CHECK (current_user = 'service_role' OR current_role = 'service_role');
+
 -- 1. Función atómica para incrementar/decrementar oro
 --    Evita race conditions cuando dos operaciones corren a la vez
 CREATE OR REPLACE FUNCTION increment_gold(player_id uuid, amount integer)
@@ -36,6 +43,13 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
+
+-- Habilitar RLS en bot_daily_claims y otorgar permisos totales a service_role
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "service_role_all_bot_daily_claims" ON bot_daily_claims;
+CREATE POLICY "service_role_all_bot_daily_claims" ON bot_daily_claims
+  USING (current_user = 'service_role' OR current_role = 'service_role')
+  WITH CHECK (current_user = 'service_role' OR current_role = 'service_role');
 
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,

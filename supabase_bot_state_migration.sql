@@ -19,6 +19,13 @@ create index if not exists idx_bot_daily_claims_player_date
 create index if not exists idx_bot_daily_claims_type_date
   on public.bot_daily_claims (claim_type, claim_date desc);
 
+-- RLS policies for bot_daily_claims
+alter table public.bot_daily_claims enable row level security;
+drop policy if exists "service_role_all_bot_daily_claims" on public.bot_daily_claims;
+create policy "service_role_all_bot_daily_claims" on public.bot_daily_claims
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
+
 create table if not exists public.bot_active_missions (
   short_id text primary key,
   mission_id text,
@@ -38,6 +45,13 @@ create table if not exists public.bot_active_missions (
 
 create index if not exists idx_bot_active_missions_resolved
   on public.bot_active_missions (resolved, updated_at desc);
+
+-- RLS policies for bot_active_missions
+alter table public.bot_active_missions enable row level security;
+drop policy if exists "service_role_all_bot_active_missions" on public.bot_active_missions;
+create policy "service_role_all_bot_active_missions" on public.bot_active_missions
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
 
 create or replace function public.set_bot_active_missions_updated_at()
 returns trigger
@@ -70,6 +84,13 @@ create table if not exists public.bot_treasure_events (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+-- RLS policies for bot_treasure_events
+alter table public.bot_treasure_events enable row level security;
+drop policy if exists "service_role_all_bot_treasure_events" on public.bot_treasure_events;
+create policy "service_role_all_bot_treasure_events" on public.bot_treasure_events
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
+
 create table if not exists public.bot_treasure_claims (
   id uuid primary key default gen_random_uuid(),
   event_message_id text not null references public.bot_treasure_events(message_id) on delete cascade,
@@ -78,6 +99,13 @@ create table if not exists public.bot_treasure_claims (
   claimed_at timestamptz not null default timezone('utc', now()),
   unique (event_message_id, player_id)
 );
+
+-- RLS policies for bot_treasure_claims
+alter table public.bot_treasure_claims enable row level security;
+drop policy if exists "service_role_all_bot_treasure_claims" on public.bot_treasure_claims;
+create policy "service_role_all_bot_treasure_claims" on public.bot_treasure_claims
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
 
 create table if not exists public.bot_notifications_queue (
   id uuid primary key default gen_random_uuid(),
@@ -91,6 +119,13 @@ create table if not exists public.bot_notifications_queue (
 create index if not exists idx_bot_notifications_queue_unsent
   on public.bot_notifications_queue (sent) where sent = false;
 
+-- RLS policies for bot_notifications_queue
+alter table public.bot_notifications_queue enable row level security;
+drop policy if exists "service_role_all_bot_notifications_queue" on public.bot_notifications_queue;
+create policy "service_role_all_bot_notifications_queue" on public.bot_notifications_queue
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
+
 create table if not exists public.bot_command_logs (
   id uuid primary key default gen_random_uuid(),
   player_phone text,
@@ -100,3 +135,10 @@ create table if not exists public.bot_command_logs (
 
 create index if not exists idx_bot_command_logs_created
   on public.bot_command_logs (created_at desc);
+
+-- RLS policies for bot_command_logs
+alter table public.bot_command_logs enable row level security;
+drop policy if exists "service_role_all_bot_command_logs" on public.bot_command_logs;
+create policy "service_role_all_bot_command_logs" on public.bot_command_logs
+  using (current_user = 'service_role' or current_role = 'service_role')
+  with check (current_user = 'service_role' or current_role = 'service_role');
