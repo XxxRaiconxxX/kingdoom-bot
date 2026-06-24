@@ -55,6 +55,12 @@ function getKeyFingerprint(key) {
   return String(key ?? '').trim().slice(0, 12);
 }
 
+function logProviderSuccess(provider, key, modelName, extra = '') {
+  const fingerprint = getKeyFingerprint(key);
+  const suffix = extra ? ` ${extra}` : '';
+  console.log(`[ai] Provider ${provider} respondio correctamente con modelo ${modelName} y key ${fingerprint}...${suffix}`);
+}
+
 function getCooldownId(provider, key, modelName, scope = 'key') {
   return scope === 'model'
     ? `${provider}::${getKeyFingerprint(key)}::${modelName}`
@@ -392,6 +398,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
         if (!text && response.response.promptFeedback?.blockReason) {
           console.error('[ai] Prompt bloqueado por seguridad:', response.response.promptFeedback.blockReason);
         }
+        logProviderSuccess('gemini', key, modelName);
         return text;
       } catch (err) {
         lastError = err;
@@ -491,6 +498,7 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
           throw new Error('Respuesta vacia desde NVIDIA');
         }
 
+        logProviderSuccess('nvidia', key, modelName);
         return text;
       } catch (err) {
         lastError = err;
@@ -591,6 +599,7 @@ async function askGroqAI(history, systemPrompt, options = {}) {
           throw new Error('Respuesta vacia desde Groq');
         }
 
+        logProviderSuccess('groq', key, modelName);
         return text;
       } catch (err) {
         lastError = err;

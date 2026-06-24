@@ -5,6 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Se agrego confirmacion explicita del provider/modelo/key que responde exitosamente al bot.
+*   **Cambios Clave:**
+    *   **[Log de exito]:** Gemini, NVIDIA y Groq ahora imprimen una linea clara cuando responden bien.
+    *   **[Trazabilidad operativa]:** El log incluye provider, modelo y fingerprint corto de la key usada, evitando tener que inferir desde los intentos previos.
+*   **Notas/Advertencias:** El fingerprint mostrado es parcial y sirve solo para diagnostico operativo; no expone la clave completa.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `src/handlers/games.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Endurecimiento operativo de `!oraculo` para que NVIDIA/Groq tengan mas oportunidades reales antes de caer a Gemini.
 *   **Cambios Clave:**
