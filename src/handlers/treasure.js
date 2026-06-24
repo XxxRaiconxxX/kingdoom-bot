@@ -8,7 +8,7 @@ import {
   touchPlayerActivity,
 } from '../supabase.js';
 
-const TARGET_GROUP = '595971938097-1618930274@g.us';
+const TARGET_GROUP = process.env.TARGET_GROUP_ID || 'dummy-group@g.us';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;

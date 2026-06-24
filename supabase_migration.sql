@@ -68,3 +68,21 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- 5. Enable Row Level Security and setup service_role full access policies
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "service_role_all_players"
+ON players
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "service_role_all_bot_daily_claims"
+ON bot_daily_claims
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
