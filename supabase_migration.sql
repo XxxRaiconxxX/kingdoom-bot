@@ -68,3 +68,27 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- =============================================
+-- RLS (Row Level Security) Audit & Policies
+-- =============================================
+
+-- Enable RLS on core tables accessed by the bot
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+
+-- The bot interacts with Supabase using the service_role key,
+-- so we grant full access to the service_role for these tables.
+CREATE POLICY "Service role full access on players"
+  ON players
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Service role full access on bot_daily_claims"
+  ON bot_daily_claims
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
