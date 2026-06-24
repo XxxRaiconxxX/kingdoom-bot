@@ -24,6 +24,15 @@ ALTER TABLE players
 CREATE INDEX IF NOT EXISTS idx_players_phone ON players(phone);
 
 -- 4. Recompensa diaria del Heraldo
+-- 4. Habilitar RLS en tabla players
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+CREATE POLICY players_service_role_policy ON players
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+-- 5. Recompensa diaria del Heraldo
 CREATE TABLE IF NOT EXISTS bot_daily_claims (
   id bigserial PRIMARY KEY,
   player_id uuid NOT NULL REFERENCES players(id) ON DELETE CASCADE,
@@ -36,6 +45,14 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
+
+-- 6. Habilitar RLS en tabla bot_daily_claims
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+CREATE POLICY bot_daily_claims_service_role_policy ON bot_daily_claims
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,
