@@ -3,7 +3,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test test_*.js",
+    "test:ci": "SUPABASE_URL=http://localhost:5432 SUPABASE_SERVICE_KEY=dummy node --test test_*.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
