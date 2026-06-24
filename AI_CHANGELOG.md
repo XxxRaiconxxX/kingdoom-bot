@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `.env.example`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Se agrego un carril de fallback por proveedor para que el bot pueda usar claves de NVIDIA NIM ademas de Gemini.
+*   **Cambios Clave:**
+    *   **[IA - Multi proveedor]:** `askKingdoomAI(...)` ahora soporta orden configurable de proveedores mediante `AI_PROVIDER_ORDER`, con fallback entre `gemini` y `nvidia`.
+    *   **[IA - NVIDIA]:** Se agrego soporte para `NVIDIA_API_KEY` usando el endpoint oficial compatible con OpenAI de NVIDIA en `https://integrate.api.nvidia.com/v1/chat/completions`.
+    *   **[Modelos configurables]:** El entorno ahora puede definir `NVIDIA_MODEL` y `NVIDIA_FALLBACK_MODEL` para alternar entre familias como Meta o Qwen sin tocar codigo.
+    *   **[Resiliencia]:** El mismo esquema de cooldown por clave/modelo ahora aplica tambien a NVIDIA para evitar reintentos ciegos cuando hay cuota agotada o saturacion.
+    *   **[Default operativo]:** Se dejo `AI_PROVIDER_ORDER=nvidia,gemini` como prioridad sugerida, con `meta/llama-3.1-70b-instruct` como modelo principal y `qwen/qwen3-32b` como fallback de Build/NIM.
+*   **Notas/Advertencias:** La disponibilidad real depende de que la clave NVIDIA tenga acceso al modelo elegido. Si un modelo concreto no esta habilitado para esa cuenta/proyecto, el fallback seguira intentando el siguiente modelo o proveedor.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `src/handlers/games.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Correccion de `!dados x4` y endurecimiento del flujo IA del `!oraculo` ante claves invalidas, cuota agotada o saturacion del servicio.
 *   **Cambios Clave:**

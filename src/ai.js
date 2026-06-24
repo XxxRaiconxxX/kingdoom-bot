@@ -1,31 +1,59 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const apiKeyCooldowns = new Map();
+const NVIDIA_API_BASE_URL = process.env.NVIDIA_API_BASE_URL || 'https://integrate.api.nvidia.com/v1';
+const SUPPORTED_AI_PROVIDERS = new Set(['gemini', 'nvidia']);
 
 if (!process.env.GEMINI_API_KEY) {
   console.error('[ai] GEMINI_API_KEY no esta configurada. El Oraculo y el chat de IA no funcionaran.');
 }
 
-function getApiKeys() {
-  const envKey = process.env.GEMINI_API_KEY ?? '';
-  return envKey.split(',').map((k) => k.trim()).filter(Boolean);
+function parseApiKeyList(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+function getGeminiApiKeys() {
+  return parseApiKeyList(process.env.GEMINI_API_KEY);
+}
+
+function getNvidiaApiKeys() {
+  return parseApiKeyList(process.env.NVIDIA_API_KEY);
+}
+
+function getProviderOrder() {
+  const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,gemini')
+    .split(',')
+    .map((provider) => provider.trim().toLowerCase())
+    .filter(Boolean);
+
+  const unique = [];
+  for (const provider of requested) {
+    if (SUPPORTED_AI_PROVIDERS.has(provider) && !unique.includes(provider)) {
+      unique.push(provider);
+    }
+  }
+
+  return unique.length ? unique : ['nvidia', 'gemini'];
 }
 
 function getKeyFingerprint(key) {
   return String(key ?? '').trim().slice(0, 12);
 }
 
-function getCooldownId(key, modelName, scope = 'key') {
+function getCooldownId(provider, key, modelName, scope = 'key') {
   return scope === 'model'
-    ? `${getKeyFingerprint(key)}::${modelName}`
-    : getKeyFingerprint(key);
+    ? `${provider}::${getKeyFingerprint(key)}::${modelName}`
+    : `${provider}::${getKeyFingerprint(key)}`;
 }
 
-function readCooldown(key, modelName) {
+function readCooldown(provider, key, modelName) {
   const now = Date.now();
   const candidates = [
-    apiKeyCooldowns.get(getCooldownId(key, modelName, 'model')),
-    apiKeyCooldowns.get(getCooldownId(key, modelName, 'key')),
+    apiKeyCooldowns.get(getCooldownId(provider, key, modelName, 'model')),
+    apiKeyCooldowns.get(getCooldownId(provider, key, modelName, 'key')),
   ].filter(Boolean);
 
   for (const entry of candidates) {
@@ -34,13 +62,13 @@ function readCooldown(key, modelName) {
     }
   }
 
-  apiKeyCooldowns.delete(getCooldownId(key, modelName, 'model'));
-  apiKeyCooldowns.delete(getCooldownId(key, modelName, 'key'));
+  apiKeyCooldowns.delete(getCooldownId(provider, key, modelName, 'model'));
+  apiKeyCooldowns.delete(getCooldownId(provider, key, modelName, 'key'));
   return null;
 }
 
-function writeCooldown(key, modelName, reason, durationMs, scope = 'key') {
-  apiKeyCooldowns.set(getCooldownId(key, modelName, scope), {
+function writeCooldown(provider, key, modelName, reason, durationMs, scope = 'key') {
+  apiKeyCooldowns.set(getCooldownId(provider, key, modelName, scope), {
     reason,
     until: Date.now() + durationMs,
   });
@@ -179,6 +207,25 @@ function buildGeminiContents(history) {
     }, []);
 }
 
+function buildOpenAICompatibleMessages(history, systemPrompt) {
+  const normalizedHistory = history.map((msg) => ({
+    role: msg.role === 'assistant' ? 'assistant' : 'user',
+    content: String(msg.content ?? ''),
+  }));
+
+  const messages = [];
+  const safeSystemPrompt = String(systemPrompt ?? '').trim();
+  if (safeSystemPrompt) {
+    messages.push({ role: 'system', content: safeSystemPrompt });
+  }
+
+  for (const msg of normalizedHistory) {
+    messages.push(msg);
+  }
+
+  return messages;
+}
+
 async function countInputTokens(model, systemPrompt, contents) {
   try {
     const result = await model.countTokens({ contents });
@@ -225,8 +272,8 @@ function shrinkHistoryToTokenBudget(history, systemPrompt, maxInputTokens, offic
   };
 }
 
-export async function askKingdoomAI(history, systemPrompt, options = {}) {
-  const keys = getApiKeys();
+async function askGeminiAI(history, systemPrompt, options = {}) {
+  const keys = getGeminiApiKeys();
   if (keys.length === 0) {
     throw new Error('GEMINI_API_KEY no configurada');
   }
@@ -253,7 +300,7 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
     const key = keys[i];
 
     for (const modelName of modelsToTry) {
-      const cooldown = readCooldown(key, modelName);
+      const cooldown = readCooldown('gemini', key, modelName);
       if (cooldown) {
         console.log(`[ai] Saltando clave/modelo en cooldown (${cooldown.reason}) hasta ${new Date(cooldown.until).toISOString()}`);
         lastError = lastError ?? new Error(`AI cooldown activo: ${cooldown.reason}`);
@@ -343,13 +390,13 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
         const retryDelayMs = parseRetryDelayMs(err);
 
         if (errorType === 'key_invalid') {
-          writeCooldown(key, modelName, errorType, 1000 * 60 * 60 * 12);
+          writeCooldown('gemini', key, modelName, errorType, 1000 * 60 * 60 * 12);
         } else if (errorType === 'access_denied') {
-          writeCooldown(key, modelName, errorType, 1000 * 60 * 60);
+          writeCooldown('gemini', key, modelName, errorType, 1000 * 60 * 60);
         } else if (errorType === 'quota_exceeded') {
-          writeCooldown(key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
+          writeCooldown('gemini', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
         } else if (errorType === 'service_unavailable') {
-          writeCooldown(key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
+          writeCooldown('gemini', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
         }
 
         const isKeyError = errorType === 'key_invalid'
@@ -370,4 +417,126 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
   }
 
   throw lastError || new Error('Todas las claves de API y modelos fallaron');
+}
+
+async function askNvidiaAI(history, systemPrompt, options = {}) {
+  const keys = getNvidiaApiKeys();
+  if (keys.length === 0) {
+    throw new Error('NVIDIA_API_KEY no configurada');
+  }
+
+  const {
+    maxEstimatedInputTokens = null,
+    maxOutputTokens = 2048,
+    temperature = 0.85,
+  } = options;
+
+  const configuredModels = [
+    process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
+    process.env.NVIDIA_FALLBACK_MODEL || 'qwen/qwen3-32b',
+  ].filter((model, index, arr) => model && arr.indexOf(model) === index);
+
+  let lastError = null;
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+
+    for (const modelName of configuredModels) {
+      const cooldown = readCooldown('nvidia', key, modelName);
+      if (cooldown) {
+        console.log(`[ai][nvidia] Saltando clave/modelo en cooldown (${cooldown.reason}) hasta ${new Date(cooldown.until).toISOString()}`);
+        lastError = lastError ?? new Error(`NVIDIA cooldown activo: ${cooldown.reason}`);
+        continue;
+      }
+
+      try {
+        const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
+        const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
+        const response = await fetch(`${NVIDIA_API_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages,
+            max_tokens: maxOutputTokens,
+            temperature,
+            stream: false,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(payload?.error?.message || payload?.message || `NVIDIA request failed with status ${response.status}`);
+          error.status = response.status;
+          error.errorDetails = payload?.error ? [payload.error] : payload;
+          throw error;
+        }
+
+        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        if (!text) {
+          throw new Error('Respuesta vacia desde NVIDIA');
+        }
+
+        return text;
+      } catch (err) {
+        lastError = err;
+        console.error(`[ai][nvidia] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
+        if (err?.status) console.error('[ai][nvidia] HTTP Status:', err.status);
+        if (err?.errorDetails) console.error('[ai][nvidia] Details:', JSON.stringify(err.errorDetails));
+
+        const errorType = classifyAIError(err);
+        const retryDelayMs = parseRetryDelayMs(err);
+
+        if (errorType === 'key_invalid') {
+          writeCooldown('nvidia', key, modelName, errorType, 1000 * 60 * 60 * 12);
+        } else if (errorType === 'access_denied') {
+          writeCooldown('nvidia', key, modelName, errorType, 1000 * 60 * 60);
+        } else if (errorType === 'quota_exceeded') {
+          writeCooldown('nvidia', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
+        } else if (errorType === 'service_unavailable') {
+          writeCooldown('nvidia', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
+        }
+
+        const isProviderError = errorType === 'key_invalid'
+          || errorType === 'access_denied'
+          || errorType === 'quota_exceeded';
+
+        if (!isProviderError) {
+          console.log(`[ai][nvidia] Error de modelo o servicio (${err?.status || 'red'}). Intentando con el siguiente modelo de la lista...`);
+          continue;
+        }
+
+        if (i < keys.length - 1) {
+          console.log('[ai][nvidia] Error relacionado con la clave API. Pasando a la siguiente clave...');
+        }
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('Todas las claves NVIDIA y modelos fallaron');
+}
+
+export async function askKingdoomAI(history, systemPrompt, options = {}) {
+  const providers = getProviderOrder();
+  let lastError = null;
+
+  for (const provider of providers) {
+    try {
+      if (provider === 'gemini') {
+        return await askGeminiAI(history, systemPrompt, options);
+      }
+
+      if (provider === 'nvidia') {
+        return await askNvidiaAI(history, systemPrompt, options);
+      }
+    } catch (err) {
+      lastError = err;
+      console.error(`[ai] Provider ${provider} fallo:`, err?.message ?? err);
+    }
+  }
+
+  throw lastError || new Error('No hay proveedores de IA disponibles');
 }
