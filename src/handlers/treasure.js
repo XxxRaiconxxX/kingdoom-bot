@@ -276,14 +276,20 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
 export async function hydrateOpenTreasures(client) {
   try {
     const openEvents = await getOpenTreasureEvents(TARGET_GROUP);
+    const closePromises = [];
+
     for (const event of openEvents) {
       const expiresAtMs = new Date(event.expires_at).getTime();
       if (expiresAtMs <= Date.now()) {
-        await closeTreasure(event.message_id, client, { reason: 'expired' });
+        closePromises.push(closeTreasure(event.message_id, client, { reason: 'expired' }));
         continue;
       }
 
       registerActiveTreasure(event, client);
+    }
+
+    if (closePromises.length > 0) {
+      await Promise.allSettled(closePromises);
     }
 
     console.log(`[Treasure] Rehidratados ${openEvents.length} evento(s) abiertos desde Supabase.`);
