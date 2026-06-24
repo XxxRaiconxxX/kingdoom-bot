@@ -2,7 +2,7 @@ let cachedApkUrl = null;
 let lastFetchTime = 0;
 const CACHE_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
-const FALLBACK_APK_URL = 'https://huggingface.co/spaces/axel785/kingdoom-whatsapp/resolve/main/releases/Kingdoom_5.0.1.apk';
+const FALLBACK_APK_URL = 'https://github.com/XxxRaiconxxX/kingdoom-fichas/releases/download/latest/app-debug.apk';
 const REPO_API_URL = 'https://api.github.com/repos/XxxRaiconxxX/Kingdoom-fichas/releases/latest';
 
 export async function getLatestApkUrl() {
