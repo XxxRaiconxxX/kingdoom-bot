@@ -93,3 +93,6 @@ BEGIN
     RETURN true;
 END;
 $$;
+
+ALTER TABLE public.bot_active_bets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_active_bets FOR ALL TO service_role USING (true) WITH CHECK (true);

@@ -100,3 +100,21 @@ create table if not exists public.bot_command_logs (
 
 create index if not exists idx_bot_command_logs_created
   on public.bot_command_logs (created_at desc);
+
+ALTER TABLE public.bot_daily_claims ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_daily_claims FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.bot_active_missions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_active_missions FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.bot_treasure_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_treasure_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.bot_treasure_claims ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_treasure_claims FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.bot_notifications_queue ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_notifications_queue FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE public.bot_command_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.bot_command_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
