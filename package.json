@@ -3,7 +3,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "test": "node --test test_*.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
