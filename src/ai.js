@@ -28,6 +28,13 @@ function getGroqApiKeys() {
   return parseApiKeyList(process.env.GROQ_API_KEY);
 }
 
+function getProviderKeyCount(provider) {
+  if (provider === 'gemini') return getGeminiApiKeys().length;
+  if (provider === 'nvidia') return getNvidiaApiKeys().length;
+  if (provider === 'groq') return getGroqApiKeys().length;
+  return 0;
+}
+
 function getProviderOrder() {
   const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,groq,gemini')
     .split(',')
@@ -630,6 +637,14 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
   let lastError = null;
 
   for (const provider of providers) {
+    const keyCount = getProviderKeyCount(provider);
+    if (keyCount === 0) {
+      console.log(`[ai] Provider ${provider} omitido: no hay claves configuradas.`);
+      continue;
+    }
+
+    console.log(`[ai] Intentando provider ${provider} con ${keyCount} clave(s) disponible(s).`);
+
     try {
       if (provider === 'gemini') {
         return await askGeminiAI(history, systemPrompt, options);

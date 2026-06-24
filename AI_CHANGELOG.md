@@ -5,6 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `src/handlers/games.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Endurecimiento operativo de `!oraculo` para que NVIDIA/Groq tengan mas oportunidades reales antes de caer a Gemini.
+*   **Cambios Clave:**
+    *   **[Logs utiles]:** `askKingdoomAI(...)` ahora informa si un provider se omite por falta de claves y cuantas claves disponibles tiene antes de intentar cada carril.
+    *   **[Budget del Oraculo]:** `handleOraculo(...)` pasa a usar `maxEstimatedInputTokens: 5200` y `maxOutputTokens: 700`, recortando el contexto gigante del reino para no chocar tan facil con limites TPM o requests demasiado pesadas.
+    *   **[Diagnostico real]:** Con este cambio, los logs deberian mostrar con claridad si el bot salta NVIDIA/Groq por no tener keys, por cooldown o por fallos reales del proveedor antes de caer en Gemini.
+*   **Notas/Advertencias:** Si aun despues de esto sigue respondiendo Gemini, el problema restante ya no sera el orden ni el tamanio del prompt, sino la disponibilidad/cuota real de las keys NVIDIA o Groq cargadas en el Space.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Correccion del fallback interno del orden de proveedores IA y mejora de trazabilidad en logs.
 *   **Cambios Clave:**

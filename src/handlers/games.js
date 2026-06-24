@@ -415,7 +415,12 @@ export async function handleOraculo(msg) {
 
     const respuesta = await askKingdoomAI(
       history,
-      contextStr
+      contextStr,
+      {
+        maxEstimatedInputTokens: 5200,
+        maxOutputTokens: 700,
+        temperature: 0.85,
+      }
     );
     
     // Guardar respuesta y mantener solo los últimos 6 mensajes (3 interacciones)
