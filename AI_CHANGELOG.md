@@ -5,6 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Correccion del fallback interno del orden de proveedores IA y mejora de trazabilidad en logs.
+*   **Cambios Clave:**
+    *   **[Orden real de fallback]:** `getProviderOrder()` deja de usar `nvidia,gemini` como default duro y pasa a `nvidia,groq,gemini`, alineado con la configuracion esperada.
+    *   **[Diagnostico en produccion]:** `askKingdoomAI(...)` ahora imprime el orden efectivo de proveedores en logs para confirmar si Hugging Face esta usando NVIDIA, Groq o Gemini primero.
+*   **Notas/Advertencias:** Si en Hugging Face existe una variable `AI_PROVIDER_ORDER` manual con otro valor, esa variable seguira teniendo prioridad sobre este fallback del codigo.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `.env.example`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Ajuste de defaults de Groq para evitar que `!oraculo` arranque con un modelo demasiado justo en TPM.
 *   **Cambios Clave:**

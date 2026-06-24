@@ -29,7 +29,7 @@ function getGroqApiKeys() {
 }
 
 function getProviderOrder() {
-  const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,gemini')
+  const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,groq,gemini')
     .split(',')
     .map((provider) => provider.trim().toLowerCase())
     .filter(Boolean);
@@ -626,6 +626,7 @@ async function askGroqAI(history, systemPrompt, options = {}) {
 
 export async function askKingdoomAI(history, systemPrompt, options = {}) {
   const providers = getProviderOrder();
+  console.log(`[ai] Orden efectivo de proveedores: ${providers.join(' -> ')}`);
   let lastError = null;
 
   for (const provider of providers) {
