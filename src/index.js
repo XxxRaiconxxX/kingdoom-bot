@@ -10,7 +10,12 @@ import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
+<<<<<<< HEAD
+import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
+=======
 import { buildWelcomeConfig, handleGroupWelcome } from './handlers/welcome.js';
+import { getLatestApkUrl } from './services/apkService.js';
+>>>>>>> 938a004 (feat: automatic latest apk fetching from github releases)
 import {
   registerPlayer,
   getPlayer,
@@ -33,7 +38,7 @@ import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './h
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
 
-const { Client, LocalAuth, MessageMedia } = pkg;
+const { Client, LocalAuth } = pkg;
 
 const PORT = process.env.PORT || 3000;
 const WHATSAPP_INIT_MAX_RETRIES = Math.max(
@@ -715,11 +720,8 @@ client.on('message', async (msg) => {
       reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
     } else if (command === 'apk' || command === 'app') {
       try {
-        const apkUrl = 'https://huggingface.co/spaces/axel785/kingdoom-whatsapp/resolve/main/releases/Kingdoom_5.0.1.apk';
-        const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true });
-        
-        await client.sendMessage(msg.from, media, { 
-          caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
+        await sendLatestApk({
+          sendMessage: (...args) => client.sendMessage(msg.from, ...args),
         });
       } catch (e) {
         reply = `⚠️ Hubo un error al intentar descargar el APK desde el repositorio: ${e.message}`;

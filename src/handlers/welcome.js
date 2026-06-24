@@ -3,8 +3,27 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
-
+import { getLatestApkUrl } from '../services/apkService.js';
 const { MessageMedia } = pkg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const RELEASES_DIR = path.resolve(__dirname, '../../releases');
+const APK_FILE_PATTERN = /^Kingdoom_(\d+(?:\.\d+){1,3})\.apk$/i;
+const APK_CAPTION =
+  '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\n' +
+  'Para vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.';
+
+export async function sendLatestApk(target, options = {}) {
+  const apkUrl = await getLatestApkUrl();
+  const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true, filename: 'Kingdoom-Fichas.apk' });
+  const sendOptions = {
+    caption: options.caption ?? APK_CAPTION,
+  };
+
+  await target.sendMessage(media, sendOptions);
+
+  return apkUrl;
+}
 
 function normalizeText(value) {
   return String(value ?? '')
@@ -216,11 +235,7 @@ para comenzar tu camino en las sombras.
 
     await new Promise((r) => setTimeout(r, 1500));
     try {
-      const apkUrl = 'https://huggingface.co/spaces/axel785/kingdoom-whatsapp/resolve/main/releases/Kingdoom_5.0.1.apk';
-      const media = await MessageMedia.fromUrl(apkUrl, { unsafeMime: true });
-      await chat.sendMessage(media, { 
-        caption: '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\nPara vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.' 
-      });
+      await sendLatestApk(chat);
     } catch (e) {
       console.error('Error enviando APK de bienvenida:', e.message);
     }

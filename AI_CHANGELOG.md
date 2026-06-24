@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 23/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/welcome.js`, `src/index.js`, `releases/INSTRUCCIONES.txt`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Unificacion del flujo APK del bot para enviar siempre la version mas nueva disponible en `releases/`, validado ya sobre `Kingdoom_5.0.2.apk`.
+*   **Cambios Clave:**
+    *   **[Bot - APK dinamico]:** Se creo `getLatestApkRelease()` en `welcome.js` para detectar automaticamente el archivo `Kingdoom_X.Y.Z.apk` con la version mas alta dentro de `releases/`.
+    *   **[Bot - Fuente unica]:** El comando `!apk` / `!app` y el envio automatico de bienvenida ahora reutilizan `sendLatestApk(...)`, eliminando la URL hardcodeada a una version fija.
+    *   **[Operacion - Validacion real]:** Tras sincronizar con `origin/main`, se confirmo por ejecucion real que el resolvedor selecciona `Kingdoom_5.0.2.apk` como version activa actual.
+    *   **[Documentacion - Releases]:** `releases/INSTRUCCIONES.txt` ahora explica el formato versionado esperado y deja claro que el bot enviara siempre la build mas alta disponible.
+*   **Notas/Advertencias:** El despliegue seguira entregando `5.0.2` mientras ese archivo siga presente como version mas alta en `releases/`. Si en el futuro se suben APKs con nombres fuera del patron `Kingdoom_X.Y.Z.apk`, el selector no los tomara.
+
 ### [Fecha: 19/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Verificación del split parcial y optimización de lecturas (Fase 0) mediante caché para el grimorio/oráculo.
