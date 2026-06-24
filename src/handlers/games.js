@@ -141,7 +141,7 @@ export async function handleDados(msg) {
     const d1 = Math.ceil(Math.random() * 6);
     const d2 = Math.ceil(Math.random() * 6);
     const suma = d1 + d2;
-    const gano = x4 ? suma === DADOS_X4_TARGET : suma >= 7;
+    const gano = suma >= DADOS_X4_TARGET;
     const delta = gano ? apuesta * (x4 ? 4 : 1) : -apuesta;
     
     if (gano) {
@@ -177,7 +177,7 @@ export async function handleDados(msg) {
 
   return heraldCard('Dados del destino', [
     x4
-      ? `Modo: *x4* (${runs} tiradas en cadena, solo ganas con suma exacta de ${DADOS_X4_TARGET})`
+      ? `Modo: *x4* (${runs} tiradas en cadena, ganas con suma de ${DADOS_X4_TARGET} o mas)`
       : `Modo: *clasico* (ganas con ${DADOS_X4_TARGET} o mas)`,
     ...rolls,
     runs > 1 ? `Victorias: *${wins}/${runs}*` : '',

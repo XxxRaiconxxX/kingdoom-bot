@@ -5,6 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/games.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Correccion de la resolucion de `!dados x4` para que respete el umbral natural de victoria desde 7 en adelante.
+*   **Cambios Clave:**
+    *   **[Bot - Dados x4]:** El modo `x4` dejo de exigir suma exacta de `7`; ahora cada tirada gana con `7 o mas`, igual que el modo clasico.
+    *   **[Bot - Mensaje de resultado]:** La carta del minijuego ahora describe correctamente la regla del modo `x4` como `ganas con suma de 7 o mas`.
+    *   **[Ayuda - Heraldo]:** El menu `!ayuda` se actualizo para no seguir anunciando una condicion incorrecta.
+*   **Notas/Advertencias:** Este ajuste cambia la regla efectiva del modo `x4` para alinearla con la expectativa visible de los jugadores y evitar reportes de “victoria marcada como derrota” en sumas 8, 9, 10, 11 o 12.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Nota de auditoria retroactiva para distinguir el ciclo operativo de Antigravity 2 en los cambios del 23/06 relacionados con distribucion del APK.
 *   **Cambios Clave:**
