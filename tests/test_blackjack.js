@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { calculateHand } from './src/handlers/blackjack.js';
+import { calculateHand } from '../src/handlers/blackjack.js';
 
 console.log('--- INICIANDO PRUEBAS DE BLACKJACK ---');
 
