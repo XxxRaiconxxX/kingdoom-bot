@@ -4,6 +4,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Nota de auditoria retroactiva para distinguir el ciclo operativo de Antigravity 2 en los cambios del 23/06 relacionados con distribucion del APK.
+*   **Cambios Clave:**
+    *   **[Auditoria - Atribucion operativa]:** Se deja asentado que la secuencia de trabajo del `23/06/2026` sobre el flujo APK del bot debe considerarse parte del ciclo de **Antigravity 2**, aunque la firma visible del changelog y varios commits no lo distingan explicitamente.
+    *   **[Commits asociados]:** `11253a9` (`feat: automatic latest apk fetching from github releases`), `18465b3` (`fix(bot): remove lingering merge conflict markers in index.js`), `dcd11b7` (`fix(bot): update fallback URL to direct github release to avoid rate limiting`) y `04aeece` (`fix(bot): implement robust native fetch for apk downloads`).
+    *   **[Alcance]:** Esta nota corrige la trazabilidad humana del relevo y no modifica la autoria git ni el contenido tecnico de los commits originales.
+*   **Notas/Advertencias:** El commit `ba2e336` (borrado de `Kingdoom_5.0.1.apk`) forma parte del mismo tramo temporal, pero se considera un movimiento auxiliar de release y no el nucleo funcional del ajuste del bot.
+
 ### [Fecha: 23/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/welcome.js`, `src/index.js`, `releases/INSTRUCCIONES.txt`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Unificacion del flujo APK del bot para enviar siempre la version mas nueva disponible en `releases/`, validado ya sobre `Kingdoom_5.0.2.apk`.
