@@ -1,5 +1,5 @@
 import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
-import { askKingdoomAI } from '../ai.js';
+import { askKingdoomAI, describeAIError } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
 const DAILY_MAX_COFRE = 4;
@@ -427,6 +427,6 @@ export async function handleOraculo(msg) {
     return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: '🔮' });
   } catch (err) {
     console.error('[handleOraculo]', err.message);
-    return `🔮 El oráculo guarda silencio... intentá de nuevo más tarde.`;
+    return `🔮 ${describeAIError(err).userMessage}`;
   }
 }

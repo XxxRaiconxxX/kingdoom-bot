@@ -5,13 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
-*   **Archivos Modificados:** `src/handlers/games.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Correccion de la resolucion de `!dados x4` para que respete el umbral natural de victoria desde 7 en adelante.
+*   **Archivos Modificados:** `src/ai.js`, `src/handlers/games.js`, `src/handlers/player.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Correccion de `!dados x4` y endurecimiento del flujo IA del `!oraculo` ante claves invalidas, cuota agotada o saturacion del servicio.
 *   **Cambios Clave:**
     *   **[Bot - Dados x4]:** El modo `x4` dejo de exigir suma exacta de `7`; ahora cada tirada gana con `7 o mas`, igual que el modo clasico.
     *   **[Bot - Mensaje de resultado]:** La carta del minijuego ahora describe correctamente la regla del modo `x4` como `ganas con suma de 7 o mas`.
     *   **[Ayuda - Heraldo]:** El menu `!ayuda` se actualizo para no seguir anunciando una condicion incorrecta.
-*   **Notas/Advertencias:** Este ajuste cambia la regla efectiva del modo `x4` para alinearla con la expectativa visible de los jugadores y evitar reportes de “victoria marcada como derrota” en sumas 8, 9, 10, 11 o 12.
+    *   **[Bot - Oraculo resiliente]:** `askKingdoomAI(...)` ahora aplica cooldown temporal por clave/modelo cuando detecta `API key invalid`, `403`, `429` o `503`, evitando reintentos ciegos y respuestas eternamente lentas en cada consulta.
+    *   **[Bot - Mensaje util de falla]:** `handleOraculo(...)` ya no responde solo con “guarda silencio”; ahora devuelve una razon util para cuota agotada, permisos revocados o saturacion del servicio.
+*   **Notas/Advertencias:** El ajuste de `!oraculo` mejora la degradacion cuando Gemini falla, pero no reemplaza la necesidad de renovar o sanear las claves invalidas/cuoteadas del entorno.
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `AI_CHANGELOG.md`

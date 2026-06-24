@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+const apiKeyCooldowns = new Map();
+
 if (!process.env.GEMINI_API_KEY) {
   console.error('[ai] GEMINI_API_KEY no esta configurada. El Oraculo y el chat de IA no funcionaran.');
 }
@@ -7,6 +9,94 @@ if (!process.env.GEMINI_API_KEY) {
 function getApiKeys() {
   const envKey = process.env.GEMINI_API_KEY ?? '';
   return envKey.split(',').map((k) => k.trim()).filter(Boolean);
+}
+
+function getKeyFingerprint(key) {
+  return String(key ?? '').trim().slice(0, 12);
+}
+
+function getCooldownId(key, modelName, scope = 'key') {
+  return scope === 'model'
+    ? `${getKeyFingerprint(key)}::${modelName}`
+    : getKeyFingerprint(key);
+}
+
+function readCooldown(key, modelName) {
+  const now = Date.now();
+  const candidates = [
+    apiKeyCooldowns.get(getCooldownId(key, modelName, 'model')),
+    apiKeyCooldowns.get(getCooldownId(key, modelName, 'key')),
+  ].filter(Boolean);
+
+  for (const entry of candidates) {
+    if (entry.until > now) {
+      return entry;
+    }
+  }
+
+  apiKeyCooldowns.delete(getCooldownId(key, modelName, 'model'));
+  apiKeyCooldowns.delete(getCooldownId(key, modelName, 'key'));
+  return null;
+}
+
+function writeCooldown(key, modelName, reason, durationMs, scope = 'key') {
+  apiKeyCooldowns.set(getCooldownId(key, modelName, scope), {
+    reason,
+    until: Date.now() + durationMs,
+  });
+}
+
+function parseRetryDelayMs(err) {
+  const retryInfo = err?.errorDetails?.find?.((detail) => detail?.['@type']?.includes('RetryInfo'));
+  const retryDelay = retryInfo?.retryDelay ?? '';
+  const seconds = Number.parseInt(String(retryDelay).replace(/[^\d]/g, ''), 10);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return seconds * 1000;
+  }
+  return null;
+}
+
+function classifyAIError(err) {
+  const message = String(err?.message ?? '').toLowerCase();
+  const status = Number(err?.status ?? 0);
+
+  if (status === 400 && message.includes('api key')) return 'key_invalid';
+  if (status === 401) return 'key_invalid';
+  if (status === 403) return 'access_denied';
+  if (status === 429 || message.includes('quota exceeded') || message.includes('too many requests')) return 'quota_exceeded';
+  if (status === 503 || message.includes('service unavailable') || message.includes('high demand')) return 'service_unavailable';
+  if (message.includes('api key')) return 'key_invalid';
+  return 'unknown';
+}
+
+export function describeAIError(err) {
+  switch (classifyAIError(err)) {
+    case 'key_invalid':
+      return {
+        code: 'key_invalid',
+        userMessage: 'El oráculo está ciego por ahora; una de sus runas de invocación quedó inválida.',
+      };
+    case 'access_denied':
+      return {
+        code: 'access_denied',
+        userMessage: 'El oráculo perdió acceso a sus visiones. Hay que restaurar sus permisos arcanos.',
+      };
+    case 'quota_exceeded':
+      return {
+        code: 'quota_exceeded',
+        userMessage: 'El oráculo agotó su cuota de visiones por ahora. Intentá de nuevo más tarde.',
+      };
+    case 'service_unavailable':
+      return {
+        code: 'service_unavailable',
+        userMessage: 'El oráculo siente demasiado ruido en los planos. Esperá un poco e intentá otra vez.',
+      };
+    default:
+      return {
+        code: 'unknown',
+        userMessage: 'El oráculo guarda silencio... intentá de nuevo más tarde.',
+      };
+  }
 }
 
 function estimateTokens(text) {
@@ -163,6 +253,13 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
     const key = keys[i];
 
     for (const modelName of modelsToTry) {
+      const cooldown = readCooldown(key, modelName);
+      if (cooldown) {
+        console.log(`[ai] Saltando clave/modelo en cooldown (${cooldown.reason}) hasta ${new Date(cooldown.until).toISOString()}`);
+        lastError = lastError ?? new Error(`AI cooldown activo: ${cooldown.reason}`);
+        continue;
+      }
+
       console.log(`[ai] Intentando con clave API index ${i} (${key.substring(0, 8)}...) y modelo ${modelName}`);
 
       try {
@@ -242,9 +339,22 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
         console.error(`[ai] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
         if (err?.status) console.error('[ai] HTTP Status:', err.status);
         if (err?.errorDetails) console.error('[ai] Details:', JSON.stringify(err.errorDetails));
+        const errorType = classifyAIError(err);
+        const retryDelayMs = parseRetryDelayMs(err);
 
-        const isKeyError = err?.status === 429 || err?.status === 401 || err?.status === 403
-          || (err?.message && (err.message.includes('API key') || err.message.includes('quota') || err.message.includes('429')));
+        if (errorType === 'key_invalid') {
+          writeCooldown(key, modelName, errorType, 1000 * 60 * 60 * 12);
+        } else if (errorType === 'access_denied') {
+          writeCooldown(key, modelName, errorType, 1000 * 60 * 60);
+        } else if (errorType === 'quota_exceeded') {
+          writeCooldown(key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
+        } else if (errorType === 'service_unavailable') {
+          writeCooldown(key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
+        }
+
+        const isKeyError = errorType === 'key_invalid'
+          || errorType === 'access_denied'
+          || errorType === 'quota_exceeded';
 
         if (!isKeyError) {
           console.log(`[ai] Error de modelo o servicio (${err?.status || '503/red'}). Intentando con el siguiente modelo de la lista...`);
