@@ -6,6 +6,25 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `.env.example`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Ajuste de defaults de Groq para evitar que `!oraculo` arranque con un modelo demasiado justo en TPM.
+*   **Cambios Clave:**
+    *   **[IA - Groq principal]:** El default operativo deja de usar `openai/gpt-oss-20b` como modelo principal.
+    *   **[IA - Groq recomendado]:** Se pasa a `llama-3.3-70b-versatile` como `GROQ_MODEL` sugerido para un flujo mas estable en prompts largos.
+    *   **[Fallback liviano]:** Se fija `llama-3.1-8b-instant` como `GROQ_FALLBACK_MODEL` por ser mas liviano y tolerante a cuota.
+*   **Notas/Advertencias:** Si el entorno real de Hugging Face tiene variables `GROQ_MODEL` o `GROQ_FALLBACK_MODEL` ya definidas, esas seguiran mandando sobre los defaults del codigo hasta que se actualicen tambien alli.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `.env.example`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Se agrego soporte de Groq como proveedor adicional de IA para el bot.
+*   **Cambios Clave:**
+    *   **[IA - Groq]:** `askKingdoomAI(...)` ahora tambien puede usar `GROQ_API_KEY` con el endpoint oficial OpenAI-compatible de Groq en `https://api.groq.com/openai/v1/chat/completions`.
+    *   **[Orden de proveedores]:** El default sugerido pasa a `nvidia,groq,gemini`, de modo que el bot pueda recorrer primero NVIDIA, luego Groq y finalmente Gemini.
+    *   **[Modelos configurables]:** Se agregaron `GROQ_MODEL` y `GROQ_FALLBACK_MODEL`, con defaults iniciales `openai/gpt-oss-20b` y `llama-3.3-70b-versatile`.
+    *   **[Resiliencia]:** El sistema de cooldown por clave/modelo y degradacion por cuota/acceso/saturacion ahora cubre tambien al proveedor Groq.
+*   **Notas/Advertencias:** Los IDs de modelo de Groq pueden variar segun el catalogo habilitado en la cuenta; si uno no existe o no esta permitido para la key, el bot intentara el fallback siguiente.
+
+### [Fecha: 24/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `.env.example`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Se agrego un carril de fallback por proveedor para que el bot pueda usar claves de NVIDIA NIM ademas de Gemini.
 *   **Cambios Clave:**
     *   **[IA - Multi proveedor]:** `askKingdoomAI(...)` ahora soporta orden configurable de proveedores mediante `AI_PROVIDER_ORDER`, con fallback entre `gemini` y `nvidia`.

@@ -2,7 +2,8 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const apiKeyCooldowns = new Map();
 const NVIDIA_API_BASE_URL = process.env.NVIDIA_API_BASE_URL || 'https://integrate.api.nvidia.com/v1';
-const SUPPORTED_AI_PROVIDERS = new Set(['gemini', 'nvidia']);
+const GROQ_API_BASE_URL = process.env.GROQ_API_BASE_URL || 'https://api.groq.com/openai/v1';
+const SUPPORTED_AI_PROVIDERS = new Set(['gemini', 'nvidia', 'groq']);
 
 if (!process.env.GEMINI_API_KEY) {
   console.error('[ai] GEMINI_API_KEY no esta configurada. El Oraculo y el chat de IA no funcionaran.');
@@ -23,6 +24,10 @@ function getNvidiaApiKeys() {
   return parseApiKeyList(process.env.NVIDIA_API_KEY);
 }
 
+function getGroqApiKeys() {
+  return parseApiKeyList(process.env.GROQ_API_KEY);
+}
+
 function getProviderOrder() {
   const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,gemini')
     .split(',')
@@ -36,7 +41,7 @@ function getProviderOrder() {
     }
   }
 
-  return unique.length ? unique : ['nvidia', 'gemini'];
+  return unique.length ? unique : ['nvidia', 'groq', 'gemini'];
 }
 
 function getKeyFingerprint(key) {
@@ -519,6 +524,106 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
   throw lastError || new Error('Todas las claves NVIDIA y modelos fallaron');
 }
 
+async function askGroqAI(history, systemPrompt, options = {}) {
+  const keys = getGroqApiKeys();
+  if (keys.length === 0) {
+    throw new Error('GROQ_API_KEY no configurada');
+  }
+
+  const {
+    maxEstimatedInputTokens = null,
+    maxOutputTokens = 2048,
+    temperature = 0.85,
+  } = options;
+
+  const configuredModels = [
+    process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+    process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant',
+  ].filter((model, index, arr) => model && arr.indexOf(model) === index);
+
+  let lastError = null;
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+
+    for (const modelName of configuredModels) {
+      const cooldown = readCooldown('groq', key, modelName);
+      if (cooldown) {
+        console.log(`[ai][groq] Saltando clave/modelo en cooldown (${cooldown.reason}) hasta ${new Date(cooldown.until).toISOString()}`);
+        lastError = lastError ?? new Error(`Groq cooldown activo: ${cooldown.reason}`);
+        continue;
+      }
+
+      try {
+        const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
+        const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
+        const response = await fetch(`${GROQ_API_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages,
+            max_tokens: maxOutputTokens,
+            temperature,
+            stream: false,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(payload?.error?.message || payload?.message || `Groq request failed with status ${response.status}`);
+          error.status = response.status;
+          error.errorDetails = payload?.error ? [payload.error] : payload;
+          throw error;
+        }
+
+        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        if (!text) {
+          throw new Error('Respuesta vacia desde Groq');
+        }
+
+        return text;
+      } catch (err) {
+        lastError = err;
+        console.error(`[ai][groq] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
+        if (err?.status) console.error('[ai][groq] HTTP Status:', err.status);
+        if (err?.errorDetails) console.error('[ai][groq] Details:', JSON.stringify(err.errorDetails));
+
+        const errorType = classifyAIError(err);
+        const retryDelayMs = parseRetryDelayMs(err);
+
+        if (errorType === 'key_invalid') {
+          writeCooldown('groq', key, modelName, errorType, 1000 * 60 * 60 * 12);
+        } else if (errorType === 'access_denied') {
+          writeCooldown('groq', key, modelName, errorType, 1000 * 60 * 60);
+        } else if (errorType === 'quota_exceeded') {
+          writeCooldown('groq', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
+        } else if (errorType === 'service_unavailable') {
+          writeCooldown('groq', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
+        }
+
+        const isProviderError = errorType === 'key_invalid'
+          || errorType === 'access_denied'
+          || errorType === 'quota_exceeded';
+
+        if (!isProviderError) {
+          console.log(`[ai][groq] Error de modelo o servicio (${err?.status || 'red'}). Intentando con el siguiente modelo de la lista...`);
+          continue;
+        }
+
+        if (i < keys.length - 1) {
+          console.log('[ai][groq] Error relacionado con la clave API. Pasando a la siguiente clave...');
+        }
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('Todas las claves Groq y modelos fallaron');
+}
+
 export async function askKingdoomAI(history, systemPrompt, options = {}) {
   const providers = getProviderOrder();
   let lastError = null;
@@ -531,6 +636,10 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
 
       if (provider === 'nvidia') {
         return await askNvidiaAI(history, systemPrompt, options);
+      }
+
+      if (provider === 'groq') {
+        return await askGroqAI(history, systemPrompt, options);
       }
     } catch (err) {
       lastError = err;
