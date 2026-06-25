@@ -5,6 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 25/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Hardening del arranque de Supabase para despliegues con variables heredadas o aliases distintos.
+*   **Cambios Clave:**
+    *   **[Aliases de entorno]:** el bot ahora acepta `SUPABASE_URL`, `SUPABASE_PROJECT_URL` o `NEXT_PUBLIC_SUPABASE_URL` para la URL principal.
+    *   **[Service key]:** tambien acepta `SUPABASE_SERVICE_KEY` o `SUPABASE_SERVICE_ROLE_KEY`, y sus equivalentes `BOT_*` para el proyecto dedicado del estado operativo.
+    *   **[Fallo explicito]:** si aun falta configuracion, el error ahora indica exactamente que variable falta y que nombres acepta, en vez de explotar solo con `supabaseUrl is required`.
+*   **Notas/Advertencias:** Esto corrige especialmente despliegues en Hugging Face donde quedaron nombres viejos de variables. Si el espacio sigue cayendo, toca revisar que la variable exista en Settings del espacio y no solo en local.
+
+### [Fecha: 25/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/games.js`, `src/supabase.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Mejora cualitativa del `!oraculo` con mejor memoria conversacional, ficha mas rica y contexto documental mas relevante.
 *   **Cambios Clave:**

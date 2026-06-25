@@ -70,6 +70,21 @@ function writePhoneLookupCache(phone, players) {
   });
 }
 
+function readEnv(...names) {
+  for (const name of names) {
+    const value = String(process.env[name] ?? '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+function requireEnv(value, label, aliases) {
+  if (value) return value;
+  throw new Error(
+    `${label} is required. Configure one of: ${aliases.join(', ')}`
+  );
+}
+
 function createServiceClient(url, serviceKey) {
   return createClient(url, serviceKey, {
     auth: {
@@ -84,14 +99,32 @@ function createServiceClient(url, serviceKey) {
   });
 }
 
-export const supabase = createServiceClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
+const primarySupabaseUrl = readEnv(
+  'SUPABASE_URL',
+  'SUPABASE_PROJECT_URL',
+  'NEXT_PUBLIC_SUPABASE_URL'
+);
+const primarySupabaseServiceKey = readEnv(
+  'SUPABASE_SERVICE_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY'
 );
 
-const botStateSupabaseUrl = process.env.BOT_SUPABASE_URL || process.env.SUPABASE_URL;
+export const supabase = createServiceClient(
+  requireEnv(primarySupabaseUrl, 'supabaseUrl', [
+    'SUPABASE_URL',
+    'SUPABASE_PROJECT_URL',
+    'NEXT_PUBLIC_SUPABASE_URL',
+  ]),
+  requireEnv(primarySupabaseServiceKey, 'supabaseServiceKey', [
+    'SUPABASE_SERVICE_KEY',
+    'SUPABASE_SERVICE_ROLE_KEY',
+  ])
+);
+
+const botStateSupabaseUrl =
+  readEnv('BOT_SUPABASE_URL', 'BOT_SUPABASE_PROJECT_URL') || primarySupabaseUrl;
 const botStateSupabaseServiceKey =
-  process.env.BOT_SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_KEY;
+  readEnv('BOT_SUPABASE_SERVICE_KEY', 'BOT_SUPABASE_SERVICE_ROLE_KEY') || primarySupabaseServiceKey;
 
 export const botStateSupabase = createServiceClient(
   botStateSupabaseUrl,
@@ -99,7 +132,8 @@ export const botStateSupabase = createServiceClient(
 );
 
 export const usingDedicatedBotStateSupabase = Boolean(
-  process.env.BOT_SUPABASE_URL && process.env.BOT_SUPABASE_SERVICE_KEY
+  readEnv('BOT_SUPABASE_URL', 'BOT_SUPABASE_PROJECT_URL')
+  && readEnv('BOT_SUPABASE_SERVICE_KEY', 'BOT_SUPABASE_SERVICE_ROLE_KEY')
 );
 
 function normalizeText(value) {
