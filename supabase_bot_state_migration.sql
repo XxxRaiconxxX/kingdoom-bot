@@ -105,3 +105,20 @@ create table if not exists public.bot_command_logs (
 
 create index if not exists idx_bot_command_logs_created
   on public.bot_command_logs (created_at desc);
+-- Enable RLS for all tables explicitly created in these migration files
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_active_missions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_treasure_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_treasure_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_notifications_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_command_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bot_active_bets ENABLE ROW LEVEL SECURITY;
+
+-- Grant full access to service_role for all tables
+CREATE POLICY "service_role_all_bot_daily_claims" ON bot_daily_claims AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_active_missions" ON bot_active_missions AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_treasure_events" ON bot_treasure_events AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_treasure_claims" ON bot_treasure_claims AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_notifications_queue" ON bot_notifications_queue AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_command_logs" ON bot_command_logs AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all_bot_active_bets" ON bot_active_bets AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
