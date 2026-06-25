@@ -68,3 +68,19 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+-- RLS Policies
+ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_players" ON players AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE character_sheets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_character_sheets" ON character_sheets AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE player_inventory ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_player_inventory" ON player_inventory AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE market_auctions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_market_auctions" ON market_auctions AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE market_auction_bids ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all_market_auction_bids" ON market_auction_bids AS PERMISSIVE FOR ALL TO service_role USING (true) WITH CHECK (true);
