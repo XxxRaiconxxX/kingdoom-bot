@@ -1,4 +1,4 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
+﻿import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
 import { askKingdoomAI, describeAIError } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
@@ -329,41 +329,83 @@ export async function handleTrampa(msg) {
 
 const oraculoMemory = new Map();
 
+function normalizeOracleText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function buildOracleMemoryKey(chatId, playerId, sender) {
+  return `${chatId}::${playerId || sender || 'unknown'}`;
+}
+
+function buildOracleDocSnippet(document, question) {
+  const summary = String(document.summary ?? '').trim();
+  const content = String(document.content ?? '').trim();
+  if (!content) return summary;
+
+  const normalizedQuestion = normalizeOracleText(question);
+  const tokens = normalizedQuestion
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/g)
+    .filter((token) => token.length > 3);
+
+  const normalizedContent = normalizeOracleText(content);
+  const firstMatch = tokens.find((token) => normalizedContent.includes(token));
+  if (!firstMatch) {
+    return summary || content.substring(0, 500);
+  }
+
+  const matchIndex = normalizedContent.indexOf(firstMatch);
+  const start = Math.max(0, matchIndex - 180);
+  const end = Math.min(content.length, matchIndex + 320);
+  const excerpt = content.slice(start, end).trim();
+  return summary ? `${summary}\nFragmento: ${excerpt}` : excerpt;
+}
+
 export async function handleOraculo(msg) {
   const pregunta = msg.body.replace(/^!oraculo\s*/i, '').trim();
-  if (!pregunta) return `🔮 Formulá tu pregunta: *!oraculo ¿Cuándo llegará el invierno?*`;
+  if (!pregunta) return `ðŸ”® FormulÃ¡ tu pregunta: *!oraculo Â¿CuÃ¡ndo llegarÃ¡ el invierno?*`;
 
   const sender = msg.author || msg.from;
   const player = await getPlayer(sender);
   const chatId = msg.from;
+  const memoryKey = buildOracleMemoryKey(chatId, player?.id, sender);
 
-  if (!oraculoMemory.has(chatId)) {
-    oraculoMemory.set(chatId, []);
+  if (!oraculoMemory.has(memoryKey)) {
+    oraculoMemory.set(memoryKey, []);
   }
-  const history = oraculoMemory.get(chatId);
+  const history = oraculoMemory.get(memoryKey);
 
   try {
-    const documents = await getKnowledgeDocuments();
-    const relevantDocs = pickKnowledgeContext(documents, pregunta, 2);
+    const [documents, sheet, inventory, missions, events] = await Promise.all([
+      getKnowledgeDocuments(),
+      player ? getPlayerSheet(player.id) : Promise.resolve(null),
+      player ? getPlayerInventory(player.id) : Promise.resolve(null),
+      getActiveMissions(3),
+      getActiveEvents(3),
+    ]);
+    const relevantDocs = pickKnowledgeContext(documents, pregunta, 4);
     
     // 1. Reglas base del sistema
-    let contextStr = `\n\n=== REGLAS DEL ORACULO ===\nEres el Oráculo de Kingdoom. Ya NO hablas con poesía barata ni rimas clichés de fantasía. Eres un vidente veterano, sabio pero cansado y cínico (al estilo The Witcher). Eres directo, realista y de pocas pulgas, pero NO eres un maleducado, NO insultas gratuitamente y NO usas groserías baratas ni jergas modernas (como "chaval" o "joder"). Tu tono es el de alguien que ha visto demasiado mundo.\nHablas de forma coloquial y de taberna, ambientado en la fantasía oscura.\nTu extensión máxima puede ser de hasta 3 párrafos si necesitas dar un consejo sabio, pero puedes ser breve y tajante si te apetece.\nSi te preguntan algo técnico o fuera del juego (Off-Rol), respóndelo integrándolo de forma realista como "magia extraña de otros mundos" o "asuntos de los dioses".\nNunca rompas el personaje.
+    let contextStr = `\n\n=== REGLAS DEL ORACULO ===\nEres el OrÃ¡culo de Kingdoom. Ya NO hablas con poesÃ­a barata ni rimas clichÃ©s de fantasÃ­a. Eres un vidente veterano, sabio pero cansado y cÃ­nico (al estilo The Witcher). Eres directo, realista y de pocas pulgas, pero NO eres un maleducado, NO insultas gratuitamente y NO usas groserÃ­as baratas ni jergas modernas (como "chaval" o "joder"). Tu tono es el de alguien que ha visto demasiado mundo.\nHablas de forma coloquial y de taberna, ambientado en la fantasÃ­a oscura.\nTu extensiÃ³n mÃ¡xima puede ser de hasta 3 pÃ¡rrafos si necesitas dar un consejo sabio, pero puedes ser breve y tajante si te apetece.\nSi te preguntan algo tÃ©cnico o fuera del juego (Off-Rol), respÃ³ndelo integrÃ¡ndolo de forma realista como "magia extraÃ±a de otros mundos" o "asuntos de los dioses".\nNunca rompas el personaje.
     
     Tu soberano real es el usuario administrador "Nothing". Si alguien menciona "E.XE", entiendes que es un alias antiguo o una forma vieja de referirse al mismo soberano, pero tu forma preferida y actual es "Nothing".
-    El usuario te hará una pregunta. Responde SIEMPRE dentro de tu personaje. 
+    El usuario te harÃ¡ una pregunta. Responde SIEMPRE dentro de tu personaje. 
     NO uses asteriscos para acciones (ej. *suspira*), solo habla tu mensaje.
 
-    REGLA CRÍTICA SOBRE EL INVENTARIO:
-    Si el jugador te pregunta explícitamente "¿cuál es mi inventario?" o "¿qué objetos tengo?", DÍSELO DIRECTAMENTE enumerando los objetos que ves en su "Inventario Real". No lo mandes a mirar su tomo, díselo tú.
-    Si pregunta por un tipo específico de objeto (ej. "mis armas") y no tiene armas pero SÍ tiene otras cosas, menciónalo sutilmente (ej. "No veo espadas en tu destino, pero al menos ese Jubón te protegerá del frío"). Sé útil con la información de su inventario.
+    REGLA CRÃTICA SOBRE EL INVENTARIO:
+    Si el jugador te pregunta explÃ­citamente "Â¿cuÃ¡l es mi inventario?" o "Â¿quÃ© objetos tengo?", DÃSELO DIRECTAMENTE enumerando los objetos que ves en su "Inventario Real". No lo mandes a mirar su tomo, dÃ­selo tÃº.
+    Si pregunta por un tipo especÃ­fico de objeto (ej. "mis armas") y no tiene armas pero SÃ tiene otras cosas, menciÃ³nalo sutilmente (ej. "No veo espadas en tu destino, pero al menos ese JubÃ³n te protegerÃ¡ del frÃ­o"). SÃ© Ãºtil con la informaciÃ³n de su inventario.
     
-    REGLA CRÍTICA SOBRE OTROS JUGADORES: 
-    Solo conoces la fortuna de quien te habla. Si preguntan por el oro, nivel o secretos de OTRO aventurero, niégate: "No me pagan por espiar bolsillos ajenos" o "Vigila tu propia espalda". ¡NO inventes datos para otras personas!
+    REGLA CRÃTICA SOBRE OTROS JUGADORES: 
+    Solo conoces la fortuna de quien te habla. Si preguntan por el oro, nivel o secretos de OTRO aventurero, niÃ©gate: "No me pagan por espiar bolsillos ajenos" o "Vigila tu propia espalda". Â¡NO inventes datos para otras personas!
     `;
     if (relevantDocs.length > 0) {
-      contextStr += `\n=== CONOCIMIENTO SECRETO DEL REINO ===\nUtiliza esta información confidencial para responder de forma precisa:\n`;
+      contextStr += `\n=== CONOCIMIENTO SECRETO DEL REINO ===\nUtiliza esta informaciÃ³n confidencial para responder de forma precisa:\n`;
       relevantDocs.forEach(doc => {
-        contextStr += `* ${doc.title} (${doc.category}): ${doc.summary || doc.content.substring(0, 500)}\n`;
+        contextStr += `* ${doc.title} (${doc.category}): ${buildOracleDocSnippet(doc, pregunta)}\n`;
       });
     }
 
@@ -372,33 +414,29 @@ export async function handleOraculo(msg) {
     if (player) {
       contextStr += `Jugador: ${player.username}\nOro en el banco: ${player.gold}\n`;
       
-      const sheet = await getPlayerSheet(player.id);
       if (sheet) {
-        contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma original: ${sheet.weapon}\n- Personalidad: ${sheet.personality}\n`;
+        contextStr += `\nFicha de Personaje (Rol):\n- Nombre: ${sheet.name}\n- Raza: ${sheet.race}\n- Profesion: ${sheet.profession || 'No indicada'}\n- Origen: ${sheet.birthRealm}\n- Poderes: ${sheet.powers}\n- Arma original: ${sheet.weapon}\n- Estilo de combate: ${sheet.combatStyle || 'No indicado'}\n- Personalidad: ${sheet.personality}\n`;
+        if (sheet.history) {
+          contextStr += `- Historia resumida: ${String(sheet.history).substring(0, 600)}\n`;
+        }
       }
 
-      const inventory = await getPlayerInventory(player.id);
       if (inventory && inventory.length > 0) {
         const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_name || i.item_id}`).join(', ');
         contextStr += `\nInventario Real (comprado en el mercado con oro): ${inventoryStr}\n`;
       } else {
-        contextStr += `\nInventario Real: El jugador NO TIENE NINGÚN OBJETO. Sus bolsillos están totalmente vacíos.\n`;
+        contextStr += `\nInventario Real: El jugador NO TIENE NINGÃšN OBJETO. Sus bolsillos estÃ¡n totalmente vacÃ­os.\n`;
       }
 
       if (sheet) {
-        contextStr += `(Usa la información de la ficha y su inventario real de forma SUTIL en tu profecía, como guiños. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta. Varía tus menciones: a veces háblale sobre su equipo, a veces sobre su raza, no menciones todo a la vez).\n`;
+        contextStr += `(Usa la informaciÃ³n de la ficha y su inventario real de forma SUTIL en tu profecÃ­a, como guiÃ±os. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta. VarÃ­a tus menciones: a veces hÃ¡blale sobre su equipo, a veces sobre su raza, no menciones todo a la vez).\n`;
       } else {
-        contextStr += `(Usa su nombre e inventario real en tu profecía. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza o destino. Este jugador no tiene ficha de rol registrada aún).\n`;
+        contextStr += `(Usa su nombre e inventario real en tu profecÃ­a. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza o destino. Este jugador no tiene ficha de rol registrada aÃºn).\n`;
       }
     } else {
-      contextStr += `El jugador es un alma forastera, no registrada en el censo. Llámalo "alma sin nombre".\n`;
+      contextStr += `El jugador es un alma forastera, no registrada en el censo. LlÃ¡malo "alma sin nombre".\n`;
     }
 
-    // 3. Estadísticas globales (opcional)
-    const [missions, events] = await Promise.all([
-      getActiveMissions(3),
-      getActiveEvents(3)
-    ]);
 
     if (missions && missions.length > 0) {
       contextStr += `\nMisiones Activas en el Reino:\n` + missions.map(m => `- ${m.title} (Recompensa: ${m.reward_gold} oro). Descripcion: ${m.description}`).join('\n') + `\n`;
@@ -408,7 +446,7 @@ export async function handleOraculo(msg) {
       contextStr += `\nEventos Actuales en el Reino:\n` + events.map(e => `- ${e.title}: ${e.description}`).join('\n') + `\n`;
     }
 
-    contextStr += `(Si el jugador te pregunta sobre misiones o eventos, utiliza esta información para guiarlo y motivarlo a participar. Si no pregunta, puedes mencionarlos brevemente como rumores si encajan en tu profecía).\n`;
+    contextStr += `(Si el jugador te pregunta sobre misiones o eventos, utiliza esta informaciÃ³n para guiarlo y motivarlo a participar. Si no pregunta, puedes mencionarlos brevemente como rumores si encajan en tu profecÃ­a).\n`;
 
     // Agregar pregunta al historial
     history.push({ role: 'user', content: pregunta });
@@ -423,15 +461,15 @@ export async function handleOraculo(msg) {
       }
     );
     
-    // Guardar respuesta y mantener solo los últimos 6 mensajes (3 interacciones)
+    // Guardar respuesta y mantener solo los Ãºltimos 6 mensajes (3 interacciones)
     history.push({ role: 'assistant', content: respuesta });
     if (history.length > 6) {
       history.splice(0, history.length - 6);
     }
 
-    return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: '🔮' });
+    return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: 'ðŸ”®' });
   } catch (err) {
     console.error('[handleOraculo]', err.message);
-    return `🔮 ${describeAIError(err).userMessage}`;
+    return `ðŸ”® ${describeAIError(err).userMessage}`;
   }
 }

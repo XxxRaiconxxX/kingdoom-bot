@@ -1147,12 +1147,23 @@ export async function upsertKnowledgeDocument(doc) {
 }
 
 export function pickKnowledgeContext(documents, question, maxDocuments = 3) {
-  const tokens = question
+  const normalizedQuestion = question
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .split(/[^a-z0-9]+/g)
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const tokens = normalizedQuestion
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/g)
     .filter((token) => token.length > 2);
+
+  const exactPhrases = normalizedQuestion
+    .split(/[?!.,;:]+/g)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 8);
+
+  const uniqueTokens = [...new Set(tokens)];
+  const uniquePhrases = [...new Set(exactPhrases)];
 
   const scored = documents.map((document) => {
     const title = document.title
@@ -1168,20 +1179,31 @@ export function pickKnowledgeContext(documents, question, maxDocuments = 3) {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
       
-    const score = tokens.reduce((total, token) => {
+    const phraseScore = uniquePhrases.reduce((total, phrase) => {
+      const titleHit = title.includes(phrase) ? 20 : 0;
+      const metadataHit = metadata.includes(phrase) ? 10 : 0;
+      const contentHit = content.includes(phrase) ? 4 : 0;
+      return total + titleHit + metadataHit + contentHit;
+    }, 0);
+
+    const tokenScore = uniqueTokens.reduce((total, token) => {
       const titleHit = title.includes(token) ? 6 : 0;
       const metadataHit = metadata.includes(token) ? 3 : 0;
       const contentHit = content.includes(token) ? 1 : 0;
       return total + titleHit + metadataHit + contentHit;
     }, 0);
 
-    return { document, score };
+    const categoryBonus = (
+      (document.category === 'lore' || document.category === 'world' ? 2 : 0) +
+      (document.type === 'grimoire' || document.type === 'mission' || document.type === 'event' ? 1 : 0)
+    );
+
+    return { document, score: phraseScore + tokenScore + categoryBonus };
   });
 
   return scored
     .sort((a, b) => b.score - a.score)
-    .filter((entry, index) => entry.score > 0 || index < 1) // Always keep at least 1 document if nothing matches perfectly, or maybe only if score > 0? Let's just keep score > 0.
-    .filter(entry => entry.score > 0)
+    .filter((entry) => entry.score > 0)
     .slice(0, maxDocuments)
     .map((entry) => entry.document);
 }
@@ -1190,7 +1212,7 @@ export async function getPlayerSheet(playerId) {
   if (!playerId) return null;
   const { data, error } = await supabase
     .from('character_sheets')
-    .select('name, race, powers, weapon, birthRealm, personality')
+    .select('name, race, powers, weapon, birthRealm, personality, profession, history, combatStyle')
     .eq('playerId', playerId)
     .limit(1)
     .maybeSingle();

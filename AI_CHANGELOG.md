@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 25/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/games.js`, `src/supabase.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Mejora cualitativa del `!oraculo` con mejor memoria conversacional, ficha mas rica y contexto documental mas relevante.
+*   **Cambios Clave:**
+    *   **[Memoria aislada]:** el historial del Oraculo ahora se separa por `chat + jugador`, evitando que varias personas en el mismo grupo mezclen sus conversaciones entre si.
+    *   **[Contexto de ficha]:** el Oraculo ahora recibe tambien `profession`, `combatStyle` e `history` resumida de la ficha, ademas del bloque base ya existente.
+    *   **[Documentos relevantes]:** `pickKnowledgeContext()` mejora el scoring con frases exactas, tokens unicos y bonus por categorias fuertes del reino; ademas `!oraculo` pasa de 2 a 4 documentos relevantes.
+    *   **[Fragmentos utiles]:** en vez de tirar siempre el inicio bruto del documento, el Oraculo intenta extraer un fragmento cercano a la parte que coincide con la pregunta.
+*   **Notas/Advertencias:** Se priorizo calidad y coherencia, no recorte agresivo de contexto. El costo de tokens puede subir un poco en preguntas complejas, pero la respuesta deberia ser mas precisa y menos contaminada entre jugadores.
+
+### [Fecha: 25/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/supabase.js`, `.env.example`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Reduccion selectiva de egress del bot sin degradar la profundidad IA del Oraculo.
 *   **Cambios Clave:**
