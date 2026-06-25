@@ -16,10 +16,12 @@ const PHONE_LOOKUP_CACHE_LIMIT = Math.max(
   50,
   Number.parseInt(process.env.PHONE_LOOKUP_CACHE_LIMIT ?? '500', 10) || 500
 );
+const KNOWLEDGE_CONTENT_MODE = String(process.env.KNOWLEDGE_CONTENT_MODE ?? 'full').toLowerCase();
 const PLAYER_SELECT_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned, created_at, last_active_at';
 const PLAYER_IDENTITY_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned';
 const phoneLookupCache = new Map();
 const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
+let missionPrefixFilterSupported = true;
 
 async function supabaseTimedFetch(resource, options = {}) {
   const controller = new AbortController();
@@ -1083,9 +1085,14 @@ export async function getKnowledgeDocuments() {
     return knowledgeCache;
   }
 
+  const selectColumns =
+    KNOWLEDGE_CONTENT_MODE === 'full'
+      ? 'id, title, type, category, tags, source, content, summary, visible'
+      : 'id, title, type, category, tags, source, summary, visible';
+
   const { data, error } = await supabase
     .from('knowledge_documents')
-    .select('id, title, type, category, tags, source, content, summary, visible')
+    .select(selectColumns)
     .eq('visible', true);
 
   if (error) {
@@ -1093,7 +1100,10 @@ export async function getKnowledgeDocuments() {
     return [];
   }
   
-  knowledgeCache = data || [];
+  knowledgeCache = (data || []).map((document) => ({
+    ...document,
+    content: document.content || '',
+  }));
   knowledgeCacheExpiresAt = now + KNOWLEDGE_CACHE_TTL_MS;
   return knowledgeCache;
 }
@@ -1236,6 +1246,25 @@ export async function getActivityReport() {
 
 export async function getMissionByShortId(prefix) {
   if (!prefix) return null;
+  const normalizedPrefix = prefix.toLowerCase();
+
+  if (missionPrefixFilterSupported) {
+    const { data: filteredData, error: filteredError } = await supabase
+      .from('realm_missions')
+      .select('id, title, instructions')
+      .ilike('id', `${normalizedPrefix}%`)
+      .limit(2);
+
+    if (!filteredError && filteredData) {
+      return filteredData.length === 1 ? filteredData[0] : null;
+    }
+
+    if (filteredError) {
+      missionPrefixFilterSupported = false;
+      console.warn('[getMissionByShortId] prefix filter fallback:', filteredError.message);
+    }
+  }
+
   const { data, error } = await supabase
     .from('realm_missions')
     .select('id, title, instructions');
@@ -1247,7 +1276,6 @@ export async function getMissionByShortId(prefix) {
 
   if (!data) return null;
 
-  const normalizedPrefix = prefix.toLowerCase();
   const match = data.find(m => m.id.toLowerCase().startsWith(normalizedPrefix));
   return match || null;
 }

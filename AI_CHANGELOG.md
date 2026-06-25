@@ -4,6 +4,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 25/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `.env.example`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Reduccion selectiva de egress del bot sin degradar la profundidad IA del Oraculo.
+*   **Cambios Clave:**
+    *   **[!misionstart]:** `getMissionByShortId()` intenta resolver el prefijo de mision desde Supabase con `ilike` y `limit(2)` antes de caer al escaneo anterior. Si el filtro por tipo de columna no es compatible, desactiva ese intento en memoria para evitar errores repetidos.
+    *   **[!oraculo]:** `getKnowledgeDocuments()` mantiene `KNOWLEDGE_CONTENT_MODE=full` por defecto para preservar la capacidad completa del Oraculo y evitar perdida de contexto.
+    *   **[Fallback operativo]:** `.env.example` documenta `KNOWLEDGE_CONTENT_MODE=summary` solo como modo de emergencia si se necesita bajar egress temporalmente.
+*   **Notas/Advertencias:** Se conserva el ahorro de `!misionstart`, pero no se aplica recorte agresivo al corpus IA por decision de calidad: el Oraculo sigue leyendo contenido completo por defecto.
+
 ### [Fecha: 24/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/gmTracker.js`, `src/handlers/admin.js`, `src/index.js`, `src/supabase.js`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Paralelización de misiones para múltiples grupos/jugadores independientes y resolución de fallos en el tracker y normalización de números de WhatsApp.
