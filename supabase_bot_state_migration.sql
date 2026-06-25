@@ -20,15 +20,17 @@ create index if not exists idx_bot_daily_claims_type_date
   on public.bot_daily_claims (claim_type, claim_date desc);
 
 create table if not exists public.bot_active_missions (
-  short_id text primary key,
+  instance_id uuid primary key default gen_random_uuid(),
+  short_id text not null,
   mission_id text,
   title text,
   instructions text,
   gm_config jsonb,
-  max_participants integer,
+  max_participants integer not null default 1,
   player_message_count integer not null default 0,
   gm_round_count integer not null default 0,
   context jsonb,
+  participants jsonb not null default '[]'::jsonb,
   participants_counted jsonb not null default '[]'::jsonb,
   resolved boolean not null default false,
   final_state jsonb,
@@ -38,6 +40,9 @@ create table if not exists public.bot_active_missions (
 
 create index if not exists idx_bot_active_missions_resolved
   on public.bot_active_missions (resolved, updated_at desc);
+
+create index if not exists idx_bot_active_missions_lookup
+  on public.bot_active_missions (short_id, resolved);
 
 create or replace function public.set_bot_active_missions_updated_at()
 returns trigger
@@ -57,7 +62,7 @@ before update on public.bot_active_missions
 for each row
 execute function public.set_bot_active_missions_updated_at();
 
--- ETAPA A: Nuevas tablas (Tesoros, Notificaciones, Analíticas)
+-- ETAPA A: Nuevas tablas (Tesoros, Notificaciones, Analiticas)
 
 create table if not exists public.bot_treasure_events (
   id uuid primary key default gen_random_uuid(),

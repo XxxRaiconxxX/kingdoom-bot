@@ -1,4 +1,6 @@
 import { getMissionByShortId, saveActiveMissionState, getActiveMissionsFromDb, deleteResolvedMission } from './supabase.js';
+import { normalizePhone } from './adminStore.js';
+import crypto from 'crypto';
 
 const activeMissions = new Map();
 const MAX_TRACKED_CONTEXT_ENTRIES = 8;
@@ -528,8 +530,10 @@ function formatRuntimeState(runtimeState) {
 
 export async function initMissionTracker() {
   const missions = await getActiveMissionsFromDb();
+  activeMissions.clear();
   for (const m of missions) {
-    activeMissions.set(m.short_id.toUpperCase(), {
+    activeMissions.set(m.instance_id, {
+      instanceId: m.instance_id,
       id: m.mission_id,
       shortId: m.short_id.toUpperCase(),
       title: m.title,
@@ -539,6 +543,7 @@ export async function initMissionTracker() {
       playerMessageCount: m.player_message_count || 0,
       gmRoundCount: m.gm_round_count || 0,
       context: m.context || [],
+      participants: (m.participants || []).map(jid => normalizePhone(jid)),
       participantsCounted: new Set(m.participants_counted || []),
       resolved: m.resolved || false,
       finalState: m.final_state || null,
@@ -550,19 +555,19 @@ export async function initMissionTracker() {
 /**
  * Initiates tracking for a mission.
  * @param {string} shortId - Up to 6 digits of the mission UUID
- * @param {number} maxParticipants - Wait for this many players
+ * @param {Array<string>} participants - WhatsApp JIDs of the participants
  */
-export async function startMissionTracker(shortId, maxParticipants) {
+export async function startMissionTracker(shortId, participants) {
   let mission = await getMissionByShortId(shortId);
   if (!mission) {
     return { success: false, message: `Error: Mision no encontrada con ID que empiece con: ${shortId}` };
   }
 
-
-
   const parsedMission = parseMissionConfig(mission.instructions);
   const normalizedShortId = shortId.toUpperCase();
+  const instanceId = crypto.randomUUID();
   const state = {
+    instanceId,
     id: mission.id,
     shortId: normalizedShortId,
     title: mission.title,
@@ -573,17 +578,20 @@ export async function startMissionTracker(shortId, maxParticipants) {
     gmRoundCount: 0,
     resolved: false,
     finalState: null,
-    maxParticipants: parseInt(maxParticipants, 10) || 1,
+    maxParticipants: participants.length,
+    participants: participants.map(jid => normalizePhone(jid)),
     participantsCounted: new Set(),
     context: [],
   };
 
-  activeMissions.set(normalizedShortId, state);
-  saveActiveMissionState(state).catch(console.error);
+  activeMissions.set(instanceId, state);
+  await saveActiveMissionState(state);
+
+  const playerMentions = participants.map(jid => `@${jid.split('@')[0]}`).join(', ');
 
   return {
     success: true,
-    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada.\nEl bot Game Master esperara el rol de *${maxParticipants}* participantes antes de intervenir.\n🤖 *Motor:* Gemini standard`,
+    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada para ${playerMentions}.\nEl bot Game Master esperara el rol de *${participants.length}* participantes antes de intervenir.\n🤖 *Motor:* Gemini standard`,
     mission,
   };
 }
@@ -807,67 +815,75 @@ export function buildGMUserPayload(missionTitle, missionInstructions, context, g
  * Checks if a message belongs to a mission and tracks it.
  */
 export function processTrackerMessage(text, participantId) {
-  for (const [shortId, state] of activeMissions.entries()) {
-    if (text.includes(shortId) || text.includes(`ID: ${shortId}`) || text.includes(`ID ${shortId}`)) {
-      if (state.resolved) {
-        return {
-          shouldTriggerGM: false,
-          missionClosed: true,
-          finalState: state.finalState,
-          shortId,
-        };
-      }
+  const normalizedText = text.toUpperCase();
+  const normalizedParticipant = normalizePhone(participantId);
+  for (const [instanceId, state] of activeMissions.entries()) {
+    const shortId = state.shortId;
+    if (normalizedText.includes(shortId) || normalizedText.includes(`ID: ${shortId}`) || normalizedText.includes(`ID ${shortId}`)) {
+      // Check if this participant is part of this mission instance
+      if (state.participants.includes(normalizedParticipant)) {
+        if (state.resolved) {
+          return {
+            shouldTriggerGM: false,
+            missionClosed: true,
+            finalState: state.finalState,
+            shortId,
+            instanceId,
+          };
+        }
 
-      state.context.push({
-        participantId: sanitizeGMText(participantId),
-        text: truncateGMTextPreserveEnds(sanitizeGMText(text), MAX_TRACKED_MESSAGE_CHARS),
-      });
-      state.playerMessageCount += 1;
-      if (state.context.length > MAX_TRACKED_CONTEXT_ENTRIES * 2) {
-        state.context = state.context.slice(-MAX_TRACKED_CONTEXT_ENTRIES * 2);
-      }
-      state.participantsCounted.add(participantId);
+        state.context.push({
+          participantId: sanitizeGMText(participantId),
+          text: truncateGMTextPreserveEnds(sanitizeGMText(text), MAX_TRACKED_MESSAGE_CHARS),
+        });
+        state.playerMessageCount += 1;
+        if (state.context.length > MAX_TRACKED_CONTEXT_ENTRIES * 2) {
+          state.context = state.context.slice(-MAX_TRACKED_CONTEXT_ENTRIES * 2);
+        }
+        state.participantsCounted.add(participantId);
 
-      if (state.participantsCounted.size >= state.maxParticipants) {
-        const contextToProcess = [...state.context];
-        state.participantsCounted.clear();
-        state.context = [];
+        if (state.participantsCounted.size >= state.maxParticipants) {
+          const contextToProcess = [...state.context];
+          state.participantsCounted.clear();
+          state.context = [];
+
+          saveActiveMissionState(state).catch(console.error);
+
+          return {
+            shouldTriggerGM: true,
+            missionId: state.id,
+            missionTitle: state.title,
+            missionInstructions: state.instructions,
+            missionGmConfig: state.gmConfig,
+
+            gmRuntimeState: {
+              gmRoundCount: state.gmRoundCount,
+              playerMessageCount: state.playerMessageCount,
+              finalState: state.finalState,
+            },
+            context: contextToProcess,
+            shortId,
+            instanceId,
+          };
+        }
 
         saveActiveMissionState(state).catch(console.error);
-
         return {
-          shouldTriggerGM: true,
-          missionId: state.id,
-          missionTitle: state.title,
-          missionInstructions: state.instructions,
-          missionGmConfig: state.gmConfig,
-
-          gmRuntimeState: {
-            gmRoundCount: state.gmRoundCount,
-            playerMessageCount: state.playerMessageCount,
-            finalState: state.finalState,
-          },
-          context: contextToProcess,
+          shouldTriggerGM: false,
+          counted: true,
+          current: state.participantsCounted.size,
+          required: state.maxParticipants,
           shortId,
+          instanceId,
         };
       }
-      
-      saveActiveMissionState(state).catch(console.error);
-      return {
-        shouldTriggerGM: false,
-        counted: true,
-        current: state.participantsCounted.size,
-        required: state.maxParticipants,
-        shortId,
-      };
     }
   }
   return null;
 }
 
-export function registerGMResponse(shortId, responseText) {
-  const normalizedShortId = String(shortId ?? '').toUpperCase();
-  const state = activeMissions.get(normalizedShortId);
+export function registerGMResponse(instanceId, responseText) {
+  const state = activeMissions.get(instanceId);
   if (!state) {
     return { stateChanged: false, missionState: null, autoClosed: false };
   }
@@ -882,14 +898,30 @@ export function registerGMResponse(shortId, responseText) {
   if (canAutoResolveMission(state, missionState)) {
     state.resolved = true;
     state.finalState = missionState;
-    deleteResolvedMission(normalizedShortId).catch(console.error);
-    activeMissions.delete(normalizedShortId);
+    deleteResolvedMission(instanceId).catch(console.error);
+    activeMissions.delete(instanceId);
     return { stateChanged: true, missionState, autoClosed: true };
   }
 
   state.finalState = missionState;
   saveActiveMissionState(state).catch(console.error);
   return { stateChanged: true, missionState, autoClosed: false };
+}
+
+export function getActiveMissionsList() {
+  return Array.from(activeMissions.values());
+}
+
+export async function cancelActiveMission(instanceId) {
+  const state = activeMissions.get(instanceId);
+  if (state) {
+    state.resolved = true;
+    state.finalState = { resultado: 'cerrada_por_admin', motivo: 'Misión cerrada manualmente por el staff.' };
+    await deleteResolvedMission(instanceId);
+    activeMissions.delete(instanceId);
+    return true;
+  }
+  return false;
 }
 
 export function buildVisibleGMResponse(responseText) {

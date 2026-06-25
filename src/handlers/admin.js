@@ -15,7 +15,7 @@ import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
-import { startMissionTracker } from '../gmTracker.js';
+import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
 
 async function getGroupPendingMembers(chat, client) {
   const { players, sheets } = await getRealmCensus();
@@ -207,7 +207,9 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
-          heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
+          heraldCommand('!misionstart <ID> <@jugadores>', 'Inicia el GM para una mision con participantes.'),
+          heraldCommand('!misioneson', 'Lista misiones activas y participantes.'),
+          heraldCommand('!misionoff <ID> [@jugador]', 'Cierra una mision activa.'),
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
         ]),
       ], { icon: '👑' });
@@ -232,7 +234,9 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!bitacora', 'Ultimas acciones.'),
           heraldCommand('!groupid', 'ID tecnico del grupo.'),
           heraldCommand('!stats', 'Resumen general del reino.'),
-          heraldCommand('!misionstart <ID> <Jugadores>', 'Inicia el bot Game Master para una mision.'),
+          heraldCommand('!misionstart <ID> <@jugadores>', 'Inicia el GM para una mision con participantes.'),
+          heraldCommand('!misioneson', 'Lista misiones activas y participantes.'),
+          heraldCommand('!misionoff <ID> [@jugador]', 'Cierra una mision activa.'),
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
         ]),
       ], { icon: '🛡️' });
@@ -376,14 +380,111 @@ export async function handleAdminCommand(msg, client) {
   // Mision Tracker
   if (cmd === '!misionstart') {
     const shortId = parts[1];
-    const maxParticipants = parts[2] || 1;
 
     if (!shortId) {
-      return '❌ Uso: *!misionstart <ID (6 caracteres)> <cantidad de participantes>*';
+      return '❌ Uso: *!misionstart <ID (6 caracteres)> <@jugadores>*';
     }
 
-    const result = await startMissionTracker(shortId, maxParticipants);
+    const mentions = msg.mentionedIds || [];
+    if (mentions.length === 0) {
+      return '❌ Uso: *!misionstart <ID (6 caracteres)> <@jugadores>*. Debes mencionar al menos a un jugador.';
+    }
+
+    const result = await startMissionTracker(shortId, mentions);
+    if (result.success && client) {
+      await client.sendMessage(msg.from, result.message, { mentions });
+      return '';
+    }
     return result.message;
+  }
+
+  if (cmd === '!misioneson') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden ver las misiones activas.';
+    }
+    const list = getActiveMissionsList();
+    if (list.length === 0) {
+      return '📋 No hay misiones activas en este momento.';
+    }
+
+    const lines = [];
+    const mentions = [];
+    for (const state of list) {
+      const roundText = `(Ronda ${state.gmRoundCount + 1})`;
+      const playerMentions = state.participants
+        .map(phone => {
+          mentions.push(formatJid(phone));
+          return `@${phone}`;
+        })
+        .join(', ');
+
+      lines.push(`• *${state.shortId}* - ${state.title} ${roundText}\n  Participantes: ${playerMentions}`);
+    }
+
+    const text = heraldCard('Misiones Activas', [
+      '📋 *Misiones activas en el Reino:*',
+      ...lines
+    ], { icon: '📋' });
+
+    if (client && mentions.length > 0) {
+      await client.sendMessage(msg.from, text, { mentions });
+      return '';
+    }
+    return text;
+  }
+
+  if (cmd === '!misionoff') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden cerrar misiones.';
+    }
+    const shortId = parts[1];
+    if (!shortId) {
+      return '❌ Uso: *!misionoff <ID (6 caracteres)> [@jugador]*';
+    }
+
+    const targetShortId = shortId.toUpperCase();
+    const mentionedJids = msg.mentionedIds || [];
+    const list = getActiveMissionsList();
+    
+    // Find all active instances for this shortId
+    const instances = list.filter(state => state.shortId === targetShortId);
+
+    if (instances.length === 0) {
+      return `❌ No se encontró ninguna misión activa con el ID *${targetShortId}*.`;
+    }
+
+    // Case 1: No player mentioned
+    if (mentionedJids.length === 0) {
+      if (instances.length === 1) {
+        const state = instances[0];
+        await cancelActiveMission(state.instanceId);
+        return `✅ Misión *${state.title}* [${targetShortId}] de ${state.participants.map(phone => `@${phone}`).join(', ')} ha sido cerrada con éxito.`;
+      } else {
+        const lines = instances.map(state => {
+          const playerMentions = state.participants.map(phone => `@${phone}`).join(', ');
+          return `- Para cerrar la de ${playerMentions}: usa *!misionoff ${targetShortId} @${state.participants[0]}*`;
+        });
+        const allParticipantJids = instances.flatMap(state => state.participants.map(phone => formatJid(phone)));
+        const text = `⚠️ Hay múltiples instancias activas para la misión *${targetShortId}*:\n\n${lines.join('\n')}`;
+        
+        if (client && allParticipantJids.length > 0) {
+          await client.sendMessage(msg.from, text, { mentions: allParticipantJids });
+          return '';
+        }
+        return text;
+      }
+    }
+
+    // Case 2: Player mentioned
+    const targetJid = mentionedJids[0];
+    const normalizedTargetPhone = normalizePhone(targetJid);
+    const match = instances.find(state => state.participants.includes(normalizedTargetPhone));
+    if (!match) {
+      return `❌ No se encontró ninguna misión activa *${targetShortId}* para el jugador @${targetJid.split('@')[0]}.`;
+    }
+
+    await cancelActiveMission(match.instanceId);
+    return `✅ Misión *${match.title}* [${targetShortId}] de @${normalizedTargetPhone} ha sido cerrada con éxito.`;
   }
 
   // 1. !add admin <nombre/celular> (Owner only!)

@@ -550,7 +550,7 @@ client.on('message', async (msg) => {
         responseAssessment = assessGMResponse(aiResponse);
       }
 
-      const resolution = registerGMResponse(trackerResult.shortId, aiResponse);
+      const resolution = registerGMResponse(trackerResult.instanceId, aiResponse);
       const visibleResponse = responseAssessment.visibleResponse || buildVisibleGMResponse(aiResponse);
       gmVisibleSendAttempted = true;
       await client.sendMessage(msg.from, visibleResponse);
@@ -616,7 +616,7 @@ client.on('message', async (msg) => {
     }
   };
 
-  const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart'];
+  const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart', 'misioneson', 'misionoff'];
   const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));

@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 24/06/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/gmTracker.js`, `src/handlers/admin.js`, `src/index.js`, `src/supabase.js`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Paralelización de misiones para múltiples grupos/jugadores independientes y resolución de fallos en el tracker y normalización de números de WhatsApp.
+*   **Cambios Clave:**
+    *   **[Paralelización de Misiones]:** Se modificó la tabla de estado `bot_active_missions` agregando `instance_id` (UUID) como clave primaria en lugar de `short_id`, permitiendo múltiples instancias de la misma misión simultáneamente.
+    *   **[Normalización de WhatsApp JIDs]:** Se integró `normalizePhone` para normalizar todos los participantes y comprobar IDs de forma uniforme, resolviendo fallos en dispositivos vinculados (linked devices).
+    *   **[Corrección de Menciones]:** Se ajustaron los comandos `!misionesON` y `!misionoff` para formatear los JIDs correctamente para las menciones usando `formatJid()`.
+    *   **[Comandos Administrativos]:** Se actualizó el menú y soporte para `!misionstart <ID> <@jugadores>`, `!misioneson`, y `!misionoff <ID> [@jugador]`.
+*   **Notas/Advertencias:** Requiere aplicar la migración `supabase_bot_state_migration.sql` en Supabase para cambiar la clave primaria y estructura de la tabla `bot_active_missions`.
+
 ### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Se agrego confirmacion explicita del provider/modelo/key que responde exitosamente al bot.

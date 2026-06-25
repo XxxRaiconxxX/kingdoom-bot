@@ -1332,6 +1332,7 @@ export async function getFormattedEncyclopedia() {
 
 export async function saveActiveMissionState(state) {
   const payload = {
+    instance_id: state.instanceId,
     short_id: state.shortId,
     mission_id: state.id,
     title: state.title,
@@ -1341,6 +1342,7 @@ export async function saveActiveMissionState(state) {
     player_message_count: state.playerMessageCount,
     gm_round_count: state.gmRoundCount,
     context: state.context,
+    participants: state.participants || [],
     participants_counted: Array.from(state.participantsCounted || []),
     resolved: state.resolved,
     final_state: state.finalState
@@ -1348,7 +1350,7 @@ export async function saveActiveMissionState(state) {
 
   const { error } = await botStateSupabase
     .from('bot_active_missions')
-    .upsert(payload, { onConflict: 'short_id' });
+    .upsert(payload, { onConflict: 'instance_id' });
 
   if (error) {
     console.error('[saveActiveMissionState] Error saving mission state:', error.message);
@@ -1368,11 +1370,11 @@ export async function getActiveMissionsFromDb() {
   return data ?? [];
 }
 
-export async function deleteResolvedMission(shortId) {
+export async function deleteResolvedMission(instanceId) {
   const { error } = await botStateSupabase
     .from('bot_active_missions')
     .delete()
-    .eq('short_id', shortId);
+    .eq('instance_id', instanceId);
 
   if (error) {
     console.error('[deleteResolvedMission] Error deleting resolved mission:', error.message);
