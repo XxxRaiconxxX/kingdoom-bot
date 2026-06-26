@@ -8,6 +8,10 @@ import {
   awardManualMissionRankPoints,
   getPlayersByPhone,
   getRestrictedGroupCommandSummaryForDay,
+  getRecycledCharacterSheets,
+  findRecycledCharacterSheet,
+  findPlayerByIdentifier,
+  assignRecycledCharacterSheetToPlayer,
 } from '../supabase.js';
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
@@ -100,6 +104,64 @@ function normalizeMissionDifficulty(value) {
 
 function getMessageSerializedId(msg) {
   return msg?.id?._serialized || msg?.id?.id || '';
+}
+
+function formatRecycledSheetLine(sheet, index) {
+  const owner = sheet.originalPlayerUsername || sheet.originalPlayerId || 'origen desconocido';
+  const race = sheet.race ? ` | ${sheet.race}` : '';
+  const profession = sheet.profession ? ` | ${sheet.profession}` : '';
+  const shortId = String(sheet.id ?? '').slice(0, 8);
+  return `${index + 1}. *${sheet.name || 'Ficha sin nombre'}* (${shortId})${race}${profession}\n   Origen: ${owner}`;
+}
+
+async function resolvePlayerFromAssignmentInput(msg, rawText) {
+  const mentions = Array.isArray(msg?.mentionedIds) ? msg.mentionedIds : [];
+  if (mentions.length > 0) {
+    const phone = normalizePhone(mentions[0]);
+    const players = await getPlayersByPhone(phone);
+    const sheetQuery = rawText.replace(/@\S+/g, '').trim();
+
+    if (players.length === 1) {
+      return { ok: true, player: players[0], sheetQuery, targetLabel: players[0].username };
+    }
+
+    return {
+      ok: false,
+      reason: players.length > 1 ? 'ambiguous' : 'not_found',
+      sheetQuery,
+      targetLabel: phone ? `+${phone}` : 'mencion',
+    };
+  }
+
+  const arrowParts = rawText.split(/\s+->\s+/);
+  if (arrowParts.length === 2) {
+    const sheetQuery = arrowParts[0].trim();
+    const targetQuery = arrowParts[1].trim();
+    const result = await findPlayerByIdentifier(targetQuery);
+    return {
+      ok: Boolean(result?.player),
+      player: result?.player ?? null,
+      sheetQuery,
+      targetLabel: targetQuery,
+      reason: result?.reason ?? 'not_found',
+    };
+  }
+
+  const tokens = rawText.split(/\s+/).filter(Boolean);
+  for (let index = tokens.length - 1; index > 0; index -= 1) {
+    const targetQuery = tokens.slice(index).join(' ');
+    const result = await findPlayerByIdentifier(targetQuery);
+    if (result?.player) {
+      return {
+        ok: true,
+        player: result.player,
+        sheetQuery: tokens.slice(0, index).join(' ').trim(),
+        targetLabel: targetQuery,
+      };
+    }
+  }
+
+  return { ok: false, reason: 'missing_target', sheetQuery: rawText, targetLabel: '' };
 }
 
 async function getActorPrivileges(sender) {
@@ -211,6 +273,8 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!misioneson', 'Lista misiones activas y participantes.'),
           heraldCommand('!misionoff <ID> [@jugador]', 'Cierra una mision activa.'),
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
+          heraldCommand('!fichasrecicladas', 'Lista fichas archivadas disponibles.'),
+          heraldCommand('!asignarficha <ficha> @jugador', 'Entrega una ficha reciclada a un perfil.'),
         ]),
       ], { icon: '👑' });
     } else {
@@ -238,8 +302,95 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!misioneson', 'Lista misiones activas y participantes.'),
           heraldCommand('!misionoff <ID> [@jugador]', 'Cierra una mision activa.'),
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
+          heraldCommand('!fichasrecicladas', 'Lista fichas archivadas disponibles.'),
+          heraldCommand('!asignarficha <ficha> @jugador', 'Entrega una ficha reciclada a un perfil.'),
         ]),
       ], { icon: '🛡️' });
+    }
+  }
+
+  if (cmd === '!fichasrecicladas') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden consultar fichas recicladas.';
+    }
+
+    const sheets = await getRecycledCharacterSheets(15);
+    if (!sheets.length) {
+      return heraldCard('Fichas recicladas', [
+        heraldStat('Disponibles', '0'),
+        'No hay fichas archivadas listas para reasignar.',
+      ], { icon: '♻️' });
+    }
+
+    return heraldCard('Fichas recicladas', [
+      heraldStat('Disponibles', sheets.length),
+      '',
+      sheets.map(formatRecycledSheetLine).join('\n\n'),
+      '',
+      'Asignacion: *!asignarficha <nombre o ID ficha> @jugador*',
+      'Alternativa sin mencion: *!asignarficha <ficha> -> <perfil web>*',
+    ], { icon: '♻️' });
+  }
+
+  if (cmd === '!asignarficha') {
+    if (!isPrivileged) {
+      return '❌ Solo el staff o los administradores pueden asignar fichas recicladas.';
+    }
+
+    const rawInput = parts.slice(1).join(' ').trim();
+    if (!rawInput) {
+      return '❌ Uso: *!asignarficha <nombre o ID ficha> @jugador*\nAlternativa: *!asignarficha <ficha> -> <perfil web>*';
+    }
+
+    const targetResult = await resolvePlayerFromAssignmentInput(msg, rawInput);
+    if (!targetResult.ok || !targetResult.player) {
+      if (targetResult.reason === 'ambiguous') {
+        return `⚠️ El objetivo *${targetResult.targetLabel}* tiene multiples perfiles vinculados. Usa el nombre exacto del perfil web con *->*.`;
+      }
+      return `❌ No pude resolver el jugador destino. Usa *!asignarficha <ficha> @jugador* o *!asignarficha <ficha> -> <perfil web>*.`;
+    }
+
+    if (!targetResult.sheetQuery) {
+      return '❌ Falta indicar que ficha reciclada asignar. Ejemplo: *!asignarficha Gwendolyn @jugador*';
+    }
+
+    const sheetResult = await findRecycledCharacterSheet(targetResult.sheetQuery);
+    if (!sheetResult.sheet) {
+      if (sheetResult.reason === 'empty') {
+        return '❌ No hay fichas recicladas disponibles para asignar.';
+      }
+      if (sheetResult.reason === 'ambiguous') {
+        const options = sheetResult.matches.slice(0, 5).map(formatRecycledSheetLine).join('\n\n');
+        return `⚠️ Hay varias fichas que coinciden con *${targetResult.sheetQuery}*.\n\n${options}\n\nUsa mas letras del nombre o el ID corto.`;
+      }
+      return `❌ No encontre una ficha reciclada disponible para *${targetResult.sheetQuery}*.`;
+    }
+
+    try {
+      const assignedSheet = await assignRecycledCharacterSheetToPlayer({
+        sheetId: sheetResult.sheet.id,
+        targetPlayerId: targetResult.player.id,
+        actorName,
+      });
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'assign_recycled_sheet',
+        target: targetResult.player.username,
+        detail: `Ficha ${sheetResult.sheet.name} (${sheetResult.sheet.id}) asignada a ${targetResult.player.username}.`,
+        chatId: msg.from,
+      });
+
+      return heraldCard('Ficha reciclada asignada', [
+        heraldStat('Ficha', `*${assignedSheet?.name ?? sheetResult.sheet.name}*`),
+        heraldStat('Nuevo portador', `*${targetResult.player.username}*`),
+        heraldStat('Origen archivado', sheetResult.sheet.originalPlayerUsername || 'No registrado'),
+        'La ficha ya debe aparecer en el apartado de fichas del jugador destino en la web.',
+      ], { icon: '♻️' });
+    } catch (error) {
+      console.error('[admin asignarficha]', error);
+      return `❌ No se pudo asignar la ficha reciclada. Motivo: ${error?.message ?? error}`;
     }
   }
 

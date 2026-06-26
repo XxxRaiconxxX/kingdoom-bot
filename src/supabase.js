@@ -1109,6 +1109,100 @@ export async function getRealmCensus() {
   return { players: players ?? [], sheets: sheets ?? [] };
 }
 
+const RECYCLED_SHEET_SELECT_COLUMNS = [
+  'id',
+  'playerId',
+  'name',
+  'race',
+  'profession',
+  'birthRealm',
+  'recycleStatus',
+  'originalPlayerId',
+  'originalPlayerUsername',
+  'recycledAt',
+].join(', ');
+
+export async function getRecycledCharacterSheets(limit = 20) {
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 50);
+  const { data, error } = await supabase
+    .from('character_sheets')
+    .select(RECYCLED_SHEET_SELECT_COLUMNS)
+    .eq('recycleStatus', 'available')
+    .order('recycledAt', { ascending: false, nullsFirst: false })
+    .limit(safeLimit);
+
+  if (error) {
+    console.error('[getRecycledCharacterSheets]', error.message);
+    throw new Error('No pude leer las fichas recicladas. Verifica que el SQL de reciclaje este aplicado.');
+  }
+
+  return data ?? [];
+}
+
+export async function findRecycledCharacterSheet(identifier) {
+  const rawIdentifier = String(identifier ?? '').trim();
+  if (!rawIdentifier) {
+    return { sheet: null, reason: 'missing', matches: [] };
+  }
+
+  const normalizedIdentifier = normalizeText(rawIdentifier);
+  const sheets = await getRecycledCharacterSheets(50);
+  if (!sheets.length) {
+    return { sheet: null, reason: 'empty', matches: [] };
+  }
+
+  const idMatches = sheets.filter((sheet) =>
+    String(sheet.id ?? '').toLowerCase().startsWith(rawIdentifier.toLowerCase())
+  );
+  if (idMatches.length === 1) {
+    return { sheet: idMatches[0], reason: 'ok', matches: idMatches, matchType: 'id-prefix' };
+  }
+  if (idMatches.length > 1) {
+    return { sheet: null, reason: 'ambiguous', matches: idMatches, matchType: 'id-prefix' };
+  }
+
+  const exactMatches = sheets.filter((sheet) => normalizeText(sheet.name) === normalizedIdentifier);
+  if (exactMatches.length === 1) {
+    return { sheet: exactMatches[0], reason: 'ok', matches: exactMatches, matchType: 'name-exact' };
+  }
+  if (exactMatches.length > 1) {
+    return { sheet: null, reason: 'ambiguous', matches: exactMatches, matchType: 'name-exact' };
+  }
+
+  const prefixMatches = sheets.filter((sheet) => normalizeText(sheet.name).startsWith(normalizedIdentifier));
+  if (prefixMatches.length === 1) {
+    return { sheet: prefixMatches[0], reason: 'ok', matches: prefixMatches, matchType: 'name-prefix' };
+  }
+  if (prefixMatches.length > 1) {
+    return { sheet: null, reason: 'ambiguous', matches: prefixMatches, matchType: 'name-prefix' };
+  }
+
+  const containsMatches = sheets.filter((sheet) => normalizeText(sheet.name).includes(normalizedIdentifier));
+  if (containsMatches.length === 1) {
+    return { sheet: containsMatches[0], reason: 'ok', matches: containsMatches, matchType: 'name-contains' };
+  }
+  if (containsMatches.length > 1) {
+    return { sheet: null, reason: 'ambiguous', matches: containsMatches, matchType: 'name-contains' };
+  }
+
+  return { sheet: null, reason: 'not_found', matches: [] };
+}
+
+export async function assignRecycledCharacterSheetToPlayer({ sheetId, targetPlayerId, actorName = 'bot' }) {
+  const { data, error } = await supabase.rpc('assign_recycled_character_sheet', {
+    p_sheet_id: sheetId,
+    p_target_player_id: targetPlayerId,
+    p_actor: actorName,
+  });
+
+  if (error) {
+    console.error('[assignRecycledCharacterSheetToPlayer]', error.message);
+    throw new Error(error.message || 'No se pudo asignar la ficha reciclada.');
+  }
+
+  return Array.isArray(data) ? data[0] : data;
+}
+
 let knowledgeCache = null;
 let knowledgeCacheExpiresAt = 0;
 const KNOWLEDGE_CACHE_TTL_MS = 1000 * 60 * 15; // 15 minutos

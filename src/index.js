@@ -617,7 +617,7 @@ client.on('message', async (msg) => {
   };
 
   const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart', 'misioneson', 'misionoff'];
-  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo'];
+  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo', 'fichasrecicladas', 'asignarficha'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));

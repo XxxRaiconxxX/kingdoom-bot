@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 25/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `src/handlers/admin.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Conexion del bot con el flujo de fichas recicladas definido en Kingdoom Sync.
+*   **Cambios Clave:**
+    *   **[Consulta staff]:** se agrego `!fichasrecicladas` para listar fichas archivadas con `recycleStatus = available`.
+    *   **[Asignacion segura]:** se agrego `!asignarficha <ficha> @jugador` y la alternativa `!asignarficha <ficha> -> <perfil web>` para transferir una ficha reciclada completa a un jugador existente.
+    *   **[RPC reutilizada]:** la asignacion usa `assign_recycled_character_sheet`, evitando que el bot modifique columnas sensibles manualmente.
+    *   **[Permisos]:** ambos comandos quedan restringidos a staff/admin mediante `PRIVILEGED_COMMANDS`.
+*   **Notas/Advertencias:** Requiere que el SQL `supabase_character_sheet_recycling.sql` este aplicado en el Supabase principal antes de usar el comando en produccion.
+
+### [Fecha: 25/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Hardening del arranque de Supabase para despliegues con variables heredadas o aliases distintos.
 *   **Cambios Clave:**
