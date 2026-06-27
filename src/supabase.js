@@ -19,9 +19,14 @@ const PHONE_LOOKUP_CACHE_LIMIT = Math.max(
 const KNOWLEDGE_CONTENT_MODE = String(process.env.KNOWLEDGE_CONTENT_MODE ?? 'full').toLowerCase();
 const PLAYER_SELECT_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned, created_at, last_active_at';
 const PLAYER_IDENTITY_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned';
+const PLAYER_LIFECYCLE_SELECT_COLUMNS = 'id, username, phone, lifecycle_status, left_group_at, archive_due_at, archived_at, reactivated_at, recycled_at, purged_at';
 const phoneLookupCache = new Map();
 const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
 let missionPrefixFilterSupported = true;
+const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.PLAYER_LIFECYCLE_GRACE_DAYS ?? '14', 10) || 14
+);
 
 async function supabaseTimedFetch(resource, options = {}) {
   const controller = new AbortController();
@@ -200,6 +205,270 @@ export async function getPlayersByPhone(whatsappNumber) {
 
   writePhoneLookupCache(phone, matchedPlayers);
   return matchedPlayers;
+}
+
+function isMissingLifecycleSchemaError(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  const code = String(error?.code ?? '');
+  return code === '42703' ||
+    message.includes('lifecycle_status') ||
+    message.includes('left_group_at') ||
+    message.includes('archive_due_at') ||
+    message.includes('player_lifecycle_log');
+}
+
+function buildPlayerLifecycleSchemaError() {
+  return new Error(
+    'El SQL de player lifecycle aun no esta aplicado. Ejecuta supabase_player_lifecycle.sql en el proyecto principal de Supabase.'
+  );
+}
+
+function computeArchiveDueAt(referenceDate = new Date()) {
+  return new Date(referenceDate.getTime() + PLAYER_LIFECYCLE_GRACE_DAYS * 24 * 60 * 60 * 1000);
+}
+
+async function getPlayersByPhoneWithLifecycle(whatsappNumber) {
+  const phone = normalizePhone(whatsappNumber);
+  if (!phone) return [];
+
+  const { data, error } = await supabase
+    .from('players')
+    .select(PLAYER_LIFECYCLE_SELECT_COLUMNS)
+    .ilike('phone', `%${phone}%`)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    if (isMissingLifecycleSchemaError(error)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[getPlayersByPhoneWithLifecycle]', error.message);
+    throw new Error('No se pudo leer el estado lifecycle de los jugadores.');
+  }
+
+  return (data ?? []).filter((player) => {
+    if (!player.phone) return false;
+    const phones = String(player.phone)
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    return phones.includes(phone);
+  });
+}
+
+async function insertPlayerLifecycleLog(entries) {
+  if (!entries.length) return;
+
+  const { error } = await supabase
+    .from('player_lifecycle_log')
+    .insert(entries);
+
+  if (error) {
+    if (isMissingLifecycleSchemaError(error)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[insertPlayerLifecycleLog]', error.message);
+    throw new Error('No se pudo registrar la auditoria de lifecycle.');
+  }
+}
+
+export function getPlayerLifecycleGraceDays() {
+  return PLAYER_LIFECYCLE_GRACE_DAYS;
+}
+
+export async function markPhoneProfilesLeftGrace(whatsappNumber, options = {}) {
+  const phone = normalizePhone(whatsappNumber);
+  const groupJid = String(options.groupJid ?? '').trim() || null;
+  const actor = String(options.actor ?? 'bot:group_leave').trim() || 'bot:group_leave';
+
+  if (!phone) {
+    return {
+      phone: '',
+      players: [],
+      updatedCount: 0,
+      archiveDueAt: null,
+      graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
+    };
+  }
+
+  const players = await getPlayersByPhoneWithLifecycle(phone);
+  if (!players.length) {
+    return {
+      phone,
+      players: [],
+      updatedCount: 0,
+      archiveDueAt: null,
+      graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
+    };
+  }
+
+  const now = new Date();
+  const leftAt = now.toISOString();
+  const archiveDueAt = computeArchiveDueAt(now).toISOString();
+  const ids = players.map((player) => player.id);
+
+  const { error } = await supabase
+    .from('players')
+    .update({
+      lifecycle_status: 'left_grace',
+      left_group_at: leftAt,
+      archive_due_at: archiveDueAt,
+      last_known_group_jid: groupJid,
+      last_exit_reason: 'group_leave',
+    })
+    .in('id', ids);
+
+  if (error) {
+    if (isMissingLifecycleSchemaError(error)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[markPhoneProfilesLeftGrace]', error.message);
+    throw new Error('No se pudo marcar la gracia del jugador saliente.');
+  }
+
+  await insertPlayerLifecycleLog(players.map((player) => ({
+    player_id: player.id,
+    phone,
+    group_jid: groupJid,
+    action: 'group_left',
+    from_status: player.lifecycle_status ?? 'active',
+    to_status: 'left_grace',
+    performed_by: actor,
+    details: {
+      grace_days: PLAYER_LIFECYCLE_GRACE_DAYS,
+      archive_due_at: archiveDueAt,
+    },
+  })));
+
+  return {
+    phone,
+    players,
+    updatedCount: ids.length,
+    archiveDueAt,
+    graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
+  };
+}
+
+export async function reactivatePhoneProfilesFromGrace(whatsappNumber, options = {}) {
+  const phone = normalizePhone(whatsappNumber);
+  const groupJid = String(options.groupJid ?? '').trim() || null;
+  const actor = String(options.actor ?? 'bot:group_join').trim() || 'bot:group_join';
+
+  if (!phone) {
+    return {
+      phone: '',
+      players: [],
+      updatedCount: 0,
+    };
+  }
+
+  const players = await getPlayersByPhoneWithLifecycle(phone);
+  const playersInGrace = players.filter((player) => player.lifecycle_status === 'left_grace');
+
+  if (!playersInGrace.length) {
+    return {
+      phone,
+      players: [],
+      updatedCount: 0,
+    };
+  }
+
+  const reactivatedAt = new Date().toISOString();
+  const ids = playersInGrace.map((player) => player.id);
+
+  const { error } = await supabase
+    .from('players')
+    .update({
+      lifecycle_status: 'active',
+      left_group_at: null,
+      archive_due_at: null,
+      reactivated_at: reactivatedAt,
+      last_exit_reason: null,
+    })
+    .in('id', ids);
+
+  if (error) {
+    if (isMissingLifecycleSchemaError(error)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[reactivatePhoneProfilesFromGrace]', error.message);
+    throw new Error('No se pudo reactivar el perfil al volver al grupo.');
+  }
+
+  await insertPlayerLifecycleLog(playersInGrace.map((player) => ({
+    player_id: player.id,
+    phone,
+    group_jid: groupJid,
+    action: 'group_rejoined',
+    from_status: player.lifecycle_status ?? 'left_grace',
+    to_status: 'active',
+    performed_by: actor,
+    details: {},
+  })));
+
+  return {
+    phone,
+    players: playersInGrace,
+    updatedCount: ids.length,
+  };
+}
+
+export async function archiveExpiredGraceProfiles(options = {}) {
+  const actor = String(options.actor ?? 'bot:scheduler').trim() || 'bot:scheduler';
+  const nowIso = new Date().toISOString();
+
+  const { data: players, error: selectError } = await supabase
+    .from('players')
+    .select(PLAYER_LIFECYCLE_SELECT_COLUMNS)
+    .eq('lifecycle_status', 'left_grace')
+    .not('archive_due_at', 'is', null)
+    .lte('archive_due_at', nowIso)
+    .order('archive_due_at', { ascending: true })
+    .limit(50);
+
+  if (selectError) {
+    if (isMissingLifecycleSchemaError(selectError)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[archiveExpiredGraceProfiles.select]', selectError.message);
+    throw new Error('No se pudo leer los perfiles pendientes de archivo.');
+  }
+
+  if (!players?.length) {
+    return [];
+  }
+
+  const archivedAt = new Date().toISOString();
+  const ids = players.map((player) => player.id);
+  const { error: updateError } = await supabase
+    .from('players')
+    .update({
+      lifecycle_status: 'archived',
+      archived_at: archivedAt,
+    })
+    .in('id', ids);
+
+  if (updateError) {
+    if (isMissingLifecycleSchemaError(updateError)) {
+      throw buildPlayerLifecycleSchemaError();
+    }
+    console.error('[archiveExpiredGraceProfiles.update]', updateError.message);
+    throw new Error('No se pudo archivar los perfiles con gracia vencida.');
+  }
+
+  await insertPlayerLifecycleLog(players.map((player) => ({
+    player_id: player.id,
+    phone: player.phone || null,
+    group_jid: null,
+    action: 'auto_archived',
+    from_status: player.lifecycle_status ?? 'left_grace',
+    to_status: 'archived',
+    performed_by: actor,
+    details: {
+      archive_due_at: player.archive_due_at,
+    },
+  })));
+
+  return players;
 }
 
 export async function getPlayer(whatsappNumber) {

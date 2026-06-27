@@ -127,6 +127,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Alcance]:** Esta nota corrige la trazabilidad humana del relevo y no modifica la autoria git ni el contenido tecnico de los commits originales.
 *   **Notas/Advertencias:** El commit `ba2e336` (borrado de `Kingdoom_5.0.1.apk`) forma parte del mismo tramo temporal, pero se considera un movimiento auxiliar de release y no el nucleo funcional del ajuste del bot.
 
+### [Fecha: 27/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `src/supabase.js`, `src/handlers/playerLifecycle.js`, `supabase_player_lifecycle.sql`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Implementacion del ciclo de salida del grupo principal con gracia de 14 dias, reactivacion basica y archivado automatico.
+*   **Cambios Clave:**
+    *   **[Bot - Listener de salida]:** Se agrego `group_leave` en `src/index.js` para detectar cuando un usuario sale del grupo principal y disparar el flujo de lifecycle.
+    *   **[Bot - Gracia y retorno]:** `src/handlers/playerLifecycle.js` marca perfiles vinculados como `left_grace`, anuncia la salida en el grupo y rehidrata a `active` si el usuario vuelve mientras aun estaba en gracia.
+    *   **[Bot - Supabase]:** `src/supabase.js` suma helpers para `markPhoneProfilesLeftGrace`, `reactivatePhoneProfilesFromGrace` y `archiveExpiredGraceProfiles`, con validacion explicita cuando el SQL aun no fue aplicado.
+    *   **[Bot - Scheduler]:** Se agrego un cron cada 15 minutos para pasar a `archived` los perfiles cuya gracia haya vencido.
+    *   **[SQL - Lifecycle]:** Se versiono `supabase_player_lifecycle.sql` con columnas nuevas en `players` y la tabla `player_lifecycle_log`.
+*   **Notas/Advertencias:** El caso historico del numero `+51 968 476 010` no pudo recuperarse retroactivamente porque no habia listener activo al momento de la salida y no existe un `player` vinculado a ese telefono en la base actual del bot. Desde este cambio, los nuevos casos ya quedan cubiertos si el deploy se reinicia con el codigo actualizado.
+
 ### [Fecha: 23/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/welcome.js`, `src/index.js`, `releases/INSTRUCCIONES.txt`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Unificacion del flujo APK del bot para enviar siempre la version mas nueva disponible en `releases/`, validado ya sobre `Kingdoom_5.0.2.apk`.

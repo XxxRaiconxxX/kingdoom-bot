@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { supabase, botStateSupabase, processMarketInstallments } from './supabase.js';
+import { supabase, botStateSupabase, processMarketInstallments, archiveExpiredGraceProfiles } from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
@@ -10,6 +10,7 @@ const schedulerState = {
   dailyResetRunning: false,
   weeklyResetRunning: false,
   notificationQueueRunning: false,
+  playerLifecycleArchiveRunning: false,
 };
 
 async function runScheduledJob(key, label, task) {
@@ -162,6 +163,26 @@ export function startScheduler(client) {
           }
         } catch (err) {
           console.error('[scheduler] Error general procesando cola:', err.message);
+        }
+      });
+    },
+    TZ
+  );
+
+  cron.schedule(
+    '*/15 * * * *',
+    async () => {
+      await runScheduledJob('playerLifecycleArchiveRunning', 'archivado de perfiles salientes', async () => {
+        try {
+          const archivedPlayers = await archiveExpiredGraceProfiles({
+            actor: 'bot:scheduler',
+          });
+
+          if (archivedPlayers.length > 0) {
+            console.log(`[scheduler] ${archivedPlayers.length} perfil(es) pasaron a archived por gracia vencida.`);
+          }
+        } catch (err) {
+          console.error('[scheduler] Error archivando perfiles salientes:', err.message);
         }
       });
     },

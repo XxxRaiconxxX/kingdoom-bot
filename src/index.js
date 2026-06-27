@@ -11,6 +11,7 @@ import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
+import { buildPlayerLifecycleConfig, handleGroupLeave, handleGroupRejoin } from './handlers/playerLifecycle.js';
 import {
   registerPlayer,
   getPlayer,
@@ -52,6 +53,7 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
 let latestQrDataUrl = '';
 let appStatus = 'Inicializando servidor...';
 const welcomeConfig = buildWelcomeConfig();
+const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
@@ -414,9 +416,18 @@ client.on('change_state', (state) => {
 
 client.on('group_join', async (notification) => {
   try {
+    await handleGroupRejoin(notification, client, playerLifecycleConfig);
     await handleGroupWelcome(notification, client, welcomeConfig);
   } catch (error) {
     console.error('[group_join]', error.message);
+  }
+});
+
+client.on('group_leave', async (notification) => {
+  try {
+    await handleGroupLeave(notification, client, playerLifecycleConfig);
+  } catch (error) {
+    console.error('[group_leave]', error.message);
   }
 });
 
