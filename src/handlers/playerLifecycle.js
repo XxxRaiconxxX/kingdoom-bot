@@ -5,8 +5,6 @@ import {
   reactivatePhoneProfilesFromGrace,
 } from '../supabase.js';
 
-const DEFAULT_GROUP_ID = '595971938097-1618930274@g.us';
-
 function normalizeText(value) {
   return String(value ?? '')
     .trim()
@@ -64,9 +62,12 @@ async function getNotificationRecipients(notification, client) {
 }
 
 export function buildPlayerLifecycleConfig() {
+  const groupIdRaw = process.env.PLAYER_LIFECYCLE_GROUP_ID ?? process.env.MAIN_GROUP_ID;
+  const groupId = typeof groupIdRaw !== 'undefined' ? String(groupIdRaw).trim() : '';
+
   return {
     enabled: process.env.PLAYER_LIFECYCLE_ENABLED !== 'false',
-    groupId: String(process.env.PLAYER_LIFECYCLE_GROUP_ID ?? DEFAULT_GROUP_ID).trim(),
+    groupId,
     groupName: normalizeText(process.env.PLAYER_LIFECYCLE_GROUP_NAME ?? ''),
     adminIds: parseAdminIds(process.env.PLAYER_LIFECYCLE_ADMIN_IDS),
   };

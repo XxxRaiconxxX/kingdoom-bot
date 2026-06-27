@@ -2,6 +2,7 @@ import { getPlayer, updateGold, getBlackjackUsage, incrementBlackjackUsage, plac
 import { heraldCard, heraldStat } from '../formatting.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
+import crypto from 'crypto';
 
 // Memory store for active blackjack sessions.
 // Key: botMsgId (quoted message ID)
@@ -45,7 +46,7 @@ function createDeck() {
 // Shuffle deck using Fisher-Yates algorithm
 function shuffle(deck) {
   for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = crypto.randomInt(0, i + 1);
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
   return deck;
