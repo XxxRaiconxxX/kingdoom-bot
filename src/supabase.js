@@ -295,6 +295,23 @@ export async function markPhoneProfilesLeftGrace(whatsappNumber, options = {}) {
     return {
       phone,
       players: [],
+      matchedPlayers: [],
+      updatedCount: 0,
+      archiveDueAt: null,
+      graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
+    };
+  }
+
+  const eligiblePlayers = players.filter((player) => {
+    const status = String(player.lifecycle_status ?? 'active').trim().toLowerCase();
+    return !status || status === 'active';
+  });
+
+  if (!eligiblePlayers.length) {
+    return {
+      phone,
+      players: [],
+      matchedPlayers: players,
       updatedCount: 0,
       archiveDueAt: null,
       graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
@@ -304,7 +321,7 @@ export async function markPhoneProfilesLeftGrace(whatsappNumber, options = {}) {
   const now = new Date();
   const leftAt = now.toISOString();
   const archiveDueAt = computeArchiveDueAt(now).toISOString();
-  const ids = players.map((player) => player.id);
+  const ids = eligiblePlayers.map((player) => player.id);
 
   const { error } = await supabase
     .from('players')
@@ -325,7 +342,7 @@ export async function markPhoneProfilesLeftGrace(whatsappNumber, options = {}) {
     throw new Error('No se pudo marcar la gracia del jugador saliente.');
   }
 
-  await insertPlayerLifecycleLog(players.map((player) => ({
+  await insertPlayerLifecycleLog(eligiblePlayers.map((player) => ({
     player_id: player.id,
     phone,
     group_jid: groupJid,
@@ -341,7 +358,8 @@ export async function markPhoneProfilesLeftGrace(whatsappNumber, options = {}) {
 
   return {
     phone,
-    players,
+    players: eligiblePlayers,
+    matchedPlayers: players,
     updatedCount: ids.length,
     archiveDueAt,
     graceDays: PLAYER_LIFECYCLE_GRACE_DAYS,
@@ -444,6 +462,8 @@ export async function archiveExpiredGraceProfiles(options = {}) {
     .update({
       lifecycle_status: 'archived',
       archived_at: archivedAt,
+      archive_due_at: null,
+      last_exit_reason: 'grace_expired',
     })
     .in('id', ids);
 

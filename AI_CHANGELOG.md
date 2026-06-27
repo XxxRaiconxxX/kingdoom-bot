@@ -256,3 +256,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Saldo de riesgo:** El comando valida que el jugador pueda cubrir el peor caso de las 4 tiradas antes de ejecutar la cadena completa.
     *   **Resumen consolidado:** La respuesta ahora detalla cada tirada, cuenta victorias y muestra el balance neto total del bloque.
 *   **Notas/Advertencias:** En el modo x4, si al jugador le quedan menos de 4 usos diarios, el comando corre solo las tiradas disponibles restantes en vez de rechazar el intento.
+
+### [Fecha: 27/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Endurecimiento del lifecycle de perfiles para no reactivar ni rearchivar historicos fuera de gracia.
+*   **Cambios Clave:**
+    *   **Filtro de gracia:** `markPhoneProfilesLeftGrace(...)` ahora solo mueve a `left_grace` los perfiles que seguian `active`, evitando tocar perfiles ya `archived`, `recycled` o `purged` del mismo telefono.
+    *   **Trazabilidad de match:** El helper devuelve tambien los perfiles vinculados detectados aunque no fueran elegibles, para futuras capas de mensajeria y auditoria.
+    *   **Archivado limpio:** `archiveExpiredGraceProfiles(...)` ahora limpia `archive_due_at` al pasar a `archived` y marca `last_exit_reason = 'grace_expired'`, dejando el estado final sin fechas vencidas colgando.
+*   **Notas/Advertencias:** El flujo ya no pisa historicos, pero sigue dependiendo de que las salidas reales del grupo entren por el evento `group_leave` del cliente de WhatsApp.
