@@ -28,6 +28,7 @@ import { startScheduler } from './scheduler.js';
 import { isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
+import crypto from 'crypto';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
 import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
@@ -56,7 +57,6 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
-const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
 const restrictedGroupLocks = new Map();
@@ -169,7 +169,7 @@ function buildRestrictedGroupPrivateReply(commandName) {
 function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function formatInitializeError(error) {
@@ -632,9 +632,12 @@ client.on('message', async (msg) => {
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
+
+  const mainGroupId = typeof process.env.MAIN_GROUP_ID !== 'undefined' ? String(process.env.MAIN_GROUP_ID).trim() : null;
   const isRestrictedMainGroupMinigame =
     hasPrefix &&
-    msg.from === RESTRICTED_MINIGAME_GROUP_ID &&
+    mainGroupId &&
+    msg.from === mainGroupId &&
     RESTRICTED_MINIGAME_COMMANDS.has(command);
 
   let isAdmin = false;
