@@ -1,19 +1,20 @@
-import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
+﻿import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
 import { askKingdoomAI, describeAIError } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 
 const DAILY_MAX_COFRE = 4;
 const DAILY_MAX_TRAMPA = 4;
-const DADOS_X4_TARGET = 8;
-const DADOS_X4_RUNS = 1; // Modo x4 desactivado, runs fijado a 1
+const DADOS_X4_TARGET = 7;
+const DADOS_X4_RUNS = 4;
 
 const COFRE_TABLE = [
-  { chance: 50, gold: 0, label: 'Cofre vacio.' },
-  { chance: 30, gold: 500, label: '+500 oro' },
-  { chance: 12, gold: 1000, label: '+1.000 oro' },
-  { chance: 5, gold: 2000, label: '+2.000 oro' },
-  { chance: 2, gold: 5000, label: '+5.000 oro' },
-  { chance: 1, gold: 10000, label: '+10.000 oro' },
+  { chance: 22, gold: 0, label: 'Cofre vacio.' },
+  { chance: 27, gold: 2000, label: '+2.000 oro' },
+  { chance: 22, gold: 5000, label: '+5.000 oro' },
+  { chance: 15, gold: 10000, label: '+10.000 oro' },
+  { chance: 8, gold: 20000, label: '+20.000 oro' },
+  { chance: 4, gold: 35000, label: '+35.000 oro' },
+  { chance: 2, gold: 50000, label: '+50.000 oro' },
 ];
 
 const TRAMPA_TABLE = [
@@ -99,8 +100,7 @@ export async function handleDados(msg) {
   const player = await getPlayer(sender);
 
   if (!player) return 'No estas registrado. Escribi *!registrar TuNombre*';
-  if (x4) return 'El modo de dados *x4* ha sido desactivado permanentemente para resguardar la economia del reino. Usa dados comunes.';
-  if (!apuesta || isNaN(apuesta) || apuesta < 10) return 'Usa: *!dados 100* (minimo 10 oro)';
+  if (!apuesta || isNaN(apuesta) || apuesta < 10) return 'Usa: *!dados 100* o *!dados 100 x4* (minimo 10 oro)';
   if (apuesta > player.gold) return `No tenes suficiente oro.\nTenes: ${player.gold.toLocaleString('es-PY')}`;
 
   const dayOfWeek = new Date().getDay();
