@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
+import crypto from 'crypto';
 import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
 import 'dotenv/config';
@@ -56,7 +57,9 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
-const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
+function getRestrictedMinigameGroupId() {
+  return process.env.RESTRICTED_MINIGAME_GROUP_ID !== undefined ? process.env.RESTRICTED_MINIGAME_GROUP_ID : '';
+}
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
 const restrictedGroupLocks = new Map();
@@ -169,7 +172,8 @@ function buildRestrictedGroupPrivateReply(commandName) {
 function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  if (safeMin === safeMax) return safeMin;
+  return safeMin + crypto.randomInt(0, safeMax - safeMin + 1);
 }
 
 function formatInitializeError(error) {
@@ -634,7 +638,7 @@ client.on('message', async (msg) => {
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
   const isRestrictedMainGroupMinigame =
     hasPrefix &&
-    msg.from === RESTRICTED_MINIGAME_GROUP_ID &&
+    msg.from === getRestrictedMinigameGroupId() &&
     RESTRICTED_MINIGAME_COMMANDS.has(command);
 
   let isAdmin = false;
