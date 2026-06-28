@@ -35,3 +35,7 @@ create index if not exists idx_player_lifecycle_log_player_created
 
 create index if not exists idx_player_lifecycle_log_action_created
   on public.player_lifecycle_log (action, created_at desc);
+ALTER TABLE public.player_lifecycle_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.player_lifecycle_log FOR ALL TO service_role USING (true) WITH CHECK (true);
+ALTER TABLE public.players ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service Role Full Access" ON public.players FOR ALL TO service_role USING (true) WITH CHECK (true);

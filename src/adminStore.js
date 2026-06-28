@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const OWNER_NUMBER = '595987273405';
 const ADMINS_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'admins.json');
 const STAFF_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'staff.json');
 
@@ -43,9 +42,36 @@ export function normalizePhone(phone) {
     cleaned = '549' + rest;
   }
 
+  const envOwner = process.env.OWNER_NUMBER !== undefined ? normalizePhoneSimple(process.env.OWNER_NUMBER) : null;
   // 4. Map owner 15-digit ID to main phone number so the same profile is used
-  if (cleaned === '275162062668001') {
-    cleaned = '595987273405';
+  if (cleaned === '275162062668001' && envOwner) {
+    cleaned = envOwner;
+  }
+
+  return cleaned;
+}
+
+function normalizePhoneSimple(phone) {
+  let cleaned = String(phone || '')
+    .replace(/@c\.us$/, '')
+    .replace(/@g\.us$/, '')
+    .replace(/\D/g, '')
+    .trim();
+
+  if (cleaned.startsWith('5959') && cleaned.length === 13) {
+    cleaned = '595' + cleaned.substring(4);
+  }
+
+  if (cleaned.startsWith('52') && !cleaned.startsWith('521') && cleaned.length === 12) {
+    cleaned = '521' + cleaned.substring(2);
+  }
+
+  if (cleaned.startsWith('54') && !cleaned.startsWith('549')) {
+    let rest = cleaned.substring(2);
+    if (rest.startsWith('15')) {
+      rest = rest.substring(2);
+    }
+    cleaned = '549' + rest;
   }
 
   return cleaned;
@@ -56,8 +82,8 @@ export function loadAdmins() {
 
   const defaultAdmins = [];
   // Also load default admin from env if present
-  if (process.env.ADMIN_NUMBER) {
-    defaultAdmins.push(normalizePhone(process.env.ADMIN_NUMBER));
+  if (process.env.ADMIN_NUMBER !== undefined) {
+    defaultAdmins.push(normalizePhoneSimple(process.env.ADMIN_NUMBER));
   }
 
   try {
@@ -124,13 +150,10 @@ export function loadStaff() {
 
 export function isOwner(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
-  const envOwner = process.env.OWNER_NUMBER ? normalizePhone(process.env.OWNER_NUMBER) : null;
-  const envAdmin = process.env.ADMIN_NUMBER ? normalizePhone(process.env.ADMIN_NUMBER) : null;
+  const envOwner = process.env.OWNER_NUMBER !== undefined ? normalizePhoneSimple(process.env.OWNER_NUMBER) : null;
+  const envAdmin = process.env.ADMIN_NUMBER !== undefined ? normalizePhoneSimple(process.env.ADMIN_NUMBER) : null;
   
-  return phone === '595987273405' || 
-         phone === '5959987273405' || 
-         phone === '275162062668001' || 
-         (envOwner && phone === envOwner) || 
+  return (envOwner && phone === envOwner) ||
          (envAdmin && phone === envAdmin);
 }
 

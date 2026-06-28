@@ -7,8 +7,8 @@ import {
   getTreasureClaims,
   touchPlayerActivity,
 } from '../supabase.js';
+import crypto from 'crypto';
 
-const TARGET_GROUP = '595971938097-1618930274@g.us';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;
@@ -27,7 +27,8 @@ export function clearTreasureTimeouts() {
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  if (safeMin === safeMax) return safeMin;
+  return safeMin + crypto.randomInt(0, safeMax - safeMin + 1);
 }
 
 function getAsuncionOffsetMs() {
@@ -101,6 +102,10 @@ function registerActiveTreasure(event, client) {
     void closeTreasure(event.message_id, client, { reason: 'expired' });
   }, remainingMs);
 
+function getTargetGroup() {
+  return process.env.TREASURE_GROUP_ID !== undefined ? process.env.TREASURE_GROUP_ID : '';
+}
+
   activeTreasures.set(event.message_id, {
     messageId: event.message_id,
     chatId: event.chat_id,
@@ -136,6 +141,12 @@ export async function dropTreasure(client) {
   try {
     if (!client || !client.info) {
       console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo drop.');
+      return null;
+    }
+
+    const TARGET_GROUP = getTargetGroup();
+    if (!TARGET_GROUP) {
+      console.log('[Treasure] TREASURE_GROUP_ID no está configurado. Omitiendo drop.');
       return null;
     }
 
@@ -196,6 +207,9 @@ export async function closeTreasure(messageId, client, options = {}) {
       return;
     }
 
+    const TARGET_GROUP = getTargetGroup();
+    if (!TARGET_GROUP) return;
+
     const summary = await buildClaimsSummary(messageId);
     if (summary) {
       await client.sendMessage(TARGET_GROUP, summary);
@@ -213,6 +227,7 @@ export async function closeTreasure(messageId, client, options = {}) {
 }
 
 export async function handleTreasureReply(msg, treasure, quotedId, client) {
+  const TARGET_GROUP = getTargetGroup();
   if (msg.from !== TARGET_GROUP || !treasure) {
     return;
   }
@@ -275,6 +290,8 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
 
 export async function hydrateOpenTreasures(client) {
   try {
+    const TARGET_GROUP = getTargetGroup();
+    if (!TARGET_GROUP) return;
     const openEvents = await getOpenTreasureEvents(TARGET_GROUP);
     for (const event of openEvents) {
       const expiresAtMs = new Date(event.expires_at).getTime();
@@ -311,12 +328,12 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 3) + 2;
+  const numEvents = crypto.randomInt(2, 5); // Returns 2, 3, or 4
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
   for (let i = 0; i < numEvents; i += 1) {
-    const randomTime = system10 + Math.random() * (system22 - system10);
+    const randomTime = system10 + crypto.randomInt(0, Math.floor(system22 - system10));
     eventTimes.push(randomTime);
   }
 
