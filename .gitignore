@@ -3,4 +3,7 @@ node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
 .codegraph/
+temp_diff.txt
+tmp_*.txt
+*.DS_Store
 

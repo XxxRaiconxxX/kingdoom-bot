@@ -4,6 +4,25 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 29/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `README.md`, `docs/architecture/SUPABASE_BOT_SPLIT_DIAGNOSTIC.md`, `supabase/`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Reorganizacion estructural del bloque SQL y del diagnostico de arquitectura del bot.
+*   **Cambios Clave:**
+    *   **[SQL agrupado]:** los SQL versionados del bot ahora viven en `supabase/` en vez de quedar sueltos en la raiz.
+    *   **[Archivo huerfano corregido]:** el archivo raiz llamado `supabase` se identifico como el contenido real de `supabase_bot_bet_escrow.sql`, se renombro correctamente y se movio junto al resto del bloque SQL.
+    *   **[Arquitectura]:** `SUPABASE_BOT_SPLIT_DIAGNOSTIC.md` se movio a `docs/architecture/` para separar diagnosticos del runtime del proyecto.
+    *   **[README]:** se agrego una seccion corta de estructura para que la nueva organizacion sea visible a simple vista.
+*   **Notas/Advertencias:** No se ejecuto `node --check` porque no hubo cambios funcionales en runtime del bot.
+
+### [Fecha: 29/06/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `.gitignore`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Limpieza de trazas temporales del repo y blindaje para que no vuelvan al tracking.
+*   **Cambios Clave:**
+    *   **[Higiene - Temporal]:** se elimino `temp_diff.txt` del tracking por ser un diff manual de trabajo y no un artefacto del producto.
+    *   **[Gitignore]:** se agregaron reglas para `temp_diff.txt`, `tmp_*.txt` y `.DS_Store`.
+    *   **[Alcance]:** no se movio `test_blackjack.js` porque `AGENTS.md` lo referencia explicitamente como script raiz de validacion aislada.
+*   **Notas/Advertencias:** No se ejecuto `node --check` porque no hubo cambios funcionales en runtime ni en handlers del bot.
+
 ### [Fecha: 25/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/admin.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Conexion del bot con el flujo de fichas recicladas definido en Kingdoom Sync.
