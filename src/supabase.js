@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
+import crypto from 'crypto';
 import { normalizePhone } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 
@@ -1035,7 +1036,7 @@ export async function getTreasureClaims(messageId) {
 
 export async function claimTreasureReward(messageId, playerId, chatId) {
   // Configurar la recompensa entre 1000 y 20000
-  const rewardGold = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
+  const rewardGold = crypto.randomInt(1000, 20001);
 
   // Primero verificar el evento y los ganadores actuales
   const { data: event, error: eventError } = await botStateSupabase

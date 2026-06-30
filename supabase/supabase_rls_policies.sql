@@ -1,0 +1,9 @@
+ALTER TABLE public.bot_active_bets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_daily_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_active_missions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_treasure_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_treasure_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_notifications_queue ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bot_command_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.player_lifecycle_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.players ENABLE ROW LEVEL SECURITY;
