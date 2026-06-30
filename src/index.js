@@ -7,6 +7,7 @@ import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
 import 'dotenv/config';
+import crypto from 'crypto';
 import { handlePlayerMessage } from './handlers/player.js';
 import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
@@ -56,7 +57,10 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
-const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
+const RESTRICTED_MINIGAME_GROUP_ID = process.env.RESTRICTED_MINIGAME_GROUP_ID;
+if (RESTRICTED_MINIGAME_GROUP_ID === undefined) {
+  console.warn('RESTRICTED_MINIGAME_GROUP_ID is undefined');
+}
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
 const restrictedGroupLocks = new Map();
@@ -169,7 +173,7 @@ function buildRestrictedGroupPrivateReply(commandName) {
 function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function formatInitializeError(error) {

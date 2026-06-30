@@ -5,7 +5,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const OWNER_NUMBER = '595987273405';
 const ADMINS_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'admins.json');
 const STAFF_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'staff.json');
 
@@ -44,8 +43,10 @@ export function normalizePhone(phone) {
   }
 
   // 4. Map owner 15-digit ID to main phone number so the same profile is used
-  if (cleaned === '275162062668001') {
-    cleaned = '595987273405';
+  if (process.env.OWNER_ID_MAP && cleaned === process.env.OWNER_ID_MAP) {
+    if (process.env.OWNER_NUMBER) {
+      cleaned = normalizePhone(process.env.OWNER_NUMBER);
+    }
   }
 
   return cleaned;
@@ -126,11 +127,12 @@ export function isOwner(whatsappNumber) {
   const phone = normalizePhone(whatsappNumber);
   const envOwner = process.env.OWNER_NUMBER ? normalizePhone(process.env.OWNER_NUMBER) : null;
   const envAdmin = process.env.ADMIN_NUMBER ? normalizePhone(process.env.ADMIN_NUMBER) : null;
+
+  if (process.env.OWNER_NUMBER === undefined) {
+    console.warn('OWNER_NUMBER is undefined');
+  }
   
-  return phone === '595987273405' || 
-         phone === '5959987273405' || 
-         phone === '275162062668001' || 
-         (envOwner && phone === envOwner) || 
+  return (envOwner && phone === envOwner) ||
          (envAdmin && phone === envAdmin);
 }
 

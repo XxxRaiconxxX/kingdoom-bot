@@ -7,8 +7,12 @@ import {
   getTreasureClaims,
   touchPlayerActivity,
 } from '../supabase.js';
+import crypto from 'crypto';
 
-const TARGET_GROUP = '595971938097-1618930274@g.us';
+const TARGET_GROUP = process.env.TREASURE_TARGET_GROUP_ID;
+if (TARGET_GROUP === undefined) {
+  console.warn('TREASURE_TARGET_GROUP_ID is undefined');
+}
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;
@@ -27,7 +31,7 @@ export function clearTreasureTimeouts() {
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function getAsuncionOffsetMs() {
@@ -311,12 +315,13 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 3) + 2;
+  const numEvents = crypto.randomInt(2, 5); // 2, 3 or 4 events
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
   for (let i = 0; i < numEvents; i += 1) {
-    const randomTime = system10 + Math.random() * (system22 - system10);
+    const randomFloat = crypto.randomBytes(4).readUInt32LE() / 0x100000000;
+    const randomTime = system10 + randomFloat * (system22 - system10);
     eventTimes.push(randomTime);
   }
 
