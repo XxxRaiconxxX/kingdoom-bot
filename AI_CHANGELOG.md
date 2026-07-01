@@ -5,6 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 01/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Auditoria y hardening del gate de comandos por roleo.
+*   **Cambios Clave:**
+    *   **[Bot - Staff/Admin]:** los comandos bloqueados por roleo ahora fuerzan el calculo de privilegios antes del gate, evitando que staff/admin dependan del estado `player_roleplay_access` para ejecutar herramientas recreativas/economicas.
+    *   **[Trazabilidad]:** se reparo `ai-memory/kingdoom-memory.jsonl` para reemplazar saltos literales por lineas JSONL reales tras el rebase.
+*   **Notas/Advertencias:** Validacion: `node --check src/index.js`, `node --check src/supabase.js`, `node --check src/scheduler.js`, `node --check src/handlers/admin.js` y parseo JSONL pasaron correctamente.
+
+### [Fecha: 01/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `src/supabase.js`, `src/handlers/admin.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Sistema operativo de roleo activo para bloquear economia/minijuegos cuando un jugador deja de rolear en el grupo oficial.
 *   **Cambios Clave:**

@@ -752,6 +752,7 @@ client.on('message', async (msg) => {
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
+  const isRoleplayBlockedCommand = hasPrefix && ROLEPLAY_BLOCKED_COMMANDS.has(command);
   const isRestrictedMainGroupMinigame =
     hasPrefix &&
     msg.from === RESTRICTED_MINIGAME_GROUP_ID &&
@@ -761,7 +762,7 @@ client.on('message', async (msg) => {
   let isStaff = false;
   let isPrivileged = false;
 
-  if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd || isRestrictedMainGroupMinigame) {
+  if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd || isRestrictedMainGroupMinigame || isRoleplayBlockedCommand) {
     isAdmin = await checkIsAdmin(sender);
     isStaff = isStaffUser(sender);
     isPrivileged = isAdmin || isStaff;
@@ -785,7 +786,7 @@ client.on('message', async (msg) => {
 
     if (forgeReply) {
       reply = forgeReply;
-    } else if (hasPrefix && ROLEPLAY_BLOCKED_COMMANDS.has(command) && !isPrivileged) {
+    } else if (isRoleplayBlockedCommand && !isPrivileged) {
       const activePlayer = await getPlayer(sender);
       const roleplayAccess = activePlayer?.id
         ? await getPlayerRoleplayAccess(activePlayer.id).catch((error) => {
