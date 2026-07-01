@@ -56,7 +56,7 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
-const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
+const RESTRICTED_MINIGAME_GROUP_ID = process.env.TARGET_GROUP_ID !== undefined ? process.env.TARGET_GROUP_ID : '';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
 const restrictedGroupLocks = new Map();
