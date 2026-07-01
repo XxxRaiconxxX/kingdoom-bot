@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 30/06/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `.agents/agents/KingdoomFB/agent.json`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Adición de configuración persistente para el agente KingdoomFB enfocado en marketing.
+*   **Cambios Clave:**
+    *   **[KingdoomFB]:** Se agregó el subagente `.agents/agents/KingdoomFB/agent.json` con su respectiva definición de sistema orientada a la redacción y diseño de copies promocionales sin generación de imágenes.
+*   **Notas/Advertencias:** Ninguna.
+
 ### [Fecha: 29/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `README.md`, `docs/architecture/SUPABASE_BOT_SPLIT_DIAGNOSTIC.md`, `supabase/`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Reorganizacion estructural del bloque SQL y del diagnostico de arquitectura del bot.
