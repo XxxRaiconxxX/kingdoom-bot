@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
-import { normalizePhone } from './adminStore.js';
+import { normalizePhone, isAdminUser, isStaffUser, isOwner } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
@@ -27,6 +27,15 @@ const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
   1,
   Number.parseInt(process.env.PLAYER_LIFECYCLE_GRACE_DAYS ?? '14', 10) || 14
 );
+const ROLEPLAY_LOCK_AFTER_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.ROLEPLAY_LOCK_AFTER_DAYS ?? '3', 10) || 3
+);
+const ROLEPLAY_INITIAL_GRACE_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.ROLEPLAY_INITIAL_GRACE_DAYS ?? '3', 10) || 3
+);
+const ROLEPLAY_SELECT_COLUMNS = 'player_id, last_roleplay_at, grace_until, locked_at, lock_reason, last_roleplay_group_jid, last_human_roleplay_phone, is_exempt, exempt_reason, created_at, updated_at';
 
 async function supabaseTimedFetch(resource, options = {}) {
   const controller = new AbortController();
@@ -221,6 +230,605 @@ function buildPlayerLifecycleSchemaError() {
   return new Error(
     'El SQL de player lifecycle aun no esta aplicado. Ejecuta supabase_player_lifecycle.sql en el proyecto principal de Supabase.'
   );
+}
+
+function isMissingRoleplaySchemaError(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  const code = String(error?.code ?? '');
+  return code === '42P01' ||
+    code === '42703' ||
+    message.includes('player_roleplay_access') ||
+    message.includes('roleplay_phone_activity') ||
+    message.includes('last_roleplay_at') ||
+    message.includes('grace_until') ||
+    message.includes('locked_at');
+}
+
+function buildRoleplaySchemaError() {
+  return new Error(
+    'El SQL de roleplay access aun no esta aplicado. Ejecuta supabase_roleplay_access.sql en el proyecto principal de Supabase.'
+  );
+}
+
+function computeRoleplayInitialGraceUntil(referenceDate = new Date()) {
+  return new Date(
+    referenceDate.getTime() + ROLEPLAY_INITIAL_GRACE_DAYS * 24 * 60 * 60 * 1000
+  );
+}
+
+function computeRoleplayExemption(player) {
+  const phone = normalizePhone(player?.phone ?? '');
+  const isExempt = Boolean(player?.is_admin) || isOwner(phone) || isAdminUser(phone) || isStaffUser(phone);
+
+  if (!isExempt) {
+    return { isExempt: false, exemptReason: null };
+  }
+
+  if (player?.is_admin) {
+    return { isExempt: true, exemptReason: 'player_is_admin' };
+  }
+  if (isOwner(phone)) {
+    return { isExempt: true, exemptReason: 'owner_phone' };
+  }
+  if (isAdminUser(phone)) {
+    return { isExempt: true, exemptReason: 'admin_phone' };
+  }
+  return { isExempt: true, exemptReason: 'staff_phone' };
+}
+
+async function insertRoleplayAccessLog(entries) {
+  if (!entries.length) return;
+
+  const { error } = await supabase
+    .from('player_roleplay_access_log')
+    .insert(entries);
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[insertRoleplayAccessLog]', error.message);
+    throw new Error('No se pudo registrar la auditoria de roleplay.');
+  }
+}
+
+async function getRoleplayAccessMap(playerIds) {
+  const safePlayerIds = [...new Set((playerIds ?? []).map((entry) => String(entry ?? '').trim()).filter(Boolean))];
+  if (!safePlayerIds.length) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from('player_roleplay_access')
+    .select(ROLEPLAY_SELECT_COLUMNS)
+    .in('player_id', safePlayerIds);
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[getRoleplayAccessMap]', error.message);
+    throw new Error('No se pudo leer el estado de roleplay.');
+  }
+
+  return new Map((data ?? []).map((entry) => [entry.player_id, entry]));
+}
+
+async function seedRoleplayAccessForPlayers(players) {
+  const safePlayers = (players ?? []).filter((player) => player?.id);
+  if (!safePlayers.length) return 0;
+
+  const now = new Date();
+  const graceUntil = computeRoleplayInitialGraceUntil(now).toISOString();
+  const rows = safePlayers.map((player) => {
+    const { isExempt, exemptReason } = computeRoleplayExemption(player);
+    return {
+      player_id: player.id,
+      grace_until: graceUntil,
+      is_exempt: isExempt,
+      exempt_reason: exemptReason,
+    };
+  });
+
+  const { error } = await supabase
+    .from('player_roleplay_access')
+    .upsert(rows, { onConflict: 'player_id', ignoreDuplicates: true });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[seedRoleplayAccessForPlayers]', error.message);
+    throw new Error('No se pudo sembrar el estado de roleplay.');
+  }
+
+  return rows.length;
+}
+
+async function syncRoleplayExemptionsForPlayers(players, currentAccessMap, actor = 'system:roleplay_sync') {
+  const updates = [];
+  const logs = [];
+
+  for (const player of players ?? []) {
+    if (!player?.id) continue;
+    const access = currentAccessMap.get(player.id);
+    if (!access) continue;
+
+    const { isExempt, exemptReason } = computeRoleplayExemption(player);
+    const exemptionChanged =
+      Boolean(access.is_exempt) !== isExempt ||
+      String(access.exempt_reason ?? '') !== String(exemptReason ?? '');
+
+    if (!exemptionChanged) continue;
+
+    updates.push({
+      player_id: player.id,
+      is_exempt: isExempt,
+      exempt_reason: exemptReason,
+      locked_at: isExempt ? null : access.locked_at ?? null,
+      lock_reason: isExempt ? null : access.lock_reason ?? null,
+    });
+
+    logs.push({
+      player_id: player.id,
+      phone: player.phone ?? null,
+      action: 'exempt_synced',
+      performed_by: actor,
+      details: {
+        is_exempt: isExempt,
+        exempt_reason: exemptReason,
+      },
+    });
+  }
+
+  if (updates.length) {
+    const { error } = await supabase
+      .from('player_roleplay_access')
+      .upsert(updates, { onConflict: 'player_id' });
+
+    if (error) {
+      if (isMissingRoleplaySchemaError(error)) {
+        throw buildRoleplaySchemaError();
+      }
+      console.error('[syncRoleplayExemptionsForPlayers]', error.message);
+      throw new Error('No se pudo sincronizar la exencion de roleplay.');
+    }
+  }
+
+  if (logs.length) {
+    await insertRoleplayAccessLog(logs);
+  }
+}
+
+export async function ensureRoleplayAccessSeeded() {
+  const { data: players, error } = await supabase
+    .from('players')
+    .select('id, phone, is_admin');
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[ensureRoleplayAccessSeeded.players]', error.message);
+    throw new Error('No se pudo leer la lista de jugadores para sembrar roleplay.');
+  }
+
+  await seedRoleplayAccessForPlayers(players ?? []);
+  const accessMap = await getRoleplayAccessMap((players ?? []).map((player) => player.id));
+  await syncRoleplayExemptionsForPlayers(players ?? [], accessMap, 'system:roleplay_seed');
+  return (players ?? []).length;
+}
+
+export function getRoleplayLockWindowDays() {
+  return ROLEPLAY_LOCK_AFTER_DAYS;
+}
+
+export function getRoleplayInitialGraceDays() {
+  return ROLEPLAY_INITIAL_GRACE_DAYS;
+}
+
+export async function getPlayerRoleplayAccess(playerId) {
+  const normalizedPlayerId = String(playerId ?? '').trim();
+  if (!normalizedPlayerId) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('player_roleplay_access')
+    .select(ROLEPLAY_SELECT_COLUMNS)
+    .eq('player_id', normalizedPlayerId)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[getPlayerRoleplayAccess]', error.message);
+    throw new Error('No se pudo leer el acceso de roleplay del jugador.');
+  }
+
+  return data ?? null;
+}
+
+export async function markRoleplayActivityForPhone(whatsappNumber, options = {}) {
+  const phone = normalizePhone(whatsappNumber);
+  const actor = String(options.actor ?? 'bot:roleplay_message').trim() || 'bot:roleplay_message';
+  const groupJid = String(options.groupJid ?? '').trim() || null;
+  const nowIso = new Date().toISOString();
+
+  if (!phone) {
+    return {
+      phone: '',
+      updatedPlayers: [],
+      updatedCount: 0,
+      unlockedPlayers: [],
+    };
+  }
+
+  const { error: phoneError } = await supabase
+    .from('roleplay_phone_activity')
+    .upsert(
+      {
+        phone,
+        last_roleplay_at: nowIso,
+        last_roleplay_group_jid: groupJid,
+      },
+      { onConflict: 'phone' }
+    );
+
+  if (phoneError) {
+    if (isMissingRoleplaySchemaError(phoneError)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[markRoleplayActivityForPhone.phone]', phoneError.message);
+    throw new Error('No se pudo guardar la actividad de roleplay por telefono.');
+  }
+
+  const players = await getPlayersByPhone(phone);
+  if (!players.length) {
+    return {
+      phone,
+      updatedPlayers: [],
+      updatedCount: 0,
+      unlockedPlayers: [],
+    };
+  }
+
+  await seedRoleplayAccessForPlayers(players);
+  const accessMap = await getRoleplayAccessMap(players.map((player) => player.id));
+  await syncRoleplayExemptionsForPlayers(players, accessMap, actor);
+
+  const updates = [];
+  const logs = [];
+  const unlockedPlayers = [];
+
+  for (const player of players) {
+    const access = accessMap.get(player.id);
+    const { isExempt, exemptReason } = computeRoleplayExemption(player);
+
+    updates.push({
+      player_id: player.id,
+      last_roleplay_at: nowIso,
+      grace_until: null,
+      locked_at: null,
+      lock_reason: null,
+      last_roleplay_group_jid: groupJid,
+      last_human_roleplay_phone: phone,
+      is_exempt: isExempt,
+      exempt_reason: exemptReason,
+    });
+
+    if (access?.locked_at) {
+      unlockedPlayers.push({
+        playerId: player.id,
+        username: player.username,
+        phone: player.phone ?? phone,
+      });
+      logs.push({
+        player_id: player.id,
+        phone: player.phone ?? phone,
+        action: 'auto_unlocked',
+        performed_by: actor,
+        details: {
+          reason: 'roleplay_detected',
+          group_jid: groupJid,
+        },
+      });
+    }
+  }
+
+  const { error: accessError } = await supabase
+    .from('player_roleplay_access')
+    .upsert(updates, { onConflict: 'player_id' });
+
+  if (accessError) {
+    if (isMissingRoleplaySchemaError(accessError)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[markRoleplayActivityForPhone.access]', accessError.message);
+    throw new Error('No se pudo actualizar el acceso de roleplay del jugador.');
+  }
+
+  if (logs.length) {
+    await insertRoleplayAccessLog(logs);
+  }
+
+  return {
+    phone,
+    updatedPlayers: players,
+    updatedCount: players.length,
+    unlockedPlayers,
+  };
+}
+
+function shouldRoleplayPlayerBeLocked(access, now = new Date()) {
+  if (!access || access.is_exempt) {
+    return false;
+  }
+
+  const nowMs = now.getTime();
+  const graceUntilMs = access.grace_until ? new Date(access.grace_until).getTime() : NaN;
+  if (Number.isFinite(graceUntilMs) && nowMs <= graceUntilMs) {
+    return false;
+  }
+
+  const lastRoleplayMs = access.last_roleplay_at ? new Date(access.last_roleplay_at).getTime() : NaN;
+  if (!Number.isFinite(lastRoleplayMs)) {
+    return true;
+  }
+
+  return nowMs - lastRoleplayMs >= ROLEPLAY_LOCK_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
+export async function processRoleplayAccessEnforcement() {
+  await ensureRoleplayAccessSeeded();
+
+  const { data, error } = await supabase
+    .from('player_roleplay_access')
+    .select(`${ROLEPLAY_SELECT_COLUMNS}, players!inner(id, username, phone, is_admin)`);
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[processRoleplayAccessEnforcement]', error.message);
+    throw new Error('No se pudo evaluar el acceso de roleplay.');
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const updates = [];
+  const logs = [];
+  const newlyLocked = [];
+
+  for (const row of data ?? []) {
+    const player = row.players;
+    const { isExempt, exemptReason } = computeRoleplayExemption(player);
+    const shouldLock = !isExempt && shouldRoleplayPlayerBeLocked({
+      ...row,
+      is_exempt: isExempt,
+    }, now);
+
+    if (Boolean(row.is_exempt) !== isExempt || String(row.exempt_reason ?? '') !== String(exemptReason ?? '')) {
+      updates.push({
+        player_id: row.player_id,
+        is_exempt: isExempt,
+        exempt_reason: exemptReason,
+        locked_at: isExempt ? null : row.locked_at ?? null,
+        lock_reason: isExempt ? null : row.lock_reason ?? null,
+      });
+    }
+
+    if (shouldLock && !row.locked_at) {
+      updates.push({
+        player_id: row.player_id,
+        locked_at: nowIso,
+        lock_reason: 'roleplay_inactive',
+      });
+      logs.push({
+        player_id: row.player_id,
+        phone: player.phone ?? null,
+        action: 'auto_locked',
+        performed_by: 'bot:scheduler',
+        details: {
+          inactivity_days: ROLEPLAY_LOCK_AFTER_DAYS,
+          last_roleplay_at: row.last_roleplay_at,
+          grace_until: row.grace_until,
+        },
+      });
+      newlyLocked.push({
+        playerId: row.player_id,
+        username: player.username,
+        phone: player.phone ?? null,
+      });
+    }
+  }
+
+  if (updates.length) {
+    const deduped = Array.from(
+      updates.reduce((map, entry) => {
+        const current = map.get(entry.player_id) ?? { player_id: entry.player_id };
+        map.set(entry.player_id, { ...current, ...entry });
+        return map;
+      }, new Map()).values()
+    );
+
+    const { error: updateError } = await supabase
+      .from('player_roleplay_access')
+      .upsert(deduped, { onConflict: 'player_id' });
+
+    if (updateError) {
+      if (isMissingRoleplaySchemaError(updateError)) {
+        throw buildRoleplaySchemaError();
+      }
+      console.error('[processRoleplayAccessEnforcement.update]', updateError.message);
+      throw new Error('No se pudo actualizar el estado de roleplay.');
+    }
+  }
+
+  if (logs.length) {
+    await insertRoleplayAccessLog(logs);
+  }
+
+  return {
+    newlyLocked,
+  };
+}
+
+export async function manuallyLockRoleplayAccess(playerId, options = {}) {
+  const normalizedPlayerId = String(playerId ?? '').trim();
+  const actor = String(options.actor ?? 'admin:manual_lock').trim() || 'admin:manual_lock';
+  const phone = normalizePhone(options.phone ?? '');
+  const reason = String(options.reason ?? 'manual_lock').trim() || 'manual_lock';
+
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase
+    .from('player_roleplay_access')
+    .upsert({
+      player_id: normalizedPlayerId,
+      locked_at: nowIso,
+      lock_reason: reason,
+      grace_until: null,
+      last_human_roleplay_phone: phone || null,
+    }, { onConflict: 'player_id' });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[manuallyLockRoleplayAccess]', error.message);
+    throw new Error('No se pudo bloquear manualmente el acceso por roleplay.');
+  }
+
+  await insertRoleplayAccessLog([{
+    player_id: normalizedPlayerId,
+    phone: phone || null,
+    action: 'manual_locked',
+    performed_by: actor,
+    details: {
+      reason,
+    },
+  }]);
+}
+
+export async function manuallyUnlockRoleplayAccess(playerId, options = {}) {
+  const normalizedPlayerId = String(playerId ?? '').trim();
+  const actor = String(options.actor ?? 'admin:manual_unlock').trim() || 'admin:manual_unlock';
+  const phone = normalizePhone(options.phone ?? '');
+  const graceDays = Math.max(
+    1,
+    Number.parseInt(String(options.graceDays ?? ROLEPLAY_LOCK_AFTER_DAYS), 10) || ROLEPLAY_LOCK_AFTER_DAYS
+  );
+  const graceUntil = new Date(Date.now() + graceDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('player_roleplay_access')
+    .upsert({
+      player_id: normalizedPlayerId,
+      locked_at: null,
+      lock_reason: null,
+      grace_until: graceUntil,
+      last_human_roleplay_phone: phone || null,
+    }, { onConflict: 'player_id' });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[manuallyUnlockRoleplayAccess]', error.message);
+    throw new Error('No se pudo desbloquear manualmente el acceso por roleplay.');
+  }
+
+  await insertRoleplayAccessLog([{
+    player_id: normalizedPlayerId,
+    phone: phone || null,
+    action: 'manual_unlocked',
+    performed_by: actor,
+    details: {
+      grace_days: graceDays,
+      grace_until: graceUntil,
+    },
+  }]);
+}
+
+export async function extendRoleplayGraceForPlayer(playerId, days, options = {}) {
+  const normalizedPlayerId = String(playerId ?? '').trim();
+  const actor = String(options.actor ?? 'admin:manual_grace').trim() || 'admin:manual_grace';
+  const phone = normalizePhone(options.phone ?? '');
+  const safeDays = Math.max(1, Number.parseInt(String(days ?? ROLEPLAY_LOCK_AFTER_DAYS), 10) || ROLEPLAY_LOCK_AFTER_DAYS);
+  const graceUntil = new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase
+    .from('player_roleplay_access')
+    .upsert({
+      player_id: normalizedPlayerId,
+      grace_until: graceUntil,
+      locked_at: null,
+      lock_reason: null,
+      last_human_roleplay_phone: phone || null,
+    }, { onConflict: 'player_id' });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[extendRoleplayGraceForPlayer]', error.message);
+    throw new Error('No se pudo extender la gracia de roleplay.');
+  }
+
+  await insertRoleplayAccessLog([{
+    player_id: normalizedPlayerId,
+    phone: phone || null,
+    action: 'manual_grace_extended',
+    performed_by: actor,
+    details: {
+      grace_days: safeDays,
+      grace_until: graceUntil,
+    },
+  }]);
+
+  return graceUntil;
+}
+
+export async function forceRoleplayActivityForPlayer(playerId, options = {}) {
+  const normalizedPlayerId = String(playerId ?? '').trim();
+  const actor = String(options.actor ?? 'admin:manual_activity').trim() || 'admin:manual_activity';
+  const phone = normalizePhone(options.phone ?? '');
+  const groupJid = String(options.groupJid ?? '').trim() || null;
+  const nowIso = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('player_roleplay_access')
+    .upsert({
+      player_id: normalizedPlayerId,
+      last_roleplay_at: nowIso,
+      grace_until: null,
+      locked_at: null,
+      lock_reason: null,
+      last_roleplay_group_jid: groupJid,
+      last_human_roleplay_phone: phone || null,
+    }, { onConflict: 'player_id' });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[forceRoleplayActivityForPlayer]', error.message);
+    throw new Error('No se pudo forzar actividad de roleplay.');
+  }
+
+  await insertRoleplayAccessLog([{
+    player_id: normalizedPlayerId,
+    phone: phone || null,
+    action: 'manual_forced_activity',
+    performed_by: actor,
+    details: {
+      group_jid: groupJid,
+      last_roleplay_at: nowIso,
+    },
+  }]);
+
+  return nowIso;
 }
 
 function computeArchiveDueAt(referenceDate = new Date()) {

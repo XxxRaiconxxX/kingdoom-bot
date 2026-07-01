@@ -1,5 +1,12 @@
 import cron from 'node-cron';
-import { supabase, botStateSupabase, processMarketInstallments, archiveExpiredGraceProfiles } from './supabase.js';
+import {
+  supabase,
+  botStateSupabase,
+  processMarketInstallments,
+  archiveExpiredGraceProfiles,
+  processRoleplayAccessEnforcement,
+  getRoleplayLockWindowDays,
+} from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
@@ -11,6 +18,7 @@ const schedulerState = {
   weeklyResetRunning: false,
   notificationQueueRunning: false,
   playerLifecycleArchiveRunning: false,
+  roleplayAccessRunning: false,
 };
 
 async function runScheduledJob(key, label, task) {
@@ -183,6 +191,45 @@ export function startScheduler(client) {
           }
         } catch (err) {
           console.error('[scheduler] Error archivando perfiles salientes:', err.message);
+        }
+      });
+    },
+    TZ
+  );
+
+  cron.schedule(
+    '*/10 * * * *',
+    async () => {
+      await runScheduledJob('roleplayAccessRunning', 'enforcement de roleplay', async () => {
+        try {
+          const result = await processRoleplayAccessEnforcement();
+          const queueInserts = (result.newlyLocked ?? [])
+            .map((entry) => {
+              const phone = normalizePhone(entry.phone ?? '');
+              if (!phone) {
+                return null;
+              }
+
+              return {
+                player_phone: phone,
+                message: `⚠️ *Acceso restringido por inactividad de rol*\nNo roleaste en los ultimos *${getRoleplayLockWindowDays()} dias*.\nPara desbloquear minijuegos, economia y consultas recreativas, vuelve a rolear en el grupo principal del reino.`,
+              };
+            })
+            .filter(Boolean);
+
+          if (queueInserts.length > 0) {
+            const { error: insertError } = await botStateSupabase
+              .from('bot_notifications_queue')
+              .insert(queueInserts);
+
+            if (insertError) {
+              console.error('[scheduler] Error encolando bloqueos de roleplay:', insertError.message);
+            } else {
+              console.log(`[scheduler] ${queueInserts.length} aviso(s) de bloqueo por roleplay encolados.`);
+            }
+          }
+        } catch (err) {
+          console.error('[scheduler] Error evaluando acceso por roleplay:', err.message);
         }
       });
     },

@@ -17,6 +17,9 @@ import {
   getPlayer,
   getPlayersByPhone,
   touchPlayerActivity,
+  markRoleplayActivityForPhone,
+  getPlayerRoleplayAccess,
+  getRoleplayLockWindowDays,
   updateGold,
   getRestrictedGroupCommandViolationsForDay,
   recordRestrictedGroupCommandViolation,
@@ -59,7 +62,31 @@ let realtimeStarted = false;
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
+const ROLEPLAY_ACTIVITY_GROUP_ID = '120363024420812768@g.us';
+const ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS = Math.max(
+  60 * 1000,
+  Number.parseInt(process.env.ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS ?? '900000', 10) || 900000
+);
+const ROLEPLAY_BLOCKED_COMMANDS = new Set([
+  'dados',
+  'cofre',
+  'trampa',
+  '21',
+  'oraculo',
+  'mercado',
+  'item',
+  'subasta',
+  'subastas',
+  'pujar',
+  'puja',
+  'retirarse',
+  'oro',
+  'gold',
+  'ricos',
+  'fortunas',
+]);
 const restrictedGroupLocks = new Map();
+const roleplayActivityCache = new Map();
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -170,6 +197,67 @@ function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
   return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+}
+
+function isLikelyLowEffortRoleplayText(value) {
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (!normalized) {
+    return true;
+  }
+
+  const trivialReplies = new Set([
+    'ok',
+    'oka',
+    'xd',
+    'xD',
+    'si',
+    'sí',
+    'no',
+    'dale',
+    'jaja',
+    'ajaj',
+    'jsjs',
+    'lol',
+    'uh',
+    'ah',
+    'hey',
+  ]);
+
+  if (trivialReplies.has(normalized)) {
+    return true;
+  }
+
+  const alphaNumeric = normalized.replace(/[^a-z0-9\s]/g, ' ').trim();
+  const words = alphaNumeric.split(/\s+/).filter(Boolean);
+  const compactLength = alphaNumeric.replace(/\s+/g, '').length;
+
+  if (compactLength < 12 && words.length < 3) {
+    return true;
+  }
+
+  return false;
+}
+
+function isEligibleRoleplayActivityMessage(msg, text) {
+  if (msg.from !== ROLEPLAY_ACTIVITY_GROUP_ID) return false;
+  if (!text) return false;
+  if (text.startsWith('!')) return false;
+  if (msg.hasMedia) return false;
+  if (isLikelyLowEffortRoleplayText(text)) return false;
+  return true;
+}
+
+function buildRoleplayLockedReply(commandName) {
+  return [
+    `⚠️ Tu acceso a *!${commandName}* esta bloqueado por no haber roleado en los ultimos *${getRoleplayLockWindowDays()} dias*.`,
+    'Vuelve a rolear en el grupo principal del reino para desbloquear minijuegos, economia y consultas recreativas.',
+    `Grupo valido: *${ROLEPLAY_ACTIVITY_GROUP_ID}*`,
+  ].join('\n');
 }
 
 function formatInitializeError(error) {
@@ -498,6 +586,38 @@ client.on('message', async (msg) => {
     }
   }
 
+  if (isEligibleRoleplayActivityMessage(msg, text)) {
+    const roleplayPhone = normalizePhone(sender);
+    const lastTouchedAt = roleplayActivityCache.get(roleplayPhone) ?? 0;
+    const nowMs = Date.now();
+
+    if (!lastTouchedAt || nowMs - lastTouchedAt >= ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS) {
+      try {
+        const roleplayResult = await markRoleplayActivityForPhone(sender, {
+          actor: 'bot:roleplay_group_message',
+          groupJid: msg.from,
+        });
+        roleplayActivityCache.set(roleplayPhone, nowMs);
+
+        for (const unlockedPlayer of roleplayResult.unlockedPlayers ?? []) {
+          const unlockedPhone = normalizePhone(unlockedPlayer.phone ?? roleplayPhone);
+          if (!unlockedPhone) continue;
+
+          try {
+            await client.sendMessage(
+              formatJid(unlockedPhone),
+              `✅ *Acceso restaurado*\nHas vuelto a rolear en el grupo principal del reino.\nLos minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.`
+            );
+          } catch (unlockNotifyError) {
+            console.error('[roleplay unlock notify]', unlockNotifyError);
+          }
+        }
+      } catch (roleplayError) {
+        console.error('[roleplay activity]', roleplayError?.message ?? roleplayError);
+      }
+    }
+  }
+
   // 0. GM Mission Tracker (Roleplay messages usually don't have ! prefix)
   const trackerResult = processTrackerMessage(text, sender);
   if (trackerResult?.missionClosed) {
@@ -628,7 +748,7 @@ client.on('message', async (msg) => {
   };
 
   const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart', 'misioneson', 'misionoff'];
-  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo', 'fichasrecicladas', 'asignarficha'];
+  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo', 'fichasrecicladas', 'asignarficha', 'rolestado', 'rolbloquear', 'roldesbloquear', 'rolgracia', 'rolforzaractividad'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
   const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
@@ -665,6 +785,18 @@ client.on('message', async (msg) => {
 
     if (forgeReply) {
       reply = forgeReply;
+    } else if (hasPrefix && ROLEPLAY_BLOCKED_COMMANDS.has(command) && !isPrivileged) {
+      const activePlayer = await getPlayer(sender);
+      const roleplayAccess = activePlayer?.id
+        ? await getPlayerRoleplayAccess(activePlayer.id).catch((error) => {
+            console.error('[roleplay gate]', error?.message ?? error);
+            return null;
+          })
+        : null;
+
+      if (roleplayAccess?.locked_at && !roleplayAccess?.is_exempt) {
+        reply = buildRoleplayLockedReply(command);
+      }
     } else if (isRestrictedMainGroupMinigame && !isPrivileged) {
       const lockKey = `${RESTRICTED_MINIGAME_SCOPE_KEY}:${normalizePhone(sender)}`;
       reply = await runRestrictedGroupSerial(lockKey, async () => {

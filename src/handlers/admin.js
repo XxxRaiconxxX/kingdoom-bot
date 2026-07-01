@@ -12,6 +12,12 @@ import {
   findRecycledCharacterSheet,
   findPlayerByIdentifier,
   assignRecycledCharacterSheetToPlayer,
+  getPlayerRoleplayAccess,
+  manuallyLockRoleplayAccess,
+  manuallyUnlockRoleplayAccess,
+  extendRoleplayGraceForPlayer,
+  forceRoleplayActivityForPlayer,
+  getRoleplayLockWindowDays,
 } from '../supabase.js';
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
@@ -275,6 +281,11 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
           heraldCommand('!fichasrecicladas', 'Lista fichas archivadas disponibles.'),
           heraldCommand('!asignarficha <ficha> @jugador', 'Entrega una ficha reciclada a un perfil.'),
+          heraldCommand('!rolestado <jugador>', 'Consulta estado de roleo y bloqueo.'),
+          heraldCommand('!rolbloquear <jugador>', 'Bloquea manualmente por roleo.'),
+          heraldCommand('!roldesbloquear <jugador>', 'Desbloquea con gracia manual.'),
+          heraldCommand('!rolgracia <jugador> <dias>', 'Extiende gracia de roleo.'),
+          heraldCommand('!rolforzaractividad <jugador>', 'Marca roleo manual y desbloquea.'),
         ]),
       ], { icon: '👑' });
     } else {
@@ -304,6 +315,11 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!faltasgrupo @jugador', 'Consulta faltas y multas de hoy en el grupo principal.'),
           heraldCommand('!fichasrecicladas', 'Lista fichas archivadas disponibles.'),
           heraldCommand('!asignarficha <ficha> @jugador', 'Entrega una ficha reciclada a un perfil.'),
+          heraldCommand('!rolestado <jugador>', 'Consulta estado de roleo y bloqueo.'),
+          heraldCommand('!rolbloquear <jugador>', 'Bloquea manualmente por roleo.'),
+          heraldCommand('!roldesbloquear <jugador>', 'Desbloquea con gracia manual.'),
+          heraldCommand('!rolgracia <jugador> <dias>', 'Extiende gracia de roleo.'),
+          heraldCommand('!rolforzaractividad <jugador>', 'Marca roleo manual y desbloquea.'),
         ]),
       ], { icon: '🛡️' });
     }
@@ -451,6 +467,124 @@ export async function handleAdminCommand(msg, client) {
       heraldSection('Detalle'),
       lines,
     ], { icon: '📘' });
+  }
+
+  if (cmd === '!rolestado' || cmd === '!rolbloquear' || cmd === '!roldesbloquear' || cmd === '!rolgracia' || cmd === '!rolforzaractividad') {
+    if (!isPrivileged) {
+      return 'âŒ Solo el staff o los administradores pueden operar el acceso por roleo.';
+    }
+
+    const identifier = parts
+      .slice(1, cmd === '!rolgracia' ? -1 : undefined)
+      .join(' ')
+      .trim();
+
+    if (!identifier) {
+      return `âŒ Uso: *${cmd} <jugador>*${cmd === '!rolgracia' ? ' <dias>' : ''}`;
+    }
+
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok || !resolved.player) {
+      return describeResolutionError(identifier, resolved);
+    }
+
+    if (cmd === '!rolestado') {
+      const access = await getPlayerRoleplayAccess(resolved.player.id);
+      const formatTimestamp = (value, fallback) =>
+        value
+          ? new Date(value).toLocaleString('es-PY', { timeZone: 'America/Asuncion' })
+          : fallback;
+
+      return heraldCard('Estado de roleo', [
+        heraldStat('Aventurero', `*${resolved.player.username}*`),
+        heraldStat('Ultimo roleo', formatTimestamp(access?.last_roleplay_at, 'Sin roleo registrado')),
+        heraldStat('Bloqueado', access?.locked_at ? `Si (${formatTimestamp(access.locked_at, 'si')})` : 'No'),
+        heraldStat('Motivo', access?.lock_reason || 'Ninguno'),
+        heraldStat('Gracia', formatTimestamp(access?.grace_until, 'Sin gracia activa')),
+        heraldStat('Exento', access?.is_exempt ? `Si (${access?.exempt_reason || 'manual'})` : 'No'),
+        access?.last_roleplay_group_jid
+          ? `Grupo de roleo mas reciente: *${access.last_roleplay_group_jid}*`
+          : 'Sin grupo de roleo registrado aun.',
+        `Bloqueo automatico vigente tras *${getRoleplayLockWindowDays()} dias* sin roleo.`,
+      ], { icon: '🗣️' });
+    }
+
+    if (cmd === '!rolbloquear') {
+      await manuallyLockRoleplayAccess(resolved.player.id, {
+        actor: `${actorName}:${actorPhone}`,
+        phone: resolved.player.phone || resolved.phone,
+        reason: 'manual_roleplay_lock',
+      });
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'roleplay_lock',
+        target: resolved.player.username,
+        detail: 'Bloqueo manual de acceso por roleo.',
+        chatId: msg.from,
+      });
+
+      return `⛔ *${resolved.player.username}* quedo bloqueado manualmente por roleo.`;
+    }
+
+    if (cmd === '!roldesbloquear') {
+      await manuallyUnlockRoleplayAccess(resolved.player.id, {
+        actor: `${actorName}:${actorPhone}`,
+        phone: resolved.player.phone || resolved.phone,
+        graceDays: getRoleplayLockWindowDays(),
+      });
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'roleplay_unlock',
+        target: resolved.player.username,
+        detail: `Desbloqueo manual con gracia de ${getRoleplayLockWindowDays()} dias.`,
+        chatId: msg.from,
+      });
+
+      return `✅ *${resolved.player.username}* fue desbloqueado manualmente y recibio una gracia de *${getRoleplayLockWindowDays()} dias*.`;
+    }
+
+    if (cmd === '!rolgracia') {
+      const requestedDays = Math.max(
+        1,
+        Number.parseInt(parts[parts.length - 1], 10) || getRoleplayLockWindowDays()
+      );
+      const graceUntil = await extendRoleplayGraceForPlayer(resolved.player.id, requestedDays, {
+        actor: `${actorName}:${actorPhone}`,
+        phone: resolved.player.phone || resolved.phone,
+      });
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'roleplay_grace',
+        target: resolved.player.username,
+        detail: `Gracia manual extendida por ${requestedDays} dias hasta ${graceUntil}.`,
+        chatId: msg.from,
+      });
+
+      return `🕊️ *${resolved.player.username}* recibio una gracia manual de *${requestedDays} dias*.\nVence: *${new Date(graceUntil).toLocaleString('es-PY', { timeZone: 'America/Asuncion' })}*`;
+    }
+
+    await forceRoleplayActivityForPlayer(resolved.player.id, {
+      actor: `${actorName}:${actorPhone}`,
+      phone: resolved.player.phone || resolved.phone,
+      groupJid: msg.from,
+    });
+
+    recordAdminAction({
+      actorPhone,
+      actorName,
+      action: 'roleplay_force_activity',
+      target: resolved.player.username,
+      detail: 'Se marco actividad de roleo manual y se limpio el bloqueo.',
+      chatId: msg.from,
+    });
+
+    return `✅ Se marco actividad de roleo manual para *${resolved.player.username}* y el acceso quedo restaurado.`;
   }
 
   if (cmd === '!misioncompleta') {

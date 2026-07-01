@@ -4,13 +4,23 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 01/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `src/supabase.js`, `src/handlers/admin.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Sistema operativo de roleo activo para bloquear economia/minijuegos cuando un jugador deja de rolear en el grupo oficial.
+*   **Cambios Clave:**
+    *   **[Roleo - Deteccion]:** `src/index.js` ahora detecta mensajes humanos validos en `120363024420812768@g.us`, filtra comandos y mensajes de bajo esfuerzo, y consolida escrituras para no tocar BD por cada linea.
+    *   **[Roleo - Estado compartido]:** `src/supabase.js` suma helpers para sembrar `player_roleplay_access`, guardar actividad por telefono, bloquear/desbloquear por roleo, manejar gracia inicial y exenciones, y forzar overrides manuales.
+    *   **[Bot - Enforcement]:** `src/scheduler.js` revisa cada 10 minutos quien ya vencio los 3 dias sin roleo, marca bloqueos y encola avisos DM al jugador.
+    *   **[Bot - Gate]:** comandos recreativos/economicos (`!dados`, `!cofre`, `!trampa`, `!21`, `!oraculo`, mercado/subastas y transferencias de oro) ahora responden con bloqueo si el perfil activo esta locked por roleo.
+    *   **[Staff/Admin]:** se agregaron overrides `!rolestado`, `!rolbloquear`, `!roldesbloquear`, `!rolgracia` y `!rolforzaractividad` en `src/handlers/admin.js`.
+*   **Notas/Advertencias:** Esta capa depende de ejecutar primero `supabase_roleplay_access.sql` en el proyecto principal de Supabase. Validacion: `node --check src/index.js`, `node --check src/scheduler.js`, `node --check src/supabase.js` y `node --check src/handlers/admin.js` pasaron correctamente.
+
 ### [Fecha: 30/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.agents/agents/KingdoomFB/agent.json`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Adición de configuración persistente para el agente KingdoomFB enfocado en marketing.
+*   **Resumen de Tareas:** AdiciÃ³n de configuraciÃ³n persistente para el agente KingdoomFB enfocado en marketing.
 *   **Cambios Clave:**
-    *   **[KingdoomFB]:** Se agregó el subagente `.agents/agents/KingdoomFB/agent.json` con su respectiva definición de sistema orientada a la redacción y diseño de copies promocionales sin generación de imágenes.
+    *   **[KingdoomFB]:** Se agregÃ³ el subagente `.agents/agents/KingdoomFB/agent.json` con su respectiva definiciÃ³n de sistema orientada a la redacciÃ³n y diseÃ±o de copies promocionales sin generaciÃ³n de imÃ¡genes.
 *   **Notas/Advertencias:** Ninguna.
-
 ### [Fecha: 29/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `README.md`, `docs/architecture/SUPABASE_BOT_SPLIT_DIAGNOSTIC.md`, `supabase/`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Reorganizacion estructural del bloque SQL y del diagnostico de arquitectura del bot.
@@ -70,13 +80,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 24/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/gmTracker.js`, `src/handlers/admin.js`, `src/index.js`, `src/supabase.js`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Paralelización de misiones para múltiples grupos/jugadores independientes y resolución de fallos en el tracker y normalización de números de WhatsApp.
+*   **Resumen de Tareas:** ParalelizaciÃ³n de misiones para mÃºltiples grupos/jugadores independientes y resoluciÃ³n de fallos en el tracker y normalizaciÃ³n de nÃºmeros de WhatsApp.
 *   **Cambios Clave:**
-    *   **[Paralelización de Misiones]:** Se modificó la tabla de estado `bot_active_missions` agregando `instance_id` (UUID) como clave primaria en lugar de `short_id`, permitiendo múltiples instancias de la misma misión simultáneamente.
-    *   **[Normalización de WhatsApp JIDs]:** Se integró `normalizePhone` para normalizar todos los participantes y comprobar IDs de forma uniforme, resolviendo fallos en dispositivos vinculados (linked devices).
-    *   **[Corrección de Menciones]:** Se ajustaron los comandos `!misionesON` y `!misionoff` para formatear los JIDs correctamente para las menciones usando `formatJid()`.
-    *   **[Comandos Administrativos]:** Se actualizó el menú y soporte para `!misionstart <ID> <@jugadores>`, `!misioneson`, y `!misionoff <ID> [@jugador]`.
-*   **Notas/Advertencias:** Requiere aplicar la migración `supabase_bot_state_migration.sql` en Supabase para cambiar la clave primaria y estructura de la tabla `bot_active_missions`.
+    *   **[ParalelizaciÃ³n de Misiones]:** Se modificÃ³ la tabla de estado `bot_active_missions` agregando `instance_id` (UUID) como clave primaria en lugar de `short_id`, permitiendo mÃºltiples instancias de la misma misiÃ³n simultÃ¡neamente.
+    *   **[NormalizaciÃ³n de WhatsApp JIDs]:** Se integrÃ³ `normalizePhone` para normalizar todos los participantes y comprobar IDs de forma uniforme, resolviendo fallos en dispositivos vinculados (linked devices).
+    *   **[CorrecciÃ³n de Menciones]:** Se ajustaron los comandos `!misionesON` y `!misionoff` para formatear los JIDs correctamente para las menciones usando `formatJid()`.
+    *   **[Comandos Administrativos]:** Se actualizÃ³ el menÃº y soporte para `!misionstart <ID> <@jugadores>`, `!misioneson`, y `!misionoff <ID> [@jugador]`.
+*   **Notas/Advertencias:** Requiere aplicar la migraciÃ³n `supabase_bot_state_migration.sql` en Supabase para cambiar la clave primaria y estructura de la tabla `bot_active_missions`.
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
@@ -141,7 +151,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Bot - Mensaje de resultado]:** La carta del minijuego ahora describe correctamente la regla del modo `x4` como `ganas con suma de 7 o mas`.
     *   **[Ayuda - Heraldo]:** El menu `!ayuda` se actualizo para no seguir anunciando una condicion incorrecta.
     *   **[Bot - Oraculo resiliente]:** `askKingdoomAI(...)` ahora aplica cooldown temporal por clave/modelo cuando detecta `API key invalid`, `403`, `429` o `503`, evitando reintentos ciegos y respuestas eternamente lentas en cada consulta.
-    *   **[Bot - Mensaje util de falla]:** `handleOraculo(...)` ya no responde solo con “guarda silencio”; ahora devuelve una razon util para cuota agotada, permisos revocados o saturacion del servicio.
+    *   **[Bot - Mensaje util de falla]:** `handleOraculo(...)` ya no responde solo con â€œguarda silencioâ€; ahora devuelve una razon util para cuota agotada, permisos revocados o saturacion del servicio.
 *   **Notas/Advertencias:** El ajuste de `!oraculo` mejora la degradacion cuando Gemini falla, pero no reemplaza la necesidad de renovar o sanear las claves invalidas/cuoteadas del entorno.
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
@@ -176,12 +186,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 19/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Verificación del split parcial y optimización de lecturas (Fase 0) mediante caché para el grimorio/oráculo.
+*   **Resumen de Tareas:** VerificaciÃ³n del split parcial y optimizaciÃ³n de lecturas (Fase 0) mediante cachÃ© para el grimorio/orÃ¡culo.
 *   **Cambios Clave:**
-    *   **[Optimización - Caché]:** Se implementó un caché local en memoria de 15 minutos (`KNOWLEDGE_CACHE_TTL_MS`) para `getKnowledgeDocuments()` en `src/supabase.js`. Esto reduce drásticamente las lecturas repetidas a la tabla `knowledge_documents` cuando los usuarios consultan el `!oraculo` constantemente.
-    *   **[Optimización - Invalidación]:** Se añadió limpieza automática de caché (`knowledgeCache = null`) dentro de `upsertKnowledgeDocument` para asegurar que las actualizaciones del staff impacten inmediatamente.
-    *   **[Verificación - Split Parcial]:** Se validó exhaustivamente el código del bloque operativo (`cofre`, `trampa`, `dados`, `21`, `faltasgrupo`, `bot_active_missions`, `heraldo_daily`). Todos los accesos ya operan correctamente mediante `botStateSupabase` sobre la base dedicada, sin fugas al cliente principal. No se requiere migrar tablas de tesoros por restricciones de atomicidad.
-*   **Notas/Advertencias:** El código está 100% listo para el split. El próximo paso operativo debe ser inyectar las variables de entorno `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY` en producción y monitorear.
+    *   **[OptimizaciÃ³n - CachÃ©]:** Se implementÃ³ un cachÃ© local en memoria de 15 minutos (`KNOWLEDGE_CACHE_TTL_MS`) para `getKnowledgeDocuments()` en `src/supabase.js`. Esto reduce drÃ¡sticamente las lecturas repetidas a la tabla `knowledge_documents` cuando los usuarios consultan el `!oraculo` constantemente.
+    *   **[OptimizaciÃ³n - InvalidaciÃ³n]:** Se aÃ±adiÃ³ limpieza automÃ¡tica de cachÃ© (`knowledgeCache = null`) dentro de `upsertKnowledgeDocument` para asegurar que las actualizaciones del staff impacten inmediatamente.
+    *   **[VerificaciÃ³n - Split Parcial]:** Se validÃ³ exhaustivamente el cÃ³digo del bloque operativo (`cofre`, `trampa`, `dados`, `21`, `faltasgrupo`, `bot_active_missions`, `heraldo_daily`). Todos los accesos ya operan correctamente mediante `botStateSupabase` sobre la base dedicada, sin fugas al cliente principal. No se requiere migrar tablas de tesoros por restricciones de atomicidad.
+*   **Notas/Advertencias:** El cÃ³digo estÃ¡ 100% listo para el split. El prÃ³ximo paso operativo debe ser inyectar las variables de entorno `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY` en producciÃ³n y monitorear.
 
 
 ### [Fecha: 19/06/2026] - [Autor: Codex]
@@ -216,21 +226,21 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/scheduler.js`, `src/handlers/admin.js`, `src/handlers/welcome.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Corrección de envíos de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
+*   **Resumen de Tareas:** CorrecciÃ³n de envÃ­os de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
 *   **Cambios Clave:**
-    *   **[Core - JID Helper]:** Se agregó una función heurística `formatJid` en `adminStore.js` que evalúa la longitud del número de teléfono. Si tiene >= 15 dígitos, asume que es un Local ID encriptado de Comunidad y le añade el sufijo `@lid`. De lo contrario, usa `@c.us`.
-    *   **[Core - Notificaciones]:** Se implementó `formatJid` en `sendToAll` dentro de `scheduler.js`, permitiendo que el mensaje diario/semanal llegue a los IDs enmascarados que fallaban silenciosamente.
-    *   **[Core - Admin]:** Se aplicó el formato dinámico a los comandos `!registrar` y `!kick`.
-    *   **[Core - Welcome]:** Se adaptó `normalizeWhatsappId` en `welcome.js` para retener explícitamente el sufijo `@lid` si un jugador ya entra con ese sufijo desde un grupo de comunidad.
-*   **Notas/Advertencias:** La regla de >= 15 dígitos funciona perfectamente para la región actual del juego (donde los números reales tienen un máximo de 12 a 13 dígitos). Si en el futuro entra un país con una longitud de número E.164 válida de 15 dígitos, la heurística deberá refinarse.
+    *   **[Core - JID Helper]:** Se agregÃ³ una funciÃ³n heurÃ­stica `formatJid` en `adminStore.js` que evalÃºa la longitud del nÃºmero de telÃ©fono. Si tiene >= 15 dÃ­gitos, asume que es un Local ID encriptado de Comunidad y le aÃ±ade el sufijo `@lid`. De lo contrario, usa `@c.us`.
+    *   **[Core - Notificaciones]:** Se implementÃ³ `formatJid` en `sendToAll` dentro de `scheduler.js`, permitiendo que el mensaje diario/semanal llegue a los IDs enmascarados que fallaban silenciosamente.
+    *   **[Core - Admin]:** Se aplicÃ³ el formato dinÃ¡mico a los comandos `!registrar` y `!kick`.
+    *   **[Core - Welcome]:** Se adaptÃ³ `normalizeWhatsappId` en `welcome.js` para retener explÃ­citamente el sufijo `@lid` si un jugador ya entra con ese sufijo desde un grupo de comunidad.
+*   **Notas/Advertencias:** La regla de >= 15 dÃ­gitos funciona perfectamente para la regiÃ³n actual del juego (donde los nÃºmeros reales tienen un mÃ¡ximo de 12 a 13 dÃ­gitos). Si en el futuro entra un paÃ­s con una longitud de nÃºmero E.164 vÃ¡lida de 15 dÃ­gitos, la heurÃ­stica deberÃ¡ refinarse.
 
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/games.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Implementación de soporte para multiplicadores (`xN`) en los comandos `!cofre` y `!trampa`.
+*   **Resumen de Tareas:** ImplementaciÃ³n de soporte para multiplicadores (`xN`) en los comandos `!cofre` y `!trampa`.
 *   **Cambios Clave:**
-    *   **[Bot - Base de datos]:** Se actualizó `incrementBotUsageCount`, `incrementCofreUsage` y `incrementTrampaUsage` para admitir operaciones en bloque mediante un nuevo parámetro `amount`.
-    *   **[Bot - Juegos]:** `handleCofre` y `handleTrampa` ahora extraen un multiplicador con formato `x[N]`. Se agrupan las tiradas en un bucle interno, respetando los límites de usos diarios, consolidando la respuesta enviada por WhatsApp y sumando o descontando el oro de forma atómica en un único paso.
-    *   **[Bot - Validación Financiera]:** Se agregó un freno preventivo en `!trampa` que deniega el comando completo si el jugador no posee suficiente oro para costear el total combinado (`apuesta * N`).
+    *   **[Bot - Base de datos]:** Se actualizÃ³ `incrementBotUsageCount`, `incrementCofreUsage` y `incrementTrampaUsage` para admitir operaciones en bloque mediante un nuevo parÃ¡metro `amount`.
+    *   **[Bot - Juegos]:** `handleCofre` y `handleTrampa` ahora extraen un multiplicador con formato `x[N]`. Se agrupan las tiradas en un bucle interno, respetando los lÃ­mites de usos diarios, consolidando la respuesta enviada por WhatsApp y sumando o descontando el oro de forma atÃ³mica en un Ãºnico paso.
+    *   **[Bot - ValidaciÃ³n Financiera]:** Se agregÃ³ un freno preventivo en `!trampa` que deniega el comando completo si el jugador no posee suficiente oro para costear el total combinado (`apuesta * N`).
 *   **Notas/Advertencias:** Ninguna detectada.
 
 ### [Fecha: 16/06/2026] - [Autor: Codex]
@@ -269,9 +279,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 *   **Resumen de Tareas:** Ajuste operativo de minijuegos del bot y nueva variante `x4` para `!dados`.
 *   **Cambios Clave:**
     *   **`!dados x4`:** El comando ahora acepta `!dados <monto> x4` o `!dados x4 <monto>`. En este modo el jugador solo gana si la suma de los dados da exactamente `7`, y el premio neto sube a `x4`.
-    *   **Compensación Simple:** `!dados`, `!cofre` y `!trampa` ahora comparten un helper que intenta revertir el cambio de oro si el incremento del contador diario falla después del cobro/pago.
-    *   **Saldo Reportado:** Tras resolver la jugada, el bot relee el perfil y muestra el oro actualizado real, en vez de depender siempre del cálculo local previo al await.
-*   **Notas/Advertencias:** El blindaje del bot mejora la consistencia, pero sigue siendo recomendable llevar estos minijuegos a una RPC transaccional única si se quiere eliminar por completo cualquier ventana entre oro y uso diario.
+    *   **CompensaciÃ³n Simple:** `!dados`, `!cofre` y `!trampa` ahora comparten un helper que intenta revertir el cambio de oro si el incremento del contador diario falla despuÃ©s del cobro/pago.
+    *   **Saldo Reportado:** Tras resolver la jugada, el bot relee el perfil y muestra el oro actualizado real, en vez de depender siempre del cÃ¡lculo local previo al await.
+*   **Notas/Advertencias:** El blindaje del bot mejora la consistencia, pero sigue siendo recomendable llevar estos minijuegos a una RPC transaccional Ãºnica si se quiere eliminar por completo cualquier ventana entre oro y uso diario.
 
 ### [Fecha: 19/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** src/handlers/games.js, src/supabase.js, AI_CHANGELOG.md
