@@ -29,11 +29,11 @@ const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
 );
 const ROLEPLAY_LOCK_AFTER_DAYS = Math.max(
   1,
-  Number.parseInt(process.env.ROLEPLAY_LOCK_AFTER_DAYS ?? '3', 10) || 3
+  Number.parseInt(process.env.ROLEPLAY_LOCK_AFTER_DAYS ?? '9', 10) || 9
 );
 const ROLEPLAY_INITIAL_GRACE_DAYS = Math.max(
   1,
-  Number.parseInt(process.env.ROLEPLAY_INITIAL_GRACE_DAYS ?? '3', 10) || 3
+  Number.parseInt(process.env.ROLEPLAY_INITIAL_GRACE_DAYS ?? '9', 10) || 9
 );
 const ROLEPLAY_SELECT_COLUMNS = 'player_id, last_roleplay_at, grace_until, locked_at, lock_reason, last_roleplay_group_jid, last_human_roleplay_phone, is_exempt, exempt_reason, created_at, updated_at';
 

@@ -23,6 +23,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Staff/Admin]:** se agregaron overrides `!rolestado`, `!rolbloquear`, `!roldesbloquear`, `!rolgracia` y `!rolforzaractividad` en `src/handlers/admin.js`.
 *   **Notas/Advertencias:** Esta capa depende de ejecutar primero `supabase_roleplay_access.sql` en el proyecto principal de Supabase. Validacion: `node --check src/index.js`, `node --check src/scheduler.js`, `node --check src/supabase.js` y `node --check src/handlers/admin.js` pasaron correctamente.
 
+### [Fecha: 02/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Cambio de ventana de roleo de 3 a 9 dias.
+*   **Cambios Clave:**
+    *   **[Bot - Defaults]:** `ROLEPLAY_LOCK_AFTER_DAYS` y `ROLEPLAY_INITIAL_GRACE_DAYS` ahora usan `9` como valor por defecto si el entorno no define overrides.
+    *   **[Consistencia]:** los mensajes dinamicos del bot y el scheduler pasan automaticamente a reflejar la nueva ventana al leer `getRoleplayLockWindowDays()`.
+*   **Notas/Advertencias:** Para que la gracia inicial en Supabase tambien quede en 9 dias, hace falta reejecutar el SQL `supabase_roleplay_access.sql` del repo web.
+
 ### [Fecha: 30/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.agents/agents/KingdoomFB/agent.json`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** AdiciÃ³n de configuraciÃ³n persistente para el agente KingdoomFB enfocado en marketing.
