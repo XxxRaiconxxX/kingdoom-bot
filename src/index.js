@@ -19,6 +19,7 @@ import {
   touchPlayerActivity,
   markRoleplayActivityForPhone,
   getPlayerRoleplayAccess,
+  isRoleplayAccessCurrentlyLocked,
   getRoleplayLockWindowDays,
   updateGold,
   getRestrictedGroupCommandViolationsForDay,
@@ -795,7 +796,7 @@ client.on('message', async (msg) => {
           })
         : null;
 
-      if (roleplayAccess?.locked_at && !roleplayAccess?.is_exempt) {
+      if (isRoleplayAccessCurrentlyLocked(roleplayAccess)) {
         reply = buildRoleplayLockedReply(command);
       }
     } else if (isRestrictedMainGroupMinigame && !isPrivileged) {

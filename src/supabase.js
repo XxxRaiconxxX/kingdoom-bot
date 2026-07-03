@@ -580,6 +580,24 @@ function shouldRoleplayPlayerBeLocked(access, now = new Date()) {
   return nowMs - lastRoleplayMs >= ROLEPLAY_LOCK_AFTER_DAYS * 24 * 60 * 60 * 1000;
 }
 
+export function isRoleplayAccessCurrentlyLocked(access, now = new Date()) {
+  if (!access || access.is_exempt) {
+    return false;
+  }
+
+  const nowMs = now.getTime();
+  const graceUntilMs = access.grace_until ? new Date(access.grace_until).getTime() : NaN;
+  if (Number.isFinite(graceUntilMs) && nowMs <= graceUntilMs) {
+    return false;
+  }
+
+  if (access.locked_at) {
+    return true;
+  }
+
+  return shouldRoleplayPlayerBeLocked(access, now);
+}
+
 export async function processRoleplayAccessEnforcement() {
   await ensureRoleplayAccessSeeded();
 
