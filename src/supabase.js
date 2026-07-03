@@ -29,11 +29,11 @@ const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
 );
 const ROLEPLAY_LOCK_AFTER_DAYS = Math.max(
   1,
-  Number.parseInt(process.env.ROLEPLAY_LOCK_AFTER_DAYS ?? '9', 10) || 9
+  Number.parseInt(process.env.ROLEPLAY_LOCK_AFTER_DAYS ?? '7', 10) || 7
 );
 const ROLEPLAY_INITIAL_GRACE_DAYS = Math.max(
   1,
-  Number.parseInt(process.env.ROLEPLAY_INITIAL_GRACE_DAYS ?? '9', 10) || 9
+  Number.parseInt(process.env.ROLEPLAY_INITIAL_GRACE_DAYS ?? '7', 10) || 7
 );
 const ROLEPLAY_SELECT_COLUMNS = 'player_id, last_roleplay_at, grace_until, locked_at, lock_reason, last_roleplay_group_jid, last_human_roleplay_phone, is_exempt, exempt_reason, created_at, updated_at';
 
@@ -600,6 +600,7 @@ export async function processRoleplayAccessEnforcement() {
   const updates = [];
   const logs = [];
   const newlyLocked = [];
+  const newlyUnlocked = [];
 
   for (const row of data ?? []) {
     const player = row.players;
@@ -641,6 +642,29 @@ export async function processRoleplayAccessEnforcement() {
         username: player.username,
         phone: player.phone ?? null,
       });
+    } else if (!shouldLock && row.locked_at) {
+      updates.push({
+        player_id: row.player_id,
+        locked_at: null,
+        lock_reason: null,
+      });
+      logs.push({
+        player_id: row.player_id,
+        phone: player.phone ?? null,
+        action: 'auto_unlocked',
+        performed_by: 'bot:scheduler',
+        details: {
+          inactivity_days: ROLEPLAY_LOCK_AFTER_DAYS,
+          last_roleplay_at: row.last_roleplay_at,
+          grace_until: row.grace_until,
+          reason: 'recovered_within_window'
+        },
+      });
+      newlyUnlocked.push({
+        playerId: row.player_id,
+        username: player.username,
+        phone: player.phone ?? null,
+      });
     }
   }
 
@@ -672,6 +696,7 @@ export async function processRoleplayAccessEnforcement() {
 
   return {
     newlyLocked,
+    newlyUnlocked,
   };
 }
 

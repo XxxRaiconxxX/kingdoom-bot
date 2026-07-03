@@ -5,11 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 03/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/adminStore.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Ajuste en el formateador de JIDs del bot para soportar identificadores LID de 14 dígitos.
+*   **Archivos Modificados:** `src/adminStore.js`, `src/supabase.js`, `src/scheduler.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Soporte para LIDs de 14 dígitos en JIDs, cambio de la ventana por defecto a 7 días y adición de lógica de auto-desbloqueo en el scheduler.
 *   **Cambios Clave:**
     *   **[LID - Soporte]:** Se cambió el umbral de longitud en `formatJid()` de 15 a 14. Esto permite que los identificadores de Line Identity (LIDs) de 14 dígitos se formateen correctamente con `@lid` en vez de `@c.us`, evitando el error `No LID for user` en la cola del scheduler.
-*   **Notas/Advertencias:** Validado con `node --check src/adminStore.js`.
+    *   **[Días de Roleo - Defaults]:** Se corrigió la ventana por defecto a `7` días (en lugar de `9` días en `src/supabase.js`).
+    *   **[Lógica - Auto-desbloqueo]:** Se añadió una rama en `processRoleplayAccessEnforcement()` para que el scheduler limpie automáticamente el bloqueo (`locked_at = null`) de los jugadores que se encuentren dentro del umbral de días permitido tras una reevaluación de inactividad de rol.
+    *   **[Notificaciones]:** El scheduler ahora encola avisos automáticos de acceso restaurado (`newlyUnlocked`) cuando un jugador es desbloqueado por la reevaluación del scheduler.
+    *   **[Configuración]:** `ROLEPLAY_ACTIVITY_GROUP_ID` en `src/index.js` ahora es configurable a través de variables de entorno, con fallback al JID canónico.
+*   **Notas/Advertencias:** Validado con `node --check` para todos los archivos modificados.
 
 ### [Fecha: 01/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`

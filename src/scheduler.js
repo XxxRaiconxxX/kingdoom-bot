@@ -203,19 +203,27 @@ export function startScheduler(client) {
       await runScheduledJob('roleplayAccessRunning', 'enforcement de roleplay', async () => {
         try {
           const result = await processRoleplayAccessEnforcement();
-          const queueInserts = (result.newlyLocked ?? [])
-            .map((entry) => {
-              const phone = normalizePhone(entry.phone ?? '');
-              if (!phone) {
-                return null;
-              }
+          const queueInserts = [];
 
-              return {
+          (result.newlyLocked ?? []).forEach((entry) => {
+            const phone = normalizePhone(entry.phone ?? '');
+            if (phone) {
+              queueInserts.push({
                 player_phone: phone,
                 message: `⚠️ *Acceso restringido por inactividad de rol*\nNo roleaste en los ultimos *${getRoleplayLockWindowDays()} dias*.\nPara desbloquear minijuegos, economia y consultas recreativas, vuelve a rolear en el grupo principal del reino.`,
-              };
-            })
-            .filter(Boolean);
+              });
+            }
+          });
+
+          (result.newlyUnlocked ?? []).forEach((entry) => {
+            const phone = normalizePhone(entry.phone ?? '');
+            if (phone) {
+              queueInserts.push({
+                player_phone: phone,
+                message: `✅ *Acceso restaurado por inactividad de rol*\nSe ha detectado tu actividad dentro del umbral permitido de *${getRoleplayLockWindowDays()} dias* (o gracia activa).\nLos minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.`,
+              });
+            }
+          });
 
           if (queueInserts.length > 0) {
             const { error: insertError } = await botStateSupabase
@@ -223,9 +231,9 @@ export function startScheduler(client) {
               .insert(queueInserts);
 
             if (insertError) {
-              console.error('[scheduler] Error encolando bloqueos de roleplay:', insertError.message);
+              console.error('[scheduler] Error encolando avisos de roleplay:', insertError.message);
             } else {
-              console.log(`[scheduler] ${queueInserts.length} aviso(s) de bloqueo por roleplay encolados.`);
+              console.log(`[scheduler] ${queueInserts.length} aviso(s) de estado de roleplay encolados.`);
             }
           }
         } catch (err) {
