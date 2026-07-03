@@ -16,11 +16,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 *   **Notas/Advertencias:** Validado con `node --check` para todos los archivos modificados.
 ### [Fecha: 03/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Fix urgente del gate de comandos por roleo para respetar gracia vigente y exenciones.
+*   **Resumen de Tareas:** Fix urgente del gate de comandos por roleo para respetar gracia vigente, exenciones y bloqueos manuales.
 *   **Cambios Clave:**
-    *   **[Bot - Roleplay Gate]:** el bloqueo de comandos ahora usa una evaluacion efectiva centralizada: exencion activa permite comandos, gracia vigente permite comandos aunque exista un `locked_at` viejo, y los locks manuales/automaticos solo bloquean cuando no hay gracia vigente.
+    *   **[Bot - Roleplay Gate]:** el bloqueo de comandos ahora usa una evaluacion efectiva centralizada: exencion activa permite comandos, gracia vigente permite comandos aunque exista un `locked_at` automatico viejo, y los locks manuales siguen bloqueando hasta desbloqueo staff.
     *   **[Consistencia]:** `index.js` dejo de decidir solo por `locked_at && !is_exempt` y reutiliza la misma semantica base que el enforcement de Supabase.
-*   **Notas/Advertencias:** Validacion: `node --check src/index.js`, `node --check src/supabase.js` y prueba aislada del helper de lock pasaron correctamente.
+    *   **[Scheduler]:** el auto-desbloqueo del scheduler solo limpia locks automaticos (`roleplay_inactive` o legacy sin razon), evitando borrar un bloqueo manual por accidente.
+*   **Notas/Advertencias:** Validacion: `node --check src/index.js`, `node --check src/supabase.js`, `node --check src/scheduler.js` y prueba aislada del helper de lock pasaron correctamente.
 
 ### [Fecha: 01/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`

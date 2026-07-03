@@ -580,18 +580,16 @@ function shouldRoleplayPlayerBeLocked(access, now = new Date()) {
   return nowMs - lastRoleplayMs >= ROLEPLAY_LOCK_AFTER_DAYS * 24 * 60 * 60 * 1000;
 }
 
+function isAutomaticRoleplayLock(access) {
+  return !access?.lock_reason || access.lock_reason === 'roleplay_inactive';
+}
+
 export function isRoleplayAccessCurrentlyLocked(access, now = new Date()) {
   if (!access || access.is_exempt) {
     return false;
   }
 
-  const nowMs = now.getTime();
-  const graceUntilMs = access.grace_until ? new Date(access.grace_until).getTime() : NaN;
-  if (Number.isFinite(graceUntilMs) && nowMs <= graceUntilMs) {
-    return false;
-  }
-
-  if (access.locked_at) {
+  if (access.locked_at && !isAutomaticRoleplayLock(access)) {
     return true;
   }
 
@@ -660,7 +658,7 @@ export async function processRoleplayAccessEnforcement() {
         username: player.username,
         phone: player.phone ?? null,
       });
-    } else if (!shouldLock && row.locked_at) {
+    } else if (!shouldLock && row.locked_at && isAutomaticRoleplayLock(row)) {
       updates.push({
         player_id: row.player_id,
         locked_at: null,
