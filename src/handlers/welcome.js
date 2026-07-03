@@ -76,7 +76,7 @@ function uniqueById(items) {
 export function buildWelcomeConfig() {
   return {
     enabled: process.env.WELCOME_GROUP_ENABLED !== 'false',
-    groupId: String(process.env.WELCOME_GROUP_ID ?? '').trim(),
+    groupId: process.env.WELCOME_GROUP_ID ? String(process.env.WELCOME_GROUP_ID).trim() : undefined,
     groupName: normalizeText(process.env.WELCOME_GROUP_NAME ?? ''),
     adminIds: parseAdminIds(process.env.WELCOME_GROUP_ADMIN_IDS),
   };

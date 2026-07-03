@@ -10,6 +10,7 @@ import {
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
+import { runPeriodicAudit } from './audit.js';
 
 const TZ = { timezone: 'America/Asuncion' };
 const schedulerState = {
@@ -287,6 +288,20 @@ export function startScheduler(client) {
           .gte('weekly_gold', 0);
 
         console.log('[scheduler] weekly_gold reseteado.');
+      });
+    },
+    TZ
+  );
+
+  cron.schedule(
+    '0 4 * * *',
+    async () => {
+      await runScheduledJob('auditRunning', 'auditoria de seguridad', async () => {
+        try {
+          await runPeriodicAudit();
+        } catch (err) {
+          console.error('[scheduler] Error en la auditoria de seguridad:', err);
+        }
       });
     },
     TZ
