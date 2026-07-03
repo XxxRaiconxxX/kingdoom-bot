@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 03/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/adminStore.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Ajuste en el formateador de JIDs del bot para soportar identificadores LID de 14 dígitos.
+*   **Cambios Clave:**
+    *   **[LID - Soporte]:** Se cambió el umbral de longitud en `formatJid()` de 15 a 14. Esto permite que los identificadores de Line Identity (LIDs) de 14 dígitos se formateen correctamente con `@lid` en vez de `@c.us`, evitando el error `No LID for user` en la cola del scheduler.
+*   **Notas/Advertencias:** Validado con `node --check src/adminStore.js`.
+
 ### [Fecha: 01/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Auditoria y hardening del gate de comandos por roleo.

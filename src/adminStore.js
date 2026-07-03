@@ -14,7 +14,7 @@ let adminsCache = null;
 let staffCache = null;
 export function formatJid(phone) {
   const p = String(phone || '').trim();
-  return p.length >= 15 ? `${p}@lid` : `${p}@c.us`;
+  return p.length >= 14 ? `${p}@lid` : `${p}@c.us`;
 }
 
 export function normalizePhone(phone) {
