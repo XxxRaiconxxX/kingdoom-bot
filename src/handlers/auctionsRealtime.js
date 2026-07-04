@@ -33,7 +33,8 @@ export function startAuctionsRealtime(client) {
         try {
           const newAuction = payload.new;
           console.log('[Realtime] Nueva subasta creada:', newAuction);
-          const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const chatId = newAuction.whatsapp_chat_id || process.env.AUCTIONS_GROUP_ID || '';
+          if (!chatId) return;
           const msg = `📢 *NUEVA SUBASTA EN EL REINO* ⚖️\n\n` +
                       `Se ha abierto la puja por *${newAuction.item_name}* [${newAuction.item_rarity.toUpperCase()}]\n` +
                       (newAuction.item_description ? `📜 _${newAuction.item_description}_\n` : '') +
@@ -71,7 +72,8 @@ export function startAuctionsRealtime(client) {
 
           if (!bidder || !auction) return;
 
-          const chatId = auction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const chatId = auction.whatsapp_chat_id || process.env.AUCTIONS_GROUP_ID || '';
+          if (!chatId) return;
           const msg = `╔════════════════════════════╗\n` +
                       `⚖️  *NUEVA PUJA REGISTRADA*  ⚖️\n` +
                       `╚════════════════════════════╝\n\n` +
@@ -115,7 +117,8 @@ export function startAuctionsRealtime(client) {
             if (winner) winnerName = winner.username;
           }
 
-          const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
+          const chatId = newAuction.whatsapp_chat_id || process.env.AUCTIONS_GROUP_ID || '';
+          if (!chatId) return;
           let msg = `🏆 *SUBASTA FINALIZADA* ⚖️\n\n` +
                     `La subasta de *${newAuction.item_name}* ha concluido.\n`;
 

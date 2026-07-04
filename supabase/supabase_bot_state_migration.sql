@@ -105,3 +105,22 @@ create table if not exists public.bot_command_logs (
 
 create index if not exists idx_bot_command_logs_created
   on public.bot_command_logs (created_at desc);
+
+-- Enable RLS and add policies for bot operational tables
+alter table public.bot_daily_claims enable row level security;
+create policy "Allow service_role full access bot_daily_claims" on public.bot_daily_claims for all using (auth.role() = 'service_role');
+
+alter table public.bot_active_missions enable row level security;
+create policy "Allow service_role full access bot_active_missions" on public.bot_active_missions for all using (auth.role() = 'service_role');
+
+alter table public.bot_treasure_events enable row level security;
+create policy "Allow service_role full access bot_treasure_events" on public.bot_treasure_events for all using (auth.role() = 'service_role');
+
+alter table public.bot_treasure_claims enable row level security;
+create policy "Allow service_role full access bot_treasure_claims" on public.bot_treasure_claims for all using (auth.role() = 'service_role');
+
+alter table public.bot_notifications_queue enable row level security;
+create policy "Allow service_role full access bot_notifications_queue" on public.bot_notifications_queue for all using (auth.role() = 'service_role');
+
+alter table public.bot_command_logs enable row level security;
+create policy "Allow service_role full access bot_command_logs" on public.bot_command_logs for all using (auth.role() = 'service_role');
