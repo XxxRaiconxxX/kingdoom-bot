@@ -785,9 +785,8 @@ client.on('message', async (msg) => {
       isPrivileged,
     });
 
-    if (forgeReply) {
-      reply = forgeReply;
-    } else if (isRoleplayBlockedCommand && !isPrivileged) {
+    let isRoleplayLocked = false;
+    if (isRoleplayBlockedCommand && !isPrivileged) {
       const activePlayer = await getPlayer(sender);
       const roleplayAccess = activePlayer?.id
         ? await getPlayerRoleplayAccess(activePlayer.id).catch((error) => {
@@ -798,105 +797,112 @@ client.on('message', async (msg) => {
 
       if (isRoleplayAccessCurrentlyLocked(roleplayAccess)) {
         reply = buildRoleplayLockedReply(command);
+        isRoleplayLocked = true;
       }
-    } else if (isRestrictedMainGroupMinigame && !isPrivileged) {
-      const lockKey = `${RESTRICTED_MINIGAME_SCOPE_KEY}:${normalizePhone(sender)}`;
-      reply = await runRestrictedGroupSerial(lockKey, async () => {
-        const player = await getPlayer(sender);
-        const violations = player?.id
-          ? await getRestrictedGroupCommandViolationsForDay(player.id, RESTRICTED_MINIGAME_SCOPE_KEY)
-          : [];
-        const desiredPenalty = getRestrictedCommandPenalty(violations.length);
-        const availableGold = Math.max(0, Number(player?.gold ?? 0));
-        const appliedPenalty = Math.min(availableGold, desiredPenalty);
+    }
 
-        if (player?.id) {
-          if (appliedPenalty > 0) {
-            await updateGold(player.id, -appliedPenalty);
+    if (!isRoleplayLocked) {
+      if (forgeReply) {
+        reply = forgeReply;
+      } else if (isRestrictedMainGroupMinigame && !isPrivileged) {
+        const lockKey = `${RESTRICTED_MINIGAME_SCOPE_KEY}:${normalizePhone(sender)}`;
+        reply = await runRestrictedGroupSerial(lockKey, async () => {
+          const player = await getPlayer(sender);
+          const violations = player?.id
+            ? await getRestrictedGroupCommandViolationsForDay(player.id, RESTRICTED_MINIGAME_SCOPE_KEY)
+            : [];
+          const desiredPenalty = getRestrictedCommandPenalty(violations.length);
+          const availableGold = Math.max(0, Number(player?.gold ?? 0));
+          const appliedPenalty = Math.min(availableGold, desiredPenalty);
+
+          if (player?.id) {
+            if (appliedPenalty > 0) {
+              await updateGold(player.id, -appliedPenalty);
+            }
+
+            await recordRestrictedGroupCommandViolation({
+              playerId: player.id,
+              scopeKey: RESTRICTED_MINIGAME_SCOPE_KEY,
+              commandName: command,
+              penaltyGold: appliedPenalty,
+            });
           }
 
-          await recordRestrictedGroupCommandViolation({
-            playerId: player.id,
-            scopeKey: RESTRICTED_MINIGAME_SCOPE_KEY,
-            commandName: command,
-            penaltyGold: appliedPenalty,
-          });
-        }
+          try {
+            await client.sendMessage(
+              formatJid(normalizePhone(sender)),
+              buildRestrictedGroupPrivateReply(command)
+            );
+          } catch (privateError) {
+            console.error('[restricted command private notify]', privateError);
+          }
 
-        try {
-          await client.sendMessage(
-            formatJid(normalizePhone(sender)),
-            buildRestrictedGroupPrivateReply(command)
-          );
-        } catch (privateError) {
-          console.error('[restricted command private notify]', privateError);
-        }
+          if (desiredPenalty <= 0) {
+            return buildRestrictedGroupWarningReply(command);
+          }
 
-        if (desiredPenalty <= 0) {
-          return buildRestrictedGroupWarningReply(command);
-        }
-
-        const availableGoldAfter = Math.max(0, availableGold - appliedPenalty);
-        return buildRestrictedGroupPenaltyReply(command, desiredPenalty, appliedPenalty, availableGoldAfter);
-      });
-    } else if (!hasPrefix) {
-      return;
-    } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {
-      reply = await handleAdminCommand(
-        wrapMsg(msg, ensurePrefixedBody(command, text, body)),
-        client
-      );
-    } else if (command === 'registrar') {
-      reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
-    } else if (command === 'dados') {
-      reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
-    } else if (command === 'cofre') {
-      reply = await handleCofre(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
-    } else if (command === 'trampa') {
-      reply = await handleTrampa(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
-    } else if (command === 'oraculo') {
-      reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
-    } else if (command === '21') {
-      reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
-    } else if (command === 'apk' || command === 'app') {
-      try {
-        await sendLatestApk({
-          sendMessage: (...args) => client.sendMessage(msg.from, ...args),
+          const availableGoldAfter = Math.max(0, availableGold - appliedPenalty);
+          return buildRestrictedGroupPenaltyReply(command, desiredPenalty, appliedPenalty, availableGoldAfter);
         });
-      } catch (e) {
-        reply = `⚠️ Hubo un error al intentar descargar el APK desde el repositorio: ${e.message}`;
+      } else if (!hasPrefix) {
+        return;
+      } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {
+        reply = await handleAdminCommand(
+          wrapMsg(msg, ensurePrefixedBody(command, text, body)),
+          client
+        );
+      } else if (command === 'registrar') {
+        reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
+      } else if (command === 'dados') {
+        reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      } else if (command === 'cofre') {
+        reply = await handleCofre(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      } else if (command === 'trampa') {
+        reply = await handleTrampa(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      } else if (command === 'oraculo') {
+        reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      } else if (command === '21') {
+        reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
+      } else if (command === 'apk' || command === 'app') {
+        try {
+          await sendLatestApk({
+            sendMessage: (...args) => client.sendMessage(msg.from, ...args),
+          });
+        } catch (e) {
+          reply = `⚠️ Hubo un error al intentar descargar el APK desde el repositorio: ${e.message}`;
+        }
+      } else if (
+        [
+          'oro',
+          'gold',
+          'perfil',
+          'estado',
+          'vinculo',
+          'nuevo',
+          'verificar',
+          'ranking',
+          'top',
+          'ricos',
+          'fortunas',
+          'mercado',
+          'item',
+          'mision',
+          'evento',
+          'reino',
+          'resumen',
+          'ayuda',
+          'help',
+          'subasta',
+          'subastas',
+          'pujar',
+          'puja',
+          'retirarse',
+        ].includes(command)
+      ) {
+        reply = await handlePlayerMessage(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+      } else {
+        reply = await handlePlayerMessage(msg);
       }
-    } else if (
-      [
-        'oro',
-        'gold',
-        'perfil',
-        'estado',
-        'vinculo',
-        'nuevo',
-        'verificar',
-        'ranking',
-        'top',
-        'ricos',
-        'fortunas',
-        'mercado',
-        'item',
-        'mision',
-        'evento',
-        'reino',
-        'resumen',
-        'ayuda',
-        'help',
-        'subasta',
-        'subastas',
-        'pujar',
-        'puja',
-        'retirarse',
-      ].includes(command)
-    ) {
-      reply = await handlePlayerMessage(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
-    } else {
-      reply = await handlePlayerMessage(msg);
     }
 
     if (reply) await msg.reply(reply);

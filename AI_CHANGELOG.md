@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 04/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Solucionado bug de silencio en comandos permitidos de dados/cofre/trampa/etc. en index.js.
+*   **Cambios Clave:**
+    *   **[Bot - Gating de Rol]:** Se extrajo la validación de `isRoleplayLocked` de la cadena principal de `if-else` de despacho de comandos. Esto previene que los comandos permitidos de minijuegos y economía fallen de forma silenciosa (sin respuesta alguna) para los jugadores que no están bloqueados por rol.
+*   **Notas/Advertencias:** Validado con `node --check` y pruebas internas del blackjack.
+
 ### [Fecha: 03/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/supabase.js`, `src/scheduler.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Soporte para LIDs de 14 dígitos en JIDs, cambio de la ventana por defecto a 7 días y adición de lógica de auto-desbloqueo en el scheduler.
