@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import {
   claimTreasureReward,
   createTreasureEvent,
@@ -8,7 +9,7 @@ import {
   touchPlayerActivity,
 } from '../supabase.js';
 
-const TARGET_GROUP = '595971938097-1618930274@g.us';
+const TARGET_GROUP = process.env.TARGET_GROUP_ID || '';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;
@@ -27,7 +28,8 @@ export function clearTreasureTimeouts() {
 function randomIntInclusive(min, max) {
   const safeMin = Math.ceil(min);
   const safeMax = Math.floor(max);
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  if (safeMax <= safeMin) return safeMin;
+  return crypto.randomInt(safeMin, safeMax + 1);
 }
 
 function getAsuncionOffsetMs() {
@@ -136,6 +138,11 @@ export async function dropTreasure(client) {
   try {
     if (!client || !client.info) {
       console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo drop.');
+      return null;
+    }
+
+    if (!TARGET_GROUP) {
+      console.log('[Treasure] TARGET_GROUP no definido en las variables de entorno. Omitiendo drop.');
       return null;
     }
 
@@ -275,6 +282,7 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
 
 export async function hydrateOpenTreasures(client) {
   try {
+    if (!TARGET_GROUP) return;
     const openEvents = await getOpenTreasureEvents(TARGET_GROUP);
     for (const event of openEvents) {
       const expiresAtMs = new Date(event.expires_at).getTime();
@@ -311,12 +319,14 @@ export function scheduleDailyTreasures(client) {
   const system10 = today10.getTime() - offsetMs;
   const system22 = today22.getTime() - offsetMs;
 
-  const numEvents = Math.floor(Math.random() * 3) + 2;
+  const numEvents = crypto.randomInt(2, 5);
   console.log(`[Treasure] Programando ${numEvents} evento(s) para hoy.`);
 
   const eventTimes = [];
   for (let i = 0; i < numEvents; i += 1) {
-    const randomTime = system10 + Math.random() * (system22 - system10);
+    const maxOffset = Math.floor(system22 - system10);
+    const randomOffset = maxOffset > 0 ? crypto.randomInt(0, maxOffset) : 0;
+    const randomTime = system10 + randomOffset;
     eventTimes.push(randomTime);
   }
 
