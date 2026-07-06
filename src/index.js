@@ -283,6 +283,62 @@ function isPuppeteerDeliveryAmbiguousError(error) {
 }
 
 http.createServer(async (req, res) => {
+  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (url.pathname === '/reset-auth' || url.pathname === '/reset') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`
+      <html>
+        <head>
+          <title>Kingdoom Bot - Reset</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              background-color: #121212;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              margin: 0;
+              color: #f5f5f7;
+            }
+            .container {
+              text-align: center;
+              background: #1e1e1e;
+              padding: 40px;
+              border-radius: 16px;
+              max-width: 400px;
+              width: 90%;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2 style="color: #ff3b30;">Reiniciando sesión</h2>
+            <p>Borrando la sesión de autenticación y reiniciando el bot...</p>
+            <p style="color: #a3a3a8;">Redirigiendo en 5 segundos...</p>
+          </div>
+          <script>
+            setTimeout(() => { window.location.href = '/'; }, 5000);
+          </script>
+        </body>
+      </html>
+    `);
+
+    console.warn('[HTTP Reset] Peticion de reinicio de sesion recibida.');
+    try {
+      if (fs.existsSync(authDataPath)) {
+        fs.rmSync(authDataPath, { recursive: true, force: true });
+        console.log('[HTTP Reset] Carpeta de autenticacion eliminada.');
+      }
+    } catch (err) {
+      console.error('[HTTP Reset] Error al eliminar carpeta de autenticacion:', err);
+    }
+    process.exit(1);
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 
   if (latestQrDataUrl) {
@@ -939,9 +995,17 @@ async function initializeClientWithRetry() {
 
       if (isLastAttempt) {
         console.error(
-          '[whatsapp init] Se agotaron los reintentos de inicializacion. Revisar conectividad del contenedor hacia https://web.whatsapp.com/.'
+          '[whatsapp init] Se agotaron los reintentos de inicializacion. Borrando carpeta de autenticacion y reiniciando el contenedor...'
         );
-        return;
+        try {
+          if (fs.existsSync(authDataPath)) {
+            fs.rmSync(authDataPath, { recursive: true, force: true });
+            console.log('[whatsapp init] Carpeta de autenticacion borrada.');
+          }
+        } catch (cleanErr) {
+          console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
+        }
+        process.exit(1);
       }
 
       const nextDelayMs = WHATSAPP_INIT_RETRY_DELAY_MS * attempt;
