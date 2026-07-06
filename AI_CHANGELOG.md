@@ -4,6 +4,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 06/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Realineacion de defaults de roleo del bot con la politica vigente de 9 dias.
+*   **Cambios Clave:**
+    *   **[Bot - Roleplay Defaults]:** `ROLEPLAY_LOCK_AFTER_DAYS` y `ROLEPLAY_INITIAL_GRACE_DAYS` vuelven a usar `9` como fallback local cuando Hugging Face o el entorno no definen overrides.
+    *   **[Consistencia Web/Bot]:** El fallback del bot queda alineado con `Kingdoom-sync` (`RoleplayLockNotice`) y el SQL `supabase_roleplay_access.sql`, evitando bloqueos automaticos a los 7 dias por configuracion ausente.
+*   **Notas/Advertencias:** Las variables de entorno siguen teniendo prioridad sobre el fallback. Validacion: `node --check src/supabase.js` y parseo JSONL completados con exito.
+
 ### [Fecha: 04/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Solucionado bug de silencio en comandos permitidos de dados/cofre/trampa/etc. en index.js.
