@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
 
+
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,
   p_claim_date date,
