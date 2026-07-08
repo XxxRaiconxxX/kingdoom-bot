@@ -359,3 +359,11 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Manual Reset Endpoint (`/reset` / `/reset-auth`):** Se agregó un enrutador HTTP en el servidor para que los operadores puedan borrar la carpeta de sesión `.wwebjs_auth` y reiniciar el bot visitando `/reset` o `/reset-auth` desde el navegador.
     *   **Auto-Reset en Fallos Críticos:** Se modificó la lógica en `initializeClientWithRetry` para que, si se agotan todos los reintentos de inicialización (`WHATSAPP_INIT_MAX_RETRIES` intentos de `client.initialize()`), el bot borre de forma automática la sesión corrupta `.wwebjs_auth` y reinicie el contenedor (`process.exit(1)`), forzando un nuevo código QR limpio.
 *   **Notas/Advertencias:** Ambos cambios protegen al bot de bucles infinitos en contenedores remotos de Hugging Face Spaces tras la suspensión de una línea telefónica.
+
+### [Fecha: 07/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `AGENTS.md`, `.agents/rules/graphify.md`, `.agents/workflows/graphify.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Configuración y activación local de Graphify para el desarrollo del bot.
+*   **Cambios Clave:**
+    *   Se inyectaron las reglas y flujos de Graphify en el directorio de personalizaciones locales `.agents` y en `AGENTS.md`.
+    *   Se configuraron los hooks de git (`post-commit`, `post-checkout`) para regenerar el grafo de manera automática.
+*   **Notas/Advertencias:** Los cambios preparan el bot para la indexación y navegación mediante grafos AST semánticos locales.
