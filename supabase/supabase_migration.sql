@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS bot_daily_claims (
 CREATE INDEX IF NOT EXISTS idx_bot_daily_claims_player_date
   ON bot_daily_claims(player_id, claim_date DESC);
 
+-- Enable RLS and restrict to service_role
+ALTER TABLE bot_daily_claims ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow full access for service_role only"
+ON bot_daily_claims
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
 CREATE OR REPLACE FUNCTION claim_daily_reward(
   p_player_id uuid,
   p_claim_date date,

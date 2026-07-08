@@ -12,6 +12,7 @@ import { handleAdminCommand } from './handlers/admin.js';
 import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
 import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
 import { buildPlayerLifecycleConfig, handleGroupLeave, handleGroupRejoin } from './handlers/playerLifecycle.js';
+import { secureRandomInt } from './random.js';
 import {
   registerPlayer,
   getPlayer,
@@ -60,10 +61,10 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
-const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
+const RESTRICTED_MINIGAME_GROUP_ID = process.env.RESTRICTED_MINIGAME_GROUP_ID;
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
-const ROLEPLAY_ACTIVITY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363024420812768@g.us';
+const ROLEPLAY_ACTIVITY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID;
 const ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS = Math.max(
   60 * 1000,
   Number.parseInt(process.env.ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS ?? '900000', 10) || 900000
@@ -197,7 +198,7 @@ function buildRestrictedGroupPrivateReply(commandName) {
 function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
-  return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
+  return secureRandomInt(safeMin, safeMax);
 }
 
 function isLikelyLowEffortRoleplayText(value) {
@@ -245,7 +246,7 @@ function isLikelyLowEffortRoleplayText(value) {
 }
 
 function isEligibleRoleplayActivityMessage(msg, text) {
-  if (msg.from !== ROLEPLAY_ACTIVITY_GROUP_ID) return false;
+  if (!ROLEPLAY_ACTIVITY_GROUP_ID || msg.from !== ROLEPLAY_ACTIVITY_GROUP_ID) return false;
   if (!text) return false;
   if (text.startsWith('!')) return false;
   if (msg.hasMedia) return false;
@@ -814,6 +815,10 @@ client.on('message', async (msg) => {
     hasPrefix &&
     msg.from === RESTRICTED_MINIGAME_GROUP_ID &&
     RESTRICTED_MINIGAME_COMMANDS.has(command);
+
+  if (!RESTRICTED_MINIGAME_GROUP_ID) {
+    console.warn('[warning] RESTRICTED_MINIGAME_GROUP_ID no esta definido. El acceso a minijuegos no funcionara correctamente.');
+  }
 
   let isAdmin = false;
   let isStaff = false;
