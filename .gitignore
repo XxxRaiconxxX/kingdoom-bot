@@ -3,6 +3,9 @@ node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
 .codegraph/
+# Graphify stays at repo root, but its outputs and Codex hooks are local machine state.
+.codex/
+graphify-out/
 temp_diff.txt
 tmp_*.txt
 *.DS_Store

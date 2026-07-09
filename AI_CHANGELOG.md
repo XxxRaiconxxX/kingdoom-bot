@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 09/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `.gitignore`, `package.json`, `AGENTS.md`, `.agents/rules/graphify.md`, `.agents/workflows/graphify.md`, `.codex/skills/graphify/*`, `scripts/graphify-manager.mjs`, `docs/graphify/OPERATIONS.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Reorganizacion operativa de Graphify para mantenerlo estable, local y facil de refrescar entre agentes.
+*   **Cambios Clave:**
+    *   **[Graphify - Operacion]:** se agregaron wrappers `npm run graphify:setup|doctor|update|rebuild|watch` para estandarizar setup, diagnostico y refresh incremental dentro de `kingdoom-bot`.
+    *   **[Graphify - Localidad]:** `graphify-out/` y `.codex/hooks.json` quedan como estado local del repo y se ignoran desde Git, mientras `graphify-out/` permanece en la raiz porque Graphify y los agentes lo resuelven desde ahi.
+    *   **[Graphify - Skill Codex]:** se versiona `.codex/skills/graphify/` para que los clones del bot conserven el comportamiento de `/graphify` dentro de Codex sin depender de copiar la skill a mano.
+    *   **[Graphify - Agentes]:** `AGENTS.md` y `.agents/*` ahora apuntan a los wrappers del repo para que Codex y Antigravity mantengan el grafo al dia de forma consistente.
+    *   **[Graphify - Guia]:** se versiono `docs/graphify/OPERATIONS.md` con layout canonico, politica de actualizacion y troubleshooting.
+*   **Notas/Advertencias:** Validacion completada con `node --check scripts/graphify-manager.mjs`, `npm run graphify:setup`, `npm run graphify:doctor`, `npm run graphify:update` y parseo correcto de `ai-memory/kingdoom-memory.jsonl`. Graphify reporto una advertencia no bloqueante: varios `agent.json` quedaron sin nodos AST en el refresh incremental.
+
+### [Fecha: 09/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Eliminado el mensaje automatico de medianoche enviado por DM a los jugadores.
 *   **Cambios Clave:**

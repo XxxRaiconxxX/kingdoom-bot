@@ -31,47 +31,47 @@ All source files are located in the `src/` directory:
 - **Database Consistency:** Database operations must go through `src/supabase.js` or use RPC functions where appropriate to prevent RLS (Row Level Security) issues. Avoid direct raw SQL injections or unvalidated queries.
 - **Audit Logs:** Ensure actions modifying user gold, balances, or items are logged correctly via the central audit logging system in `src/auditLog.js`.
 
-## 1. Reglas de Negocio y Lógica de la Economía
+## 1. Reglas de Negocio y LÃƒÂ³gica de la EconomÃƒÂ­a
 
-### Mecánica de Subastas en WhatsApp
-- **Comisión de entrada:** Se cobra una comisión única no reembolsable del 25% del precio base (`start_price`) del ítem al unirse a la subasta por primera vez.
-- **Modelo Lock-and-Release:** El oro ofertado por los jugadores no se descuenta de forma permanente durante las pujas intermedias. Se retiene y, al terminar la subasta, se reembolsa a todos los jugadores que no resultaron ganadores, cobrándose únicamente al ganador final.
-- **Pujas Acumulativas (WhatsApp Bot):** Las pujas realizadas por WhatsApp a través del comando `!pujar [monto]` se tratan como incrementos acumulativos (ej: si la puja acumulada está en 100,000 y el jugador escribe `!pujar 5000`, la puja acumulada pasa a 105,000). El jugador que no tenga oro suficiente para cubrir el nuevo total acumulado queda descalificado.
+### MecÃƒÂ¡nica de Subastas en WhatsApp
+- **ComisiÃƒÂ³n de entrada:** Se cobra una comisiÃƒÂ³n ÃƒÂºnica no reembolsable del 25% del precio base (`start_price`) del ÃƒÂ­tem al unirse a la subasta por primera vez.
+- **Modelo Lock-and-Release:** El oro ofertado por los jugadores no se descuenta de forma permanente durante las pujas intermedias. Se retiene y, al terminar la subasta, se reembolsa a todos los jugadores que no resultaron ganadores, cobrÃƒÂ¡ndose ÃƒÂºnicamente al ganador final.
+- **Pujas Acumulativas (WhatsApp Bot):** Las pujas realizadas por WhatsApp a travÃƒÂ©s del comando `!pujar [monto]` se tratan como incrementos acumulativos (ej: si la puja acumulada estÃƒÂ¡ en 100,000 y el jugador escribe `!pujar 5000`, la puja acumulada pasa a 105,000). El jugador que no tenga oro suficiente para cubrir el nuevo total acumulado queda descalificado.
 
 ## 2. Estructura de la Base de Datos y Supabase (RPCs)
 
 ### Tablas Principales
 - `players`: Perfil del jugador, contiene `gold`, `phone`, `is_admin`, `banned`.
-- `character_sheets`: Ficha de rol del jugador. Usa la columna `playerId` (notar la I mayúscula en camelCase).
+- `character_sheets`: Ficha de rol del jugador. Usa la columna `playerId` (notar la I mayÃƒÂºscula en camelCase).
 - `player_inventory`: Inventario real de objetos del mercado. Usa la columna `player_id` (notar snake_case) y lee por `item_name`.
 - `market_auctions`: Registro de subastas activas (`active`, `completed`, `cancelled`).
 - `market_auction_bids`: Historial de pujas realizadas por subasta.
 
 ### RPCs Clave
-- `place_auction_bid(p_player_id, p_auction_id, p_amount)`: RPC de base de datos que encapsula el cobro de la comisión de entrada, las validaciones de saldo y el incremento acumulado del bot de WhatsApp y la web de forma unificada.
+- `place_auction_bid(p_player_id, p_auction_id, p_amount)`: RPC de base de datos que encapsula el cobro de la comisiÃƒÂ³n de entrada, las validaciones de saldo y el incremento acumulado del bot de WhatsApp y la web de forma unificada.
 
-## 3. Playbooks (Guías Rápidas)
+## 3. Playbooks (GuÃƒÂ­as RÃƒÂ¡pidas)
 
 ### Agregar un nuevo Comando al Bot
-1. Identifica la categoría del comando (ej: administrativo, juego, perfil).
-2. Crea la función manejadora o agrégala en el archivo correspondiente dentro de `src/handlers/`.
-3. Registra el comando y su patrón regex de coincidencia en el despachador de mensajes dentro de `src/index.js`.
+1. Identifica la categorÃƒÂ­a del comando (ej: administrativo, juego, perfil).
+2. Crea la funciÃƒÂ³n manejadora o agrÃƒÂ©gala en el archivo correspondiente dentro de `src/handlers/`.
+3. Registra el comando y su patrÃƒÂ³n regex de coincidencia en el despachador de mensajes dentro de `src/index.js`.
 4. Documenta el comando y su uso en el archivo central de ayuda del bot.
 
-### Modificar Lógica de Juegos y Minijuegos
-- Edita `src/handlers/blackjack.js` o `src/handlers/games.js` según corresponda. Asegúrate de verificar siempre si el usuario tiene saldo de oro suficiente antes de permitir que inicie una partida y de registrar los resultados en la base de datos de Supabase.
+### Modificar LÃƒÂ³gica de Juegos y Minijuegos
+- Edita `src/handlers/blackjack.js` o `src/handlers/games.js` segÃƒÂºn corresponda. AsegÃƒÂºrate de verificar siempre si el usuario tiene saldo de oro suficiente antes de permitir que inicie una partida y de registrar los resultados en la base de datos de Supabase.
 
-## 4. Convenciones de Mensajería en WhatsApp
+## 4. Convenciones de MensajerÃƒÂ­a en WhatsApp
 
-- **Formato de Texto:** Utilizar el formato de negrita de WhatsApp (`*texto*`) para destacar montos de oro, nombres de ítems y comandos.
-- **Diseño Limpio:** Evitar bloques de texto demasiado extensos. Usar saltos de línea para estructurar la respuesta del bot de manera legible.
-- **Sin Separadores Excesivos:** Evitar el uso reiterado de guiones o líneas horizontales decorativas (como `------------------------`) en los mensajes de respuesta del bot.
+- **Formato de Texto:** Utilizar el formato de negrita de WhatsApp (`*texto*`) para destacar montos de oro, nombres de ÃƒÂ­tems y comandos.
+- **DiseÃƒÂ±o Limpio:** Evitar bloques de texto demasiado extensos. Usar saltos de lÃƒÂ­nea para estructurar la respuesta del bot de manera legible.
+- **Sin Separadores Excesivos:** Evitar el uso reiterado de guiones o lÃƒÂ­neas horizontales decorativas (como `------------------------`) en los mensajes de respuesta del bot.
 
-## 5. Validación y Verificación
+## 5. ValidaciÃƒÂ³n y VerificaciÃƒÂ³n
 
-- Ejecutar `node --check src/index.js` o sintaxis de Node para comprobar que no existan errores de código antes de realizar un commit.
-- Utilizar scripts de prueba (ej: `test_blackjack.js`) en la carpeta raíz para validar cambios en las mecánicas de juegos de forma aislada.
-- Revisar siempre que los errores y excepciones asíncronas estén capturados con bloques `try/catch` para evitar caídas inesperadas del cliente de WhatsApp Web.
+- Ejecutar `node --check src/index.js` o sintaxis de Node para comprobar que no existan errores de cÃƒÂ³digo antes de realizar un commit.
+- Utilizar scripts de prueba (ej: `test_blackjack.js`) en la carpeta raÃƒÂ­z para validar cambios en las mecÃƒÂ¡nicas de juegos de forma aislada.
+- Revisar siempre que los errores y excepciones asÃƒÂ­ncronas estÃƒÂ©n capturados con bloques `try/catch` para evitar caÃƒÂ­das inesperadas del cliente de WhatsApp Web.
 
 ## graphify
 
@@ -79,9 +79,19 @@ This project has a knowledge graph at graphify-out/ with god nodes, community st
 
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
 
+Local operational paths:
+- `graphify-out/` stays in the project root because Graphify, Codex, and Antigravity all look for `graphify-out/graph.json` there. It is local and ignored by Git.
+- `.codex/hooks.json` is local and ignored by Git. Refresh it with `npm run graphify:setup`.
+
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than `GRAPH_REPORT.md` or raw grep output.
+- For audits, debugging, architecture review, feature impact analysis, or handoff work, prefer Graphify before broad manual browsing.
+- For bot flow questions, prefer Graphify first for traces such as WhatsApp event -> handler -> helper/store -> Supabase.
+- If a change may affect connected modules, use Graphify to find neighbors and dependency clusters before editing.
+- Run `npm run graphify:setup` once per clone or when hooks and local Graphify wiring need repair.
+- Run `npm run graphify:update` after structural code changes that are still uncommitted, or before asking Graphify-heavy architecture questions during an active edit session.
+- Run `npm run graphify:doctor` when another AI agent reports stale graph answers, missing hooks, or missing local Graphify state.
+- Dirty `graphify-out/` files are expected after hooks or incremental updates; dirty graph files are not a reason to skip Graphify. Only skip Graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, prefer `npm run graphify:update` over raw CLI calls so Codex hooks and repo conventions stay aligned.
