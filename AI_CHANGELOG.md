@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 09/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Eliminado el mensaje automatico de medianoche enviado por DM a los jugadores.
+*   **Cambios Clave:**
+    *   **[Bot - Scheduler Diario]:** el cron diario de `00:00` hora Paraguay mantiene el procesamiento de cuotas y la reprogramacion de tesoros, pero deja de ejecutar `sendToAll(...)` para no mandar el mensaje de reinicio de limites a todos los usuarios.
+*   **Notas/Advertencias:** El reset diario sigue activo; solo se retiro la notificacion automatica. Validacion: `node --check src/scheduler.js` completado con exito.
+
 ### [Fecha: 06/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Realineacion de defaults de roleo del bot con la politica vigente de 9 dias.

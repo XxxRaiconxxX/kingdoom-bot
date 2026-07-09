@@ -259,11 +259,6 @@ export function startScheduler(client) {
 
         void hydrateOpenTreasures(client);
         scheduleDailyTreasures(client);
-        await sendToAll(
-          client,
-          ({ username }) =>
-            `La noche cae sobre el Reino de las Sombras...\n\nSaludos, valiente *${username}*. Tus limites de juego se han reiniciado con el amanecer.\nLevantate, empuna tu arma y forja tu propio destino hoy. A ganar oro, guerrero.`
-        );
       });
     },
     TZ
