@@ -1,5 +1,6 @@
 import { getPlayer, updateGold, getBlackjackUsage, incrementBlackjackUsage, placeBet, resolveBet } from '../supabase.js';
 import { heraldCard, heraldStat } from '../formatting.js';
+import { secureRandomInt } from '../random.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
 
@@ -45,7 +46,7 @@ function createDeck() {
 // Shuffle deck using Fisher-Yates algorithm
 function shuffle(deck) {
   for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = secureRandomInt(0, i);
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
   return deck;
