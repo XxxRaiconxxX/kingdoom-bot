@@ -2,11 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { normalizePhone } from './adminStore.js';
+import { getStateFilePath } from './runtimePaths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const legacyStorePath = path.join(__dirname, 'data', 'active_profiles.json');
-const storePath = path.join(__dirname, '..', '.wwebjs_auth', 'state', 'active_profiles.json');
+const storePath = getStateFilePath('active_profiles.json');
 
 function initStore() {
   const dir = path.dirname(storePath);

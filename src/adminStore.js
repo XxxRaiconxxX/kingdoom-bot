@@ -1,13 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { getAuthFilePath } from './runtimePaths.js';
 
 const OWNER_NUMBER = '595987273405';
-const ADMINS_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'admins.json');
-const STAFF_FILE = path.join(__dirname, '..', '.wwebjs_auth', 'staff.json');
+const ADMINS_FILE = getAuthFilePath('admins.json');
+const STAFF_FILE = getAuthFilePath('staff.json');
 
 // In-memory cache of admin numbers (excluding @c.us)
 let adminsCache = null;

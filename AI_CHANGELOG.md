@@ -4,6 +4,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 10/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/runtimePaths.js`, `src/adminStore.js`, `src/activeProfileStore.js`, `src/auditLog.js`, `src/marketForgeStore.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Hardening del runtime de WhatsApp en Hugging Face para evitar perdida de sesion, reset publico y falta de trazabilidad cuando el bot cae o vuelve a QR.
+*   **Cambios Clave:**
+    *   **[Bot - Persistencia]:** se centralizo la ruta de estado en `src/runtimePaths.js` y el bot ahora prioriza `/data/kingdoom-bot/.wwebjs_auth` en entornos de Hugging Face, con fallback local solo cuando no hay storage persistente.
+    *   **[Bot - Reset Manual]:** `/reset` y `/reset-auth` dejan de quedar abiertos al publico. Solo funcionan si `RESET_AUTH_ENABLED=true` y existe `RESET_AUTH_TOKEN`, requerido por query `?token=` o header `x-reset-token`.
+    *   **[Bot - Diagnostico Vivo]:** el panel HTTP ahora expone `/status.json` y guarda `runtime-status.json` con ultimo evento, ultimos reinicios, modo de persistencia y causa reciente visible incluso despues de un restart.
+    *   **[Bot - Recuperacion]:** `disconnected` ahora fuerza reinicio limpio del proceso sin borrar auth por defecto, y los fallos de inicializacion dejan de destruir la sesion salvo que `WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE=true`.
+    *   **[Estado Auxiliar]:** `adminStore`, `activeProfileStore`, `auditLog` y `marketForgeStore` pasan a usar la misma raiz persistente para no mezclar estado efimero y estado durable.
+*   **Notas/Advertencias:** Este cambio corrige una causa probable del QR inesperado: si el contenedor reiniciaba mientras la sesion vivia bajo `/app/.wwebjs_auth`, se perdia auth. Desde ahora conviene verificar en el Space que `/status.json` reporte `authPersistence: "persistent"` y que el storage real este montado en `/data`.
+*   **Ajuste posterior:** la deteccion automatica ya no asume `/data` solo por estar en Hugging Face; usa `/data` solo si realmente existe y, si el bucket esta montado en otra ruta, se debe fijar `PERSISTENT_DATA_PATH` de forma explicita para evitar falsos positivos.
+
 ### [Fecha: 09/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `.gitignore`, `package.json`, `AGENTS.md`, `.agents/rules/graphify.md`, `.agents/workflows/graphify.md`, `.codex/skills/graphify/*`, `scripts/graphify-manager.mjs`, `docs/graphify/OPERATIONS.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Reorganizacion operativa de Graphify para mantenerlo estable, local y facil de refrescar entre agentes.

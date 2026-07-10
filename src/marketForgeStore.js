@@ -2,11 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { normalizePhone } from './adminStore.js';
+import { getStateFilePath } from './runtimePaths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const legacyStorePath = path.join(__dirname, 'data', 'market_forge_sessions.json');
-const storePath = path.join(__dirname, '..', '.wwebjs_auth', 'state', 'market_forge_sessions.json');
+const storePath = getStateFilePath('market_forge_sessions.json');
 
 function ensureStore() {
   const dir = path.dirname(storePath);

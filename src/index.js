@@ -1,8 +1,5 @@
 import http from 'http';
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
 import pkg from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
@@ -37,6 +34,14 @@ import { handleBlackjack, handleBlackjackReply, activeSessions } from './handler
 import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
+import {
+  ensureDir,
+  ensureParentDir,
+  getAuthDataPath,
+  getPersistenceMode,
+  getRuntimeStatusFilePath,
+  isAuthPathLikelyPersistent,
+} from './runtimePaths.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -53,6 +58,25 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
   120000,
   Number.parseInt(process.env.WHATSAPP_AUTH_TIMEOUT_MS ?? '300000', 10) || 300000
 );
+const RESET_AUTH_ENABLED = String(process.env.RESET_AUTH_ENABLED ?? 'false').trim().toLowerCase() === 'true';
+const RESET_AUTH_TOKEN = String(process.env.RESET_AUTH_TOKEN ?? '').trim();
+const WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE =
+  String(process.env.WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE ?? 'false').trim().toLowerCase() === 'true';
+const authDataPath = getAuthDataPath();
+const runtimeStatusFilePath = getRuntimeStatusFilePath();
+const persistenceMode = getPersistenceMode();
+const authPathPersistent = isAuthPathLikelyPersistent();
+
+ensureDir(authDataPath);
+ensureParentDir(runtimeStatusFilePath);
+console.log(
+  `[runtime] authDataPath=${authDataPath} persistenceMode=${persistenceMode} persistent=${authPathPersistent}`
+);
+if (!authPathPersistent) {
+  console.warn(
+    '[runtime] La sesion de WhatsApp esta en almacenamiento no persistente. Si el contenedor reinicia, puede volver a pedir QR.'
+  );
+}
 
 let latestQrDataUrl = '';
 let appStatus = 'Inicializando servidor...';
@@ -282,11 +306,208 @@ function isPuppeteerDeliveryAmbiguousError(error) {
   return message.includes('Protocol error') && message.includes('Promise was collected');
 }
 
+function readPersistedRuntimeStatus() {
+  try {
+    if (!fs.existsSync(runtimeStatusFilePath)) {
+      return null;
+    }
+
+    const parsed = JSON.parse(fs.readFileSync(runtimeStatusFilePath, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    console.error('[runtime status read]', error.message);
+    return null;
+  }
+}
+
+function formatStatusTimestamp(value) {
+  if (!value) {
+    return 'Sin registro';
+  }
+
+  try {
+    return new Date(value).toLocaleString('es-PY', { timeZone: 'America/Asuncion' });
+  } catch {
+    return String(value);
+  }
+}
+
+function getRequesterAddress(req) {
+  return String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown')
+    .split(',')[0]
+    .trim();
+}
+
+const persistedRuntimeStatus = readPersistedRuntimeStatus();
+
+let runtimeStatus = {
+  appStartedAt: new Date().toISOString(),
+  status: appStatus,
+  lastEvent: persistedRuntimeStatus?.lastEvent ?? 'boot',
+  lastEventAt: persistedRuntimeStatus?.lastEventAt ?? null,
+  lastEventDetail: persistedRuntimeStatus?.lastEventDetail ?? '',
+  recentEvents: Array.isArray(persistedRuntimeStatus?.recentEvents)
+    ? persistedRuntimeStatus.recentEvents.slice(0, 12)
+    : [],
+};
+
+function buildPublicStatus() {
+  return {
+    status: appStatus,
+    qrVisible: Boolean(latestQrDataUrl),
+    lastEvent: runtimeStatus.lastEvent,
+    lastEventAt: runtimeStatus.lastEventAt,
+    lastEventDetail: runtimeStatus.lastEventDetail,
+    recentEvents: runtimeStatus.recentEvents.slice(0, 8),
+    authPersistence: authPathPersistent ? 'persistent' : 'ephemeral',
+    persistenceMode,
+    manualResetMode:
+      RESET_AUTH_ENABLED && RESET_AUTH_TOKEN
+        ? 'token-protected'
+        : RESET_AUTH_ENABLED
+          ? 'misconfigured'
+          : 'disabled',
+    appStartedAt: runtimeStatus.appStartedAt,
+  };
+}
+
+function persistRuntimeStatus() {
+  try {
+    fs.writeFileSync(runtimeStatusFilePath, `${JSON.stringify(buildPublicStatus(), null, 2)}\n`, 'utf8');
+  } catch (error) {
+    console.error('[runtime status write]', error.message);
+  }
+}
+
+function recordRuntimeEvent(event, detail = '', statusOverride = null) {
+  if (statusOverride) {
+    appStatus = statusOverride;
+  }
+
+  const entry = {
+    at: new Date().toISOString(),
+    event,
+    status: appStatus,
+    detail: String(detail ?? '').slice(0, 1000),
+  };
+
+  runtimeStatus = {
+    ...runtimeStatus,
+    status: appStatus,
+    lastEvent: event,
+    lastEventAt: entry.at,
+    lastEventDetail: entry.detail,
+    recentEvents: [entry, ...runtimeStatus.recentEvents].slice(0, 12),
+  };
+
+  persistRuntimeStatus();
+  return entry;
+}
+
+function renderStatusMetaHtml() {
+  const recentEventsHtml = runtimeStatus.recentEvents
+    .slice(0, 3)
+    .map((entry) => {
+      const detailHtml = entry.detail
+        ? `<span style="display:block;color:#a3a3a8;font-size:12px;line-height:1.45;margin-top:4px;">${entry.detail}</span>`
+        : '';
+      return `<li style="list-style:none;background:#151515;border:1px solid #262626;border-radius:10px;padding:10px 12px;text-align:left;"><strong style="display:block;color:#f5f5f7;margin-bottom:2px;">${entry.event}</strong><span style="display:block;color:#9696a0;font-size:12px;">${formatStatusTimestamp(entry.at)}</span>${detailHtml}</li>`;
+    })
+    .join('');
+
+  const storageLabel = authPathPersistent ? 'Persistente' : 'Temporal';
+  const resetLabel =
+    RESET_AUTH_ENABLED && RESET_AUTH_TOKEN
+      ? 'Protegido por token'
+      : RESET_AUTH_ENABLED
+        ? 'Mal configurado'
+        : 'Desactivado';
+
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:18px;">
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Sesion</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${storageLabel}</strong>
+        <small style="display:block;color:#9696a0;">${persistenceMode}</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Reset manual</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${resetLabel}</strong>
+        <small style="display:block;color:#9696a0;">/status.json disponible</small>
+      </div>
+    </div>
+    <div style="margin-top:18px;text-align:left;border-top:1px solid #2a2a2a;padding-top:14px;">
+      <p style="margin:6px 0;color:#a3a3a8;font-size:14px;"><strong style="color:#f5f5f7;">Ultimo evento:</strong> ${runtimeStatus.lastEvent || 'sin datos'}${runtimeStatus.lastEventAt ? ` · ${formatStatusTimestamp(runtimeStatus.lastEventAt)}` : ''}</p>
+      ${runtimeStatus.lastEventDetail ? `<p>${runtimeStatus.lastEventDetail}</p>` : ''}
+      ${recentEventsHtml ? `<ul style="padding:0;margin:12px 0 0;display:grid;gap:8px;">${recentEventsHtml}</ul>` : ''}
+    </div>
+  `;
+}
+
+recordRuntimeEvent(
+  'boot',
+  persistedRuntimeStatus?.lastEvent
+    ? `Ultimo evento previo: ${persistedRuntimeStatus.lastEvent}${persistedRuntimeStatus.lastEventAt ? ` (${formatStatusTimestamp(persistedRuntimeStatus.lastEventAt)})` : ''}.`
+    : 'Arranque del proceso.',
+  'Inicializando servidor...'
+);
+
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  const htmlHeaders = {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, max-age=0',
+  };
+
+  if (url.pathname === '/status' || url.pathname === '/status.json') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, max-age=0',
+    });
+    res.end(`${JSON.stringify(buildPublicStatus(), null, 2)}\n`);
+    return;
+  }
 
   if (url.pathname === '/reset-auth' || url.pathname === '/reset') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    const requesterAddress = getRequesterAddress(req);
+
+    if (!RESET_AUTH_ENABLED) {
+      console.warn(`[HTTP Reset] Intento bloqueado desde ${requesterAddress}: endpoint desactivado.`);
+      res.writeHead(404, htmlHeaders);
+      res.end('Not found');
+      return;
+    }
+
+    if (!RESET_AUTH_TOKEN) {
+      recordRuntimeEvent(
+        'manual_reset_misconfigured',
+        `Se intento usar reset manual desde ${requesterAddress}, pero falta RESET_AUTH_TOKEN.`,
+        'Reset manual mal configurado.'
+      );
+      res.writeHead(503, htmlHeaders);
+      res.end('<h1>Reset manual mal configurado</h1><p>Falta RESET_AUTH_TOKEN en el entorno.</p>');
+      return;
+    }
+
+    const suppliedToken = String(url.searchParams.get('token') ?? req.headers['x-reset-token'] ?? '').trim();
+    if (suppliedToken !== RESET_AUTH_TOKEN) {
+      recordRuntimeEvent(
+        'manual_reset_denied',
+        `Token invalido para reset manual desde ${requesterAddress}.`,
+        'Intento de reset manual bloqueado.'
+      );
+      res.writeHead(403, htmlHeaders);
+      res.end('<h1>403</h1><p>Token invalido para reset manual.</p>');
+      return;
+    }
+
+    recordRuntimeEvent(
+      'manual_reset_authorized',
+      `Reset manual autorizado desde ${requesterAddress}.`,
+      'Reset manual autorizado. Reiniciando bot...'
+    );
+
+    res.writeHead(200, htmlHeaders);
     res.end(`
       <html>
         <head>
@@ -326,7 +547,7 @@ http.createServer(async (req, res) => {
       </html>
     `);
 
-    console.warn('[HTTP Reset] Peticion de reinicio de sesion recibida.');
+    console.warn('[HTTP Reset] Peticion de reinicio de sesion autorizada.');
     try {
       if (fs.existsSync(authDataPath)) {
         fs.rmSync(authDataPath, { recursive: true, force: true });
@@ -339,7 +560,7 @@ http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, htmlHeaders);
 
   if (latestQrDataUrl) {
     res.end(`
@@ -393,6 +614,7 @@ http.createServer(async (req, res) => {
               <img src="${latestQrDataUrl}" />
             </div>
             <p style="color: #ffc107; font-weight: 500;">El QR se actualiza automaticamente cada 10 segundos.</p>
+            ${renderStatusMetaHtml()}
           </div>
         </body>
       </html>
@@ -440,6 +662,7 @@ http.createServer(async (req, res) => {
             <h2>Kingdoom Bot</h2>
             <p>Estado del sistema: <strong style="color: #4caf50;">${appStatus}</strong></p>
             <p>Si la pagina no carga el QR, el bot esta procesando la conexion o ya se conecto exitosamente.</p>
+            ${renderStatusMetaHtml()}
           </div>
         </body>
       </html>
@@ -447,9 +670,8 @@ http.createServer(async (req, res) => {
   }
 }).listen(parseInt(PORT, 10), '0.0.0.0', () => {
   console.log(`Servidor web activo en puerto ${PORT}`);
+  recordRuntimeEvent('http_listening', `Panel HTTP activo en puerto ${PORT}.`, appStatus);
 });
-
-const authDataPath = process.env.PERSISTENT_DATA_PATH || '/app/.wwebjs_auth';
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: authDataPath }),
@@ -479,14 +701,23 @@ client.on('qr', async (qr) => {
 
   try {
     latestQrDataUrl = await qrcodeImage.toDataURL(qr);
+    recordRuntimeEvent('qr', 'WhatsApp solicito un nuevo codigo QR.', appStatus);
   } catch (err) {
     console.error('Error generating QR DataURL:', err);
+    recordRuntimeEvent('qr_render_error', formatInitializeError(err), appStatus);
   }
 });
 
 client.on('ready', async () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
+  recordRuntimeEvent(
+    'ready',
+    authPathPersistent
+      ? 'Cliente conectado. La sesion usa almacenamiento persistente.'
+      : 'Cliente conectado. La sesion sigue en almacenamiento temporal; si el contenedor reinicia, puede volver a pedir QR.',
+    'Conectado a WhatsApp.'
+  );
   
   try {
     await initMissionTracker();
@@ -533,6 +764,11 @@ client.on('ready', async () => {
 
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
+  recordRuntimeEvent(
+    'auth_failure',
+    `WhatsApp rechazo la sesion actual: ${String(message ?? 'sin detalle')}`,
+    'Sesion invalida o expirada. Reiniciando...'
+  );
   console.error('La sesión de WhatsApp es invalida o expiro. Borrando carpeta de autenticacion...');
   try {
     if (fs.existsSync(authDataPath)) {
@@ -548,15 +784,28 @@ client.on('auth_failure', (message) => {
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
   schedulerStarted = false;
+  realtimeStarted = false;
   try {
     clearTreasureTimeouts();
   } catch (e) {
     console.error('Error limpiando timeouts de tesoros', e);
   }
+  latestQrDataUrl = '';
+  recordRuntimeEvent(
+    'disconnected',
+    `WhatsApp se desconecto con motivo: ${String(reason ?? 'sin detalle')}`,
+    'WhatsApp se desconecto. Reiniciando proceso...'
+  );
+  process.exit(1);
 });
 
 client.on('change_state', (state) => {
   console.log('[whatsapp state]', state);
+  recordRuntimeEvent(
+    'change_state',
+    `Nuevo estado interno: ${String(state ?? 'unknown')}`,
+    `Estado WhatsApp: ${String(state ?? 'unknown')}`
+  );
 });
 
 client.on('group_join', async (notification) => {
@@ -974,6 +1223,11 @@ async function initializeClientWithRetry() {
       console.log(
         `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
       );
+      recordRuntimeEvent(
+        'initialize_attempt',
+        `Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com.`,
+        'Conectando a WhatsApp...'
+      );
       await client.initialize();
       return;
     } catch (err) {
@@ -981,6 +1235,11 @@ async function initializeClientWithRetry() {
       const isLastAttempt = attempt >= WHATSAPP_INIT_MAX_RETRIES;
       console.error(
         `[whatsapp init] Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`
+      );
+      recordRuntimeEvent(
+        'initialize_failure',
+        `Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`,
+        'Fallo al conectar con WhatsApp.'
       );
 
       if (client.pupBrowser) {
@@ -994,16 +1253,32 @@ async function initializeClientWithRetry() {
       }
 
       if (isLastAttempt) {
-        console.error(
-          '[whatsapp init] Se agotaron los reintentos de inicializacion. Borrando carpeta de autenticacion y reiniciando el contenedor...'
-        );
-        try {
-          if (fs.existsSync(authDataPath)) {
-            fs.rmSync(authDataPath, { recursive: true, force: true });
-            console.log('[whatsapp init] Carpeta de autenticacion borrada.');
+        if (WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE) {
+          console.error(
+            '[whatsapp init] Se agotaron los reintentos de inicializacion. El entorno permite borrar autenticacion y reiniciar contenedor...'
+          );
+          recordRuntimeEvent(
+            'initialize_failed_reset_auth',
+            `Se agotaron los reintentos y WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE esta activo. Error final: ${formattedError}`,
+            'Fallo grave de inicializacion. Borrando sesion y reiniciando...'
+          );
+          try {
+            if (fs.existsSync(authDataPath)) {
+              fs.rmSync(authDataPath, { recursive: true, force: true });
+              console.log('[whatsapp init] Carpeta de autenticacion borrada.');
+            }
+          } catch (cleanErr) {
+            console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
           }
-        } catch (cleanErr) {
-          console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
+        } else {
+          console.error(
+            '[whatsapp init] Se agotaron los reintentos de inicializacion. Reiniciando sin borrar autenticacion para conservar sesion.'
+          );
+          recordRuntimeEvent(
+            'initialize_failed_restart',
+            `Se agotaron los reintentos, pero la autenticacion se conserva. Error final: ${formattedError}`,
+            'Fallo de inicializacion. Reiniciando sin borrar sesion...'
+          );
         }
         process.exit(1);
       }
@@ -1029,6 +1304,11 @@ process.on('unhandledRejection', (reason) => {
     formattedError.includes('Protocol error')
   ) {
     console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
+    recordRuntimeEvent(
+      'unhandled_rejection_restart',
+      formattedError,
+      'Error fatal asincrono. Reiniciando proceso...'
+    );
     process.exit(1);
   }
 });
@@ -1045,6 +1325,11 @@ process.on('uncaughtException', (error) => {
     formattedError.includes('Protocol error')
   ) {
     console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
+    recordRuntimeEvent(
+      'uncaught_exception_restart',
+      formattedError,
+      'Excepcion fatal. Reiniciando proceso...'
+    );
     process.exit(1);
   }
 });
