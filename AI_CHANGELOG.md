@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 10/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/runtimePaths.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Refuerzo del enlace inicial de WhatsApp para que el QR del Space no quede visualmente congelado y para exponer el estado real del handshake.
+*   **Cambios Clave:**
+    *   **[Bot - Telemetria de Enlace]:** el runtime ahora registra `authenticated`, `loading_screen` y `pairing_code`, de modo que `/status.json` ya distingue entre QR pendiente, telefono aceptado y sincronizacion interna.
+    *   **[Panel - Auto Refresh]:** la pagina publica del Space ya no depende solo de `meta refresh`; ahora sondea `/status.json` cada pocos segundos y fuerza recarga cuando cambia el QR o el evento activo.
+    *   **[Bot - Respaldo de Vinculacion]:** se dejo soporte opcional para emparejamiento por numero telefonico (`WHATSAPP_PAIR_PHONE_NUMBER`) con codigo visible en el panel cuando se habilite.
+    *   **[Persistencia - Señal Honesta]:** `src/runtimePaths.js` deja de reportar persistencia probable en Hugging Face cuando `/data` ni siquiera existe, evitando falsos positivos sobre la sesion.
+*   **Notas/Advertencias:** Este ajuste no elimina por si solo un bloqueo externo de red entre el contenedor y WhatsApp, pero si aclara si el problema ocurre antes del escaneo, al aceptar el telefono o durante la sincronizacion posterior.
+
+### [Fecha: 10/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/runtimePaths.js`, `src/adminStore.js`, `src/activeProfileStore.js`, `src/auditLog.js`, `src/marketForgeStore.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Hardening del runtime de WhatsApp en Hugging Face para evitar perdida de sesion, reset publico y falta de trazabilidad cuando el bot cae o vuelve a QR.
 *   **Cambios Clave:**

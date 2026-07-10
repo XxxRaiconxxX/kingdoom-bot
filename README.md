@@ -21,6 +21,8 @@ Bot de WhatsApp automatizado para el Reino de Kingdoom, alojado en Hugging Face 
 ## Hugging Face operativo
 
 - El estado publico del bot se consulta en `/status.json`.
+- El panel del QR ahora vigila `/status.json` y se recarga solo cuando WhatsApp emite un QR nuevo, cambia de estado o entra a sincronizacion. Si el navegador queda clavado, la recarga de respaldo ocurre igual cada 25 segundos.
 - La sesion de WhatsApp debe persistir en la ruta real donde Hugging Face monte el storage. Si el bucket esta montado en `/data`, usar `/data/kingdoom-bot/.wwebjs_auth`; si no, definir la ruta exacta con `PERSISTENT_DATA_PATH`.
+- Si el QR sigue siendo inestable, el cliente tambien admite vinculacion por numero telefonico con `WHATSAPP_PAIR_PHONE_NUMBER`, `WHATSAPP_PAIR_SHOW_NOTIFICATION` y `WHATSAPP_PAIR_INTERVAL_MS`.
 - El reset manual ya no debe quedar abierto al publico. Si hace falta habilitarlo de forma excepcional, usar `RESET_AUTH_ENABLED=true` y `RESET_AUTH_TOKEN=<token>`; luego invocarlo con `?token=...` o header `x-reset-token`.
 - `WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE` queda en `false` por defecto para no borrar sesiones validas por fallos de red o arranque transitorio.

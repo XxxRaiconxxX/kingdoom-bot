@@ -58,6 +58,13 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
   120000,
   Number.parseInt(process.env.WHATSAPP_AUTH_TIMEOUT_MS ?? '300000', 10) || 300000
 );
+const WHATSAPP_PAIR_PHONE_NUMBER = String(process.env.WHATSAPP_PAIR_PHONE_NUMBER ?? '').replace(/\D/g, '');
+const WHATSAPP_PAIR_SHOW_NOTIFICATION =
+  String(process.env.WHATSAPP_PAIR_SHOW_NOTIFICATION ?? 'true').trim().toLowerCase() !== 'false';
+const WHATSAPP_PAIR_INTERVAL_MS = Math.max(
+  60000,
+  Number.parseInt(process.env.WHATSAPP_PAIR_INTERVAL_MS ?? '180000', 10) || 180000
+);
 const RESET_AUTH_ENABLED = String(process.env.RESET_AUTH_ENABLED ?? 'false').trim().toLowerCase() === 'true';
 const RESET_AUTH_TOKEN = String(process.env.RESET_AUTH_TOKEN ?? '').trim();
 const WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE =
@@ -77,8 +84,15 @@ if (!authPathPersistent) {
     '[runtime] La sesion de WhatsApp esta en almacenamiento no persistente. Si el contenedor reinicia, puede volver a pedir QR.'
   );
 }
+if (WHATSAPP_PAIR_PHONE_NUMBER) {
+  console.log('[runtime] Modo de vinculacion por numero telefonico habilitado.');
+}
 
 let latestQrDataUrl = '';
+let latestQrUpdatedAt = null;
+let latestPairingCode = '';
+let latestPairingCodeUpdatedAt = null;
+let lastLoadingPercent = null;
 let appStatus = 'Inicializando servidor...';
 const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
@@ -332,6 +346,15 @@ function formatStatusTimestamp(value) {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getRequesterAddress(req) {
   return String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown')
     .split(',')[0]
@@ -355,6 +378,11 @@ function buildPublicStatus() {
   return {
     status: appStatus,
     qrVisible: Boolean(latestQrDataUrl),
+    qrLastUpdatedAt: latestQrUpdatedAt,
+    pairingCodeEnabled: Boolean(WHATSAPP_PAIR_PHONE_NUMBER),
+    pairingCodeVisible: Boolean(latestPairingCode),
+    pairingCode: latestPairingCode || null,
+    pairingCodeLastUpdatedAt: latestPairingCodeUpdatedAt,
     lastEvent: runtimeStatus.lastEvent,
     lastEventAt: runtimeStatus.lastEventAt,
     lastEventDetail: runtimeStatus.lastEventDetail,
@@ -409,9 +437,9 @@ function renderStatusMetaHtml() {
     .slice(0, 3)
     .map((entry) => {
       const detailHtml = entry.detail
-        ? `<span style="display:block;color:#a3a3a8;font-size:12px;line-height:1.45;margin-top:4px;">${entry.detail}</span>`
+        ? `<span style="display:block;color:#a3a3a8;font-size:12px;line-height:1.45;margin-top:4px;">${escapeHtml(entry.detail)}</span>`
         : '';
-      return `<li style="list-style:none;background:#151515;border:1px solid #262626;border-radius:10px;padding:10px 12px;text-align:left;"><strong style="display:block;color:#f5f5f7;margin-bottom:2px;">${entry.event}</strong><span style="display:block;color:#9696a0;font-size:12px;">${formatStatusTimestamp(entry.at)}</span>${detailHtml}</li>`;
+      return `<li style="list-style:none;background:#151515;border:1px solid #262626;border-radius:10px;padding:10px 12px;text-align:left;"><strong style="display:block;color:#f5f5f7;margin-bottom:2px;">${escapeHtml(entry.event)}</strong><span style="display:block;color:#9696a0;font-size:12px;">${formatStatusTimestamp(entry.at)}</span>${detailHtml}</li>`;
     })
     .join('');
 
@@ -437,10 +465,52 @@ function renderStatusMetaHtml() {
       </div>
     </div>
     <div style="margin-top:18px;text-align:left;border-top:1px solid #2a2a2a;padding-top:14px;">
-      <p style="margin:6px 0;color:#a3a3a8;font-size:14px;"><strong style="color:#f5f5f7;">Ultimo evento:</strong> ${runtimeStatus.lastEvent || 'sin datos'}${runtimeStatus.lastEventAt ? ` · ${formatStatusTimestamp(runtimeStatus.lastEventAt)}` : ''}</p>
-      ${runtimeStatus.lastEventDetail ? `<p>${runtimeStatus.lastEventDetail}</p>` : ''}
+      <p style="margin:6px 0;color:#a3a3a8;font-size:14px;"><strong style="color:#f5f5f7;">Ultimo evento:</strong> ${escapeHtml(runtimeStatus.lastEvent || 'sin datos')}${runtimeStatus.lastEventAt ? ` · ${formatStatusTimestamp(runtimeStatus.lastEventAt)}` : ''}</p>
+      ${runtimeStatus.lastEventDetail ? `<p>${escapeHtml(runtimeStatus.lastEventDetail)}</p>` : ''}
       ${recentEventsHtml ? `<ul style="padding:0;margin:12px 0 0;display:grid;gap:8px;">${recentEventsHtml}</ul>` : ''}
     </div>
+  `;
+}
+
+function renderAutoRefreshScript() {
+  const currentStatus = buildPublicStatus();
+  const markers = JSON.stringify({
+    lastEvent: currentStatus.lastEvent ?? '',
+    lastEventAt: currentStatus.lastEventAt ?? '',
+    qrLastUpdatedAt: currentStatus.qrLastUpdatedAt ?? '',
+    pairingCodeLastUpdatedAt: currentStatus.pairingCodeLastUpdatedAt ?? '',
+  });
+
+  return `
+    <script>
+      (() => {
+        const markers = ${markers};
+
+        const sync = async () => {
+          try {
+            const response = await fetch('/status.json?ts=' + Date.now(), { cache: 'no-store' });
+            if (!response.ok) {
+              return;
+            }
+
+            const next = await response.json();
+            const hasChanged =
+              String(next.lastEvent ?? '') !== String(markers.lastEvent ?? '') ||
+              String(next.lastEventAt ?? '') !== String(markers.lastEventAt ?? '') ||
+              String(next.qrLastUpdatedAt ?? '') !== String(markers.qrLastUpdatedAt ?? '') ||
+              String(next.pairingCodeLastUpdatedAt ?? '') !== String(markers.pairingCodeLastUpdatedAt ?? '');
+
+            if (hasChanged) {
+              window.location.replace('/?ts=' + Date.now());
+            }
+          } catch (error) {
+            console.warn('status poll failed', error);
+          }
+        };
+
+        window.setInterval(sync, 4000);
+      })();
+    </script>
   `;
 }
 
@@ -568,7 +638,7 @@ http.createServer(async (req, res) => {
         <head>
           <title>Kingdoom Bot - Escanear QR</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <meta http-equiv="refresh" content="10">
+          <meta http-equiv="refresh" content="25">
           <style>
             body {
               display: flex;
@@ -608,14 +678,15 @@ http.createServer(async (req, res) => {
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
-            <p>Estado actual: <strong style="color: #ffc107;">${appStatus}</strong></p>
+            <p>Estado actual: <strong style="color: #ffc107;">${escapeHtml(appStatus)}</strong></p>
             <p>Escanea este codigo QR con WhatsApp:</p>
             <div class="qr-wrapper">
               <img src="${latestQrDataUrl}" />
             </div>
-            <p style="color: #ffc107; font-weight: 500;">El QR se actualiza automaticamente cada 10 segundos.</p>
+            <p style="color: #ffc107; font-weight: 500;">La vista se sincroniza sola. Si ves el mismo QR por mas de 25 segundos, esta pagina se recargara automaticamente.</p>
             ${renderStatusMetaHtml()}
           </div>
+          ${renderAutoRefreshScript()}
         </body>
       </html>
     `);
@@ -625,7 +696,7 @@ http.createServer(async (req, res) => {
         <head>
           <title>Kingdoom Bot - Estado</title>
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <meta http-equiv="refresh" content="10">
+          <meta http-equiv="refresh" content="25">
           <style>
             body {
               display: flex;
@@ -660,10 +731,12 @@ http.createServer(async (req, res) => {
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
-            <p>Estado del sistema: <strong style="color: #4caf50;">${appStatus}</strong></p>
+            <p>Estado del sistema: <strong style="color: #4caf50;">${escapeHtml(appStatus)}</strong></p>
             <p>Si la pagina no carga el QR, el bot esta procesando la conexion o ya se conecto exitosamente.</p>
+            ${latestPairingCode ? `<p style="color:#ffc107;font-weight:600;">Codigo de vinculacion: <span style="letter-spacing:0.18em;">${escapeHtml(latestPairingCode)}</span></p>` : ''}
             ${renderStatusMetaHtml()}
           </div>
+          ${renderAutoRefreshScript()}
         </body>
       </html>
     `);
@@ -676,6 +749,13 @@ http.createServer(async (req, res) => {
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: authDataPath }),
   authTimeoutMs: WHATSAPP_AUTH_TIMEOUT_MS,
+  pairWithPhoneNumber: WHATSAPP_PAIR_PHONE_NUMBER
+    ? {
+        phoneNumber: WHATSAPP_PAIR_PHONE_NUMBER,
+        showNotification: WHATSAPP_PAIR_SHOW_NOTIFICATION,
+        intervalMs: WHATSAPP_PAIR_INTERVAL_MS,
+      }
+    : undefined,
   puppeteer: {
     headless: true,
     args: [
@@ -697,6 +777,10 @@ const client = new Client({
 client.on('qr', async (qr) => {
   console.log('Escanea este QR:');
   appStatus = 'Esperando escaneo de codigo QR...';
+  latestQrUpdatedAt = new Date().toISOString();
+  latestPairingCode = '';
+  latestPairingCodeUpdatedAt = null;
+  lastLoadingPercent = null;
   qrcode.generate(qr, { small: true });
 
   try {
@@ -708,9 +792,58 @@ client.on('qr', async (qr) => {
   }
 });
 
+client.on('code', (code) => {
+  latestQrDataUrl = '';
+  latestQrUpdatedAt = null;
+  latestPairingCode = String(code ?? '').trim();
+  latestPairingCodeUpdatedAt = new Date().toISOString();
+  lastLoadingPercent = null;
+  recordRuntimeEvent(
+    'pairing_code',
+    'WhatsApp genero un codigo de vinculacion por telefono.',
+    'Esperando vinculacion por codigo...'
+  );
+});
+
+client.on('authenticated', () => {
+  latestQrDataUrl = '';
+  latestQrUpdatedAt = null;
+  latestPairingCode = '';
+  latestPairingCodeUpdatedAt = null;
+  recordRuntimeEvent(
+    'authenticated',
+    'El telefono acepto la vinculacion. Iniciando sincronizacion del cliente.',
+    'Autenticado. Sincronizando WhatsApp...'
+  );
+});
+
+client.on('loading_screen', (percent, message) => {
+  const roundedPercent = Number.isFinite(percent) ? Math.round(percent) : null;
+  if (roundedPercent === null || roundedPercent === lastLoadingPercent) {
+    return;
+  }
+
+  lastLoadingPercent = roundedPercent;
+  appStatus = `Sincronizando WhatsApp... ${roundedPercent}%`;
+
+  if (roundedPercent === 100 || roundedPercent <= 5 || roundedPercent % 10 === 0) {
+    recordRuntimeEvent(
+      'loading_screen',
+      `Sincronizacion ${roundedPercent}%${message ? `: ${String(message)}` : ''}`,
+      appStatus
+    );
+  } else {
+    persistRuntimeStatus();
+  }
+});
+
 client.on('ready', async () => {
   console.log('Kingdoom Bot conectado');
   latestQrDataUrl = '';
+  latestQrUpdatedAt = null;
+  latestPairingCode = '';
+  latestPairingCodeUpdatedAt = null;
+  lastLoadingPercent = null;
   recordRuntimeEvent(
     'ready',
     authPathPersistent
@@ -764,6 +897,11 @@ client.on('ready', async () => {
 
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
+  latestQrDataUrl = '';
+  latestQrUpdatedAt = null;
+  latestPairingCode = '';
+  latestPairingCodeUpdatedAt = null;
+  lastLoadingPercent = null;
   recordRuntimeEvent(
     'auth_failure',
     `WhatsApp rechazo la sesion actual: ${String(message ?? 'sin detalle')}`,
@@ -791,6 +929,10 @@ client.on('disconnected', (reason) => {
     console.error('Error limpiando timeouts de tesoros', e);
   }
   latestQrDataUrl = '';
+  latestQrUpdatedAt = null;
+  latestPairingCode = '';
+  latestPairingCodeUpdatedAt = null;
+  lastLoadingPercent = null;
   recordRuntimeEvent(
     'disconnected',
     `WhatsApp se desconecto con motivo: ${String(reason ?? 'sin detalle')}`,

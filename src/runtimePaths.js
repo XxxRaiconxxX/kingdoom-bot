@@ -82,13 +82,12 @@ export function getPersistenceMode() {
 }
 
 export function isAuthPathLikelyPersistent() {
-  const mode = getPersistenceMode();
-  if (mode === 'local') {
+  if (!isHuggingFaceRuntime()) {
     return true;
   }
 
-  if (mode === 'custom-auth-path' || mode === 'custom-root-path') {
-    return true;
+  if (!fs.existsSync('/data')) {
+    return false;
   }
 
   const normalizedPath = getAuthDataPath().replace(/\\/g, '/');
