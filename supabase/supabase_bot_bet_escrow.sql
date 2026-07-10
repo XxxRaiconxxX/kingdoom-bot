@@ -13,6 +13,16 @@ CREATE TABLE IF NOT EXISTS public.bot_active_bets (
 -- Index for querying unresolved bets quickly
 CREATE INDEX IF NOT EXISTS idx_bot_active_bets_unresolved ON public.bot_active_bets (player_id) WHERE resolved = false;
 
+-- Enable RLS and restrict to service_role
+ALTER TABLE public.bot_active_bets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow full access for service_role only"
+ON public.bot_active_bets
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
+
 -- 2. place_bet RPC
 -- Deducts gold and creates the bet record in one atomic transaction.
 CREATE OR REPLACE FUNCTION public.place_bet(p_player_id uuid, p_amount numeric, p_game_type text)

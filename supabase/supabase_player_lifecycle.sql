@@ -35,3 +35,13 @@ create index if not exists idx_player_lifecycle_log_player_created
 
 create index if not exists idx_player_lifecycle_log_action_created
   on public.player_lifecycle_log (action, created_at desc);
+
+-- Enable RLS and restrict to service_role
+ALTER TABLE public.player_lifecycle_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow full access for service_role only"
+ON public.player_lifecycle_log
+FOR ALL
+TO service_role
+USING (true)
+WITH CHECK (true);
