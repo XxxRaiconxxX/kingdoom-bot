@@ -320,6 +320,87 @@ function isPuppeteerDeliveryAmbiguousError(error) {
   return message.includes('Protocol error') && message.includes('Promise was collected');
 }
 
+function normalizeOutgoingText(value) {
+  const normalized = String(value ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim();
+
+  return normalized || 'El reino no encontro palabras para responder.';
+}
+
+function splitOutgoingText(value, maxLength = 3200) {
+  const text = normalizeOutgoingText(value);
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks = [];
+  let remaining = text;
+
+  while (remaining.length > maxLength) {
+    const boundary = Math.max(
+      remaining.lastIndexOf('\n\n', maxLength),
+      remaining.lastIndexOf('\n', maxLength),
+      remaining.lastIndexOf('. ', maxLength),
+      remaining.lastIndexOf(' ', maxLength)
+    );
+    const splitAt = boundary > maxLength * 0.45 ? boundary + 1 : maxLength;
+    chunks.push(remaining.slice(0, splitAt).trim());
+    remaining = remaining.slice(splitAt).trim();
+  }
+
+  if (remaining) {
+    chunks.push(remaining);
+  }
+
+  return chunks;
+}
+
+function buildPlainTextFallback(value) {
+  return normalizeOutgoingText(value)
+    .replace(/[*_~`]/g, '')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+async function sendBotText(msg, text, { preferReply = true, context = 'message' } = {}) {
+  const chunks = splitOutgoingText(text);
+
+  for (const [index, chunk] of chunks.entries()) {
+    const shouldReply = preferReply && index === 0;
+    if (shouldReply) {
+      try {
+        await msg.reply(chunk);
+        continue;
+      } catch (replyError) {
+        console.warn(`[delivery:${context}] msg.reply fallo; intentando envio directo.`, replyError?.message ?? replyError);
+      }
+    }
+
+    try {
+      await client.sendMessage(msg.from, chunk);
+    } catch (directError) {
+      const plainText = buildPlainTextFallback(chunk);
+      if (plainText !== chunk) {
+        console.warn(`[delivery:${context}] envio directo fallo; reintentando como texto plano.`, directError?.message ?? directError);
+        await client.sendMessage(msg.from, plainText);
+        continue;
+      }
+
+      throw directError;
+    }
+  }
+}
+
+async function sendEmergencyText(msg, text, context = 'emergency') {
+  try {
+    await sendBotText(msg, text, { preferReply: false, context });
+  } catch (deliveryError) {
+    console.error(`[delivery:${context}] No se pudo enviar el aviso de error:`, deliveryError);
+  }
+}
+
 function readPersistedRuntimeStatus() {
   try {
     if (!fs.existsSync(runtimeStatusFilePath)) {
@@ -1352,10 +1433,12 @@ client.on('message', async (msg) => {
       }
     }
 
-    if (reply) await msg.reply(reply);
+    if (reply) {
+      await sendBotText(msg, reply, { context: command || 'message' });
+    }
   } catch (err) {
     console.error('Error:', err);
-    await msg.reply('El reino esta en llamas... intenta de nuevo en un momento.');
+    await sendEmergencyText(msg, 'El reino esta en llamas... intenta de nuevo en un momento.', 'message_error');
   }
 });
 

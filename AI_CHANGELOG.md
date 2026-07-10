@@ -5,6 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 10/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Corregido el fallo donde el Oraculo generaba respuesta correctamente pero WhatsApp Web fallaba al entregarla y el bot terminaba enviando el mensaje generico de error.
+*   **Cambios Clave:**
+    *   **[Bot - Entrega Robusta]:** se agrego `sendBotText()` para normalizar texto, dividir respuestas largas y reintentar el envio directo cuando `msg.reply()` falla.
+    *   **[Bot - Fallback de Formato]:** si WhatsApp rechaza el contenido con formato, el bot reintenta como texto plano antes de marcar el envio como fallido.
+    *   **[Bot - Error Seguro]:** el aviso "El reino esta en llamas..." ahora se envia con un helper seguro para evitar que un fallo secundario reinicie o ensucie el flujo.
+*   **Notas/Advertencias:** La IA ya estaba respondiendo; el fallo estaba en la entrega del mensaje hacia WhatsApp despues de recibir la respuesta del proveedor.
+
+### [Fecha: 10/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/runtimePaths.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Refuerzo del enlace inicial de WhatsApp para que el QR del Space no quede visualmente congelado y para exponer el estado real del handshake.
 *   **Cambios Clave:**
