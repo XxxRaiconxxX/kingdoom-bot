@@ -26,3 +26,5 @@ Bot de WhatsApp automatizado para el Reino de Kingdoom, alojado en Hugging Face 
 - Si el QR sigue siendo inestable, el cliente tambien admite vinculacion por numero telefonico con `WHATSAPP_PAIR_PHONE_NUMBER`, `WHATSAPP_PAIR_SHOW_NOTIFICATION` y `WHATSAPP_PAIR_INTERVAL_MS`.
 - El reset manual ya no debe quedar abierto al publico. Si hace falta habilitarlo de forma excepcional, usar `RESET_AUTH_ENABLED=true` y `RESET_AUTH_TOKEN=<token>`; luego invocarlo con `?token=...` o header `x-reset-token`.
 - `WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE` queda en `false` por defecto para no borrar sesiones validas por fallos de red o arranque transitorio.
+- `WHATSAPP_TAKEOVER_ON_CONFLICT=true` permite que el contenedor nuevo tome el control cuando un despliegue se solapa brevemente con el anterior.
+- Los reinicios por desconexion, watchdog o `SIGTERM` cierran Chromium antes de salir y eliminan solo locks huerfanos del perfil persistente; la sesion se borra unicamente ante `LOGOUT`, fallo de autenticacion confirmado o reset manual autorizado.

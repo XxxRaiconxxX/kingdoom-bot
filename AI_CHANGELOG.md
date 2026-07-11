@@ -453,3 +453,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Error transitorio retenido:** `Execution context was destroyed`, `getChat` indefinido, `Target closed`, `Session closed` y errores de protocolo pausan los reintentos cinco minutos sin marcar el aviso como enviado.
     *   **Ready idempotente:** Repeticiones del evento `ready` ya no restauran misiones ni reejecutan el bootstrap operativo del bot.
 *   **Notas/Advertencias:** Si WhatsApp invalida deliberadamente la vinculacion desde el telefono, seguira siendo necesario escanear un QR; este cambio evita que los reintentos del scheduler aceleren esa invalidacion.
+
+### [Fecha: 11/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/whatsappRecovery.js`, `.env.example`, `README.md`, `test_connection_watchdog.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Auditoria y endurecimiento integral de la primera conexion y recuperacion de WhatsApp en Hugging Face.
+*   **Cambios Clave:**
+    *   **Cierre ordenado:** Los eventos de desconexion ya no ejecutan `process.exit` dentro del callback de `whatsapp-web.js`; Chromium recibe tiempo para cerrar y liberar el perfil persistente.
+    *   **Takeover controlado:** El contenedor nuevo puede tomar la sesion tras un solapamiento de despliegue, evitando conflictos entre replicas vieja y nueva.
+    *   **Locks seguros:** Antes de inicializar se eliminan solo `SingletonLock`, `SingletonSocket`, `SingletonCookie` y `DevToolsActivePort`, sin borrar cookies ni credenciales.
+    *   **Backoff observable:** Los fallos consecutivos aumentan la espera hasta 60 segundos y conservan 40 eventos internos para diagnostico.
+    *   **Shutdown de plataforma:** `SIGTERM` y `SIGINT` cierran Chromium antes de finalizar, reduciendo sesiones corruptas durante rebuilds o reinicios de Hugging Face.
+*   **Notas/Advertencias:** El hardware gratuito de Hugging Face puede dormir por inactividad; este flujo recupera la sesion al volver, pero no puede impedir la politica de suspension de la plataforma.

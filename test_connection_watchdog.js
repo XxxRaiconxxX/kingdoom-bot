@@ -36,6 +36,27 @@ for (const [startMarker, endMarker] of [
   );
 }
 
+for (const [startMarker, endMarker] of [
+  ["client.on('auth_failure'", "client.on('disconnected'"],
+  ["client.on('disconnected'", "client.on('change_state'"],
+]) {
+  const handlerSource = sourceBetween(startMarker, endMarker);
+  assert.equal(
+    handlerSource.includes('process.exit('),
+    false,
+    `${startMarker} must return control to whatsapp-web.js before process exit.`
+  );
+  assert.equal(
+    handlerSource.includes('requestProcessRestart('),
+    true,
+    `${startMarker} must use the coordinated restart path.`
+  );
+}
+
+const clientOptionsSource = sourceBetween('const client = new Client({', "client.on('qr'");
+assert.equal(clientOptionsSource.includes('takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT'), true);
+assert.equal(clientOptionsSource.includes('takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS'), true);
+
 assert.equal(
   sourceBetween("client.on('change_state'", "client.on('group_join'").includes(
     'markWhatsappProgress()'
@@ -51,7 +72,7 @@ const watchdogSource = sourceBetween(
 
 function runWatchdogScenario({ ready, qrAgeMs }) {
   const callbacks = [];
-  const exits = [];
+  const restarts = [];
   const events = [];
   const now = Date.now();
   const context = {
@@ -68,7 +89,11 @@ function runWatchdogScenario({ ready, qrAgeMs }) {
     latestPairingCodeUpdatedAt: null,
     lastWhatsappProgressAt: now - 200000,
     recordRuntimeEvent: (...args) => events.push(args),
-    process: { exit: (code) => exits.push(code) },
+    runtimeStatus: { restartCount: 0 },
+    WHATSAPP_INIT_RETRY_DELAY_MS: 15000,
+    WHATSAPP_RECONNECT_MAX_DELAY_MS: 60000,
+    calculateReconnectDelayMs: () => 15000,
+    requestProcessRestart: (...args) => restarts.push(args),
     setInterval: (callback) => {
       callbacks.push(callback);
       return { unref() {} };
@@ -79,15 +104,15 @@ function runWatchdogScenario({ ready, qrAgeMs }) {
 
   vm.runInNewContext(`${watchdogSource}\nstartWhatsappConnectWatchdog();`, context);
   callbacks[0]();
-  return { exits, events };
+  return { restarts, events };
 }
 
-assert.equal(runWatchdogScenario({ ready: true, qrAgeMs: null }).exits.length, 0);
-assert.equal(runWatchdogScenario({ ready: false, qrAgeMs: 1000 }).exits.length, 0);
+assert.equal(runWatchdogScenario({ ready: true, qrAgeMs: null }).restarts.length, 0);
+assert.equal(runWatchdogScenario({ ready: false, qrAgeMs: 1000 }).restarts.length, 0);
 
 const staleQr = runWatchdogScenario({ ready: false, qrAgeMs: 200000 });
-assert.deepEqual(staleQr.exits, [1]);
-assert.equal(staleQr.events[0][0], 'connect_watchdog_restart');
-assert.match(staleQr.events[0][1], /QR vencido sin progreso/);
+assert.equal(staleQr.restarts.length, 1);
+assert.equal(staleQr.restarts[0][0], 'connect_watchdog_restart');
+assert.match(staleQr.restarts[0][1], /QR vencido sin progreso/);
 
 console.log('CONNECTION_WATCHDOG_OK');
