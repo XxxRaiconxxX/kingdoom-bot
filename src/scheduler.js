@@ -10,6 +10,10 @@ import {
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
+import {
+  isTransientWhatsappDeliveryError,
+  NOTIFICATION_CONTEXT_RETRY_DELAY_MS,
+} from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
 const schedulerState = {
@@ -20,6 +24,20 @@ const schedulerState = {
   playerLifecycleArchiveRunning: false,
   roleplayAccessRunning: false,
 };
+let notificationDispatchPausedUntil = 0;
+
+function isWhatsappClientReady(client, isClientReady) {
+  try {
+    return Boolean(
+      isClientReady() &&
+      client?.info &&
+      client.pupPage &&
+      !client.pupPage.isClosed()
+    );
+  } catch {
+    return false;
+  }
+}
 
 async function runScheduledJob(key, label, task) {
   if (schedulerState[key]) {
@@ -91,7 +109,7 @@ async function sendToAll(client, buildMessage) {
   }
 }
 
-export function startScheduler(client) {
+export function startScheduler(client, isClientReady = () => Boolean(client?.info)) {
   void hydrateOpenTreasures(client);
   scheduleDailyTreasures(client);
 
@@ -138,7 +156,8 @@ export function startScheduler(client) {
     '*/1 * * * *',
     async () => {
       await runScheduledJob('notificationQueueRunning', 'procesador de notificaciones', async () => {
-        if (!client || !client.info) return;
+        if (Date.now() < notificationDispatchPausedUntil) return;
+        if (!isWhatsappClientReady(client, isClientReady)) return;
 
         try {
           const { data: pending, error } = await botStateSupabase
@@ -155,6 +174,11 @@ export function startScheduler(client) {
 
           if (pending && pending.length > 0) {
             for (const item of pending) {
+              if (!isWhatsappClientReady(client, isClientReady)) {
+                console.warn('[scheduler] Cola en pausa: WhatsApp ya no esta listo para despachar.');
+                return;
+              }
+
               try {
                 await client.sendMessage(formatJid(item.player_phone), item.message);
                 await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -164,7 +188,15 @@ export function startScheduler(client) {
                   .eq('id', item.id);
               } catch (err) {
                 console.error(`[scheduler] Error despachando a ${item.player_phone}:`, err.message);
-                // Mark as sent anyway to avoid blocking the queue if it's an invalid number
+                if (isTransientWhatsappDeliveryError(err)) {
+                  notificationDispatchPausedUntil = Date.now() + NOTIFICATION_CONTEXT_RETRY_DELAY_MS;
+                  console.warn(
+                    `[scheduler] WhatsApp cambio de contexto; la cola se reintentara en ${Math.round(NOTIFICATION_CONTEXT_RETRY_DELAY_MS / 60000)} minutos sin descartar el mensaje.`
+                  );
+                  return;
+                }
+
+                // Un destinatario invalido no debe bloquear las demas notificaciones.
                 await botStateSupabase.from('bot_notifications_queue').update({ sent: true }).eq('id', item.id);
               }
             }

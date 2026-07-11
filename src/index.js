@@ -104,6 +104,7 @@ const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
 let realtimeStarted = false;
+let readyBootstrapComplete = false;
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
@@ -1123,6 +1124,16 @@ client.on('ready', async () => {
       : 'Cliente conectado. La sesion sigue en almacenamiento temporal; si el contenedor reinicia, puede volver a pedir QR.',
     'Conectado a WhatsApp.'
   );
+
+  if (readyBootstrapComplete) {
+    recordRuntimeEvent(
+      'ready_duplicate',
+      'WhatsApp repitio el evento ready; se conserva el runtime ya inicializado.',
+      'Conectado a WhatsApp.'
+    );
+    return;
+  }
+  readyBootstrapComplete = true;
   
   try {
     await initMissionTracker();
@@ -1157,7 +1168,7 @@ client.on('ready', async () => {
   // ------------------------------
 
   if (!schedulerStarted) {
-    startScheduler(client);
+    startScheduler(client, () => whatsappClientReady);
     schedulerStarted = true;
   }
 
@@ -1170,6 +1181,7 @@ client.on('ready', async () => {
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
   whatsappClientReady = false;
+  readyBootstrapComplete = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = '';
@@ -1194,6 +1206,7 @@ client.on('auth_failure', (message) => {
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
   whatsappClientReady = false;
+  readyBootstrapComplete = false;
   schedulerStarted = false;
   realtimeStarted = false;
   try {

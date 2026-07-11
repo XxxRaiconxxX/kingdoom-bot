@@ -444,3 +444,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Realtime - Sin duplicados]:** los cierres de subasta se reclaman por ID antes del envio y se liberan si WhatsApp falla, evitando anuncios repetidos por eventos UPDATE duplicados.
     *   **[WhatsApp - Watchdog preciso]:** los eventos HTTP y de diagnostico ya no renuevan el watchdog; solo QR, codigo, autenticacion, carga, ready e intentos reales cuentan como progreso de conexion.
 *   **Notas/Advertencias:** La RPC de transferencia debe aplicarse en Supabase antes de desplegar el bot. La eficacia final del runtime requiere validar el Space `axel785/kingdoom-whatsapp`; las pruebas locales no sustituyen esa comprobacion.
+
+### [Fecha: 11/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `src/whatsappDelivery.js`, `test_scheduler_delivery_guard.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Contencion de desconexiones de WhatsApp causadas por la cola de notificaciones durante navegaciones internas de WhatsApp Web.
+*   **Cambios Clave:**
+    *   **Cola protegida:** El scheduler ahora exige que el cliente siga `ready`, tenga pagina Puppeteer activa y no cerrada antes de intentar un envio.
+    *   **Error transitorio retenido:** `Execution context was destroyed`, `getChat` indefinido, `Target closed`, `Session closed` y errores de protocolo pausan los reintentos cinco minutos sin marcar el aviso como enviado.
+    *   **Ready idempotente:** Repeticiones del evento `ready` ya no restauran misiones ni reejecutan el bootstrap operativo del bot.
+*   **Notas/Advertencias:** Si WhatsApp invalida deliberadamente la vinculacion desde el telefono, seguira siendo necesario escanear un QR; este cambio evita que los reintentos del scheduler aceleren esa invalidacion.
