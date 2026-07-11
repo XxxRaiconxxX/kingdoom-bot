@@ -58,6 +58,10 @@ const WHATSAPP_AUTH_TIMEOUT_MS = Math.max(
   120000,
   Number.parseInt(process.env.WHATSAPP_AUTH_TIMEOUT_MS ?? '300000', 10) || 300000
 );
+const WHATSAPP_CONNECT_STALL_TIMEOUT_MS = Math.max(
+  60000,
+  Number.parseInt(process.env.WHATSAPP_CONNECT_STALL_TIMEOUT_MS ?? '150000', 10) || 150000
+);
 const WHATSAPP_PAIR_PHONE_NUMBER = String(process.env.WHATSAPP_PAIR_PHONE_NUMBER ?? '').replace(/\D/g, '');
 const WHATSAPP_PAIR_SHOW_NOTIFICATION =
   String(process.env.WHATSAPP_PAIR_SHOW_NOTIFICATION ?? 'true').trim().toLowerCase() !== 'false';
@@ -94,6 +98,8 @@ let latestPairingCode = '';
 let latestPairingCodeUpdatedAt = null;
 let lastLoadingPercent = null;
 let appStatus = 'Inicializando servidor...';
+let whatsappClientReady = false;
+let lastWhatsappProgressAt = Date.now();
 const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
@@ -318,6 +324,29 @@ function formatInitializeError(error) {
 function isPuppeteerDeliveryAmbiguousError(error) {
   const message = String(error?.message ?? error);
   return message.includes('Protocol error') && message.includes('Promise was collected');
+}
+
+function isLogoutDisconnectReason(reason) {
+  return String(reason ?? '').trim().toUpperCase() === 'LOGOUT';
+}
+
+function clearAuthDataPath(reasonLabel) {
+  try {
+    if (!fs.existsSync(authDataPath)) {
+      return false;
+    }
+
+    fs.rmSync(authDataPath, { recursive: true, force: true });
+    console.log(`[auth cleanup] Carpeta de autenticacion eliminada: ${reasonLabel}`);
+    return true;
+  } catch (error) {
+    console.error('[auth cleanup] Error al eliminar carpeta de autenticacion:', error);
+    return false;
+  }
+}
+
+function markWhatsappProgress() {
+  lastWhatsappProgressAt = Date.now();
 }
 
 function normalizeOutgoingText(value) {
@@ -556,9 +585,12 @@ function renderStatusMetaHtml() {
 function renderAutoRefreshScript() {
   const currentStatus = buildPublicStatus();
   const markers = JSON.stringify({
+    status: currentStatus.status ?? '',
+    qrVisible: currentStatus.qrVisible === true,
     lastEvent: currentStatus.lastEvent ?? '',
     lastEventAt: currentStatus.lastEventAt ?? '',
     qrLastUpdatedAt: currentStatus.qrLastUpdatedAt ?? '',
+    pairingCodeVisible: currentStatus.pairingCodeVisible === true,
     pairingCodeLastUpdatedAt: currentStatus.pairingCodeLastUpdatedAt ?? '',
   });
 
@@ -566,8 +598,85 @@ function renderAutoRefreshScript() {
     <script>
       (() => {
         const markers = ${markers};
+        let syncInFlight = false;
+
+        const qrImage = document.getElementById('qr-image');
+        const qrStatusValue = document.getElementById('qr-status-value');
+        const qrUpdatedLabel = document.getElementById('qr-updated-label');
+        const qrHint = document.getElementById('qr-sync-hint');
+
+        const formatTimestamp = (value) => {
+          if (!value) {
+            return 'Sin registro';
+          }
+
+          try {
+            return new Date(value).toLocaleString('es-PY', { timeZone: 'America/Asuncion' });
+          } catch (error) {
+            return String(value);
+          }
+        };
+
+        const updateMarkerState = (next) => {
+          markers.status = String(next.status ?? '');
+          markers.qrVisible = Boolean(next.qrVisible);
+          markers.lastEvent = String(next.lastEvent ?? '');
+          markers.lastEventAt = String(next.lastEventAt ?? '');
+          markers.qrLastUpdatedAt = String(next.qrLastUpdatedAt ?? '');
+          markers.pairingCodeVisible = Boolean(next.pairingCodeVisible);
+          markers.pairingCodeLastUpdatedAt = String(next.pairingCodeLastUpdatedAt ?? '');
+        };
+
+        const reloadPage = () => {
+          window.location.replace('/?ts=' + Date.now());
+        };
+
+        const applyLiveQrUpdate = async (next) => {
+          if (!qrImage || !next.qrVisible) {
+            return false;
+          }
+
+          const qrResponse = await fetch('/qr.json?ts=' + encodeURIComponent(next.qrLastUpdatedAt || Date.now()), {
+            cache: 'no-store',
+          });
+          if (!qrResponse.ok) {
+            return false;
+          }
+
+          const qrPayload = await qrResponse.json();
+          if (!qrPayload || !qrPayload.qrDataUrl) {
+            return false;
+          }
+
+          qrImage.style.opacity = '0.35';
+          qrImage.style.transform = 'scale(0.985)';
+          qrImage.addEventListener('load', () => {
+            qrImage.style.opacity = '1';
+            qrImage.style.transform = 'scale(1)';
+          }, { once: true });
+          qrImage.src = qrPayload.qrDataUrl;
+          qrImage.dataset.qrUpdatedAt = String(qrPayload.qrLastUpdatedAt ?? '');
+
+          if (qrStatusValue) {
+            qrStatusValue.textContent = String(next.status ?? '');
+          }
+          if (qrUpdatedLabel) {
+            qrUpdatedLabel.textContent = 'Ultima renovacion del QR: ' + formatTimestamp(qrPayload.qrLastUpdatedAt);
+          }
+          if (qrHint) {
+            qrHint.textContent = 'El QR fue renovado automaticamente. Si WhatsApp rechazo el anterior, escanea este nuevo codigo.';
+          }
+
+          updateMarkerState(next);
+          return true;
+        };
 
         const sync = async () => {
+          if (syncInFlight) {
+            return;
+          }
+
+          syncInFlight = true;
           try {
             const response = await fetch('/status.json?ts=' + Date.now(), { cache: 'no-store' });
             if (!response.ok) {
@@ -575,17 +684,33 @@ function renderAutoRefreshScript() {
             }
 
             const next = await response.json();
-            const hasChanged =
-              String(next.lastEvent ?? '') !== String(markers.lastEvent ?? '') ||
-              String(next.lastEventAt ?? '') !== String(markers.lastEventAt ?? '') ||
-              String(next.qrLastUpdatedAt ?? '') !== String(markers.qrLastUpdatedAt ?? '') ||
+            const qrChanged =
+              String(next.qrLastUpdatedAt ?? '') !== String(markers.qrLastUpdatedAt ?? '');
+            const pairingChanged =
               String(next.pairingCodeLastUpdatedAt ?? '') !== String(markers.pairingCodeLastUpdatedAt ?? '');
+            const structureChanged =
+              Boolean(next.qrVisible) !== Boolean(markers.qrVisible) ||
+              Boolean(next.pairingCodeVisible) !== Boolean(markers.pairingCodeVisible);
+            const eventChanged =
+              String(next.lastEvent ?? '') !== String(markers.lastEvent ?? '') ||
+              String(next.lastEventAt ?? '') !== String(markers.lastEventAt ?? '');
+            const statusChanged =
+              String(next.status ?? '') !== String(markers.status ?? '');
 
-            if (hasChanged) {
-              window.location.replace('/?ts=' + Date.now());
+            if (qrChanged && !structureChanged) {
+              const updatedInline = await applyLiveQrUpdate(next);
+              if (updatedInline) {
+                return;
+              }
+            }
+
+            if (structureChanged || eventChanged || statusChanged || qrChanged || pairingChanged) {
+              reloadPage();
             }
           } catch (error) {
             console.warn('status poll failed', error);
+          } finally {
+            syncInFlight = false;
           }
         };
 
@@ -595,6 +720,46 @@ function renderAutoRefreshScript() {
   `;
 }
 
+function startWhatsappConnectWatchdog() {
+  const interval = setInterval(() => {
+    const hasFreshQr =
+      !!latestQrDataUrl &&
+      !!latestQrUpdatedAt &&
+      Number.isFinite(Date.parse(latestQrUpdatedAt)) &&
+      (Date.now() - Date.parse(latestQrUpdatedAt)) < WHATSAPP_CONNECT_STALL_TIMEOUT_MS;
+    const hasFreshPairingCode =
+      !!latestPairingCode &&
+      !!latestPairingCodeUpdatedAt &&
+      Number.isFinite(Date.parse(latestPairingCodeUpdatedAt)) &&
+      (Date.now() - Date.parse(latestPairingCodeUpdatedAt)) < WHATSAPP_CONNECT_STALL_TIMEOUT_MS;
+
+    if (whatsappClientReady || hasFreshQr || hasFreshPairingCode) {
+      return;
+    }
+
+    const idleMs = Date.now() - lastWhatsappProgressAt;
+    if (idleMs < WHATSAPP_CONNECT_STALL_TIMEOUT_MS) {
+      return;
+    }
+
+    const stallContext = latestQrDataUrl
+      ? 'QR vencido sin progreso'
+      : latestPairingCode
+        ? 'codigo de vinculacion vencido sin progreso'
+        : 'sin QR ni conexion';
+    recordRuntimeEvent(
+      'connect_watchdog_restart',
+      `${stallContext} despues de ${Math.round(idleMs / 1000)}s. Reiniciando para forzar un nuevo intento limpio.`,
+      'Conexión de WhatsApp atascada. Reiniciando...'
+    );
+    process.exit(1);
+  }, 30000);
+
+  if (typeof interval.unref === 'function') {
+    interval.unref();
+  }
+}
+
 recordRuntimeEvent(
   'boot',
   persistedRuntimeStatus?.lastEvent
@@ -602,6 +767,7 @@ recordRuntimeEvent(
     : 'Arranque del proceso.',
   'Inicializando servidor...'
 );
+startWhatsappConnectWatchdog();
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -616,6 +782,20 @@ http.createServer(async (req, res) => {
       'Cache-Control': 'no-store, max-age=0',
     });
     res.end(`${JSON.stringify(buildPublicStatus(), null, 2)}\n`);
+    return;
+  }
+
+  if (url.pathname === '/qr' || url.pathname === '/qr.json') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, max-age=0',
+    });
+    res.end(`${JSON.stringify({
+      status: appStatus,
+      qrVisible: Boolean(latestQrDataUrl),
+      qrDataUrl: latestQrDataUrl || null,
+      qrLastUpdatedAt: latestQrUpdatedAt,
+    }, null, 2)}\n`);
     return;
   }
 
@@ -753,18 +933,20 @@ http.createServer(async (req, res) => {
             }
             .qr-wrapper img {
               display: block;
+              transition: opacity 160ms ease, transform 160ms ease;
             }
           </style>
         </head>
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
-            <p>Estado actual: <strong style="color: #ffc107;">${escapeHtml(appStatus)}</strong></p>
+            <p>Estado actual: <strong id="qr-status-value" style="color: #ffc107;">${escapeHtml(appStatus)}</strong></p>
             <p>Escanea este codigo QR con WhatsApp:</p>
             <div class="qr-wrapper">
-              <img src="${latestQrDataUrl}" />
+              <img id="qr-image" src="${latestQrDataUrl}" alt="Codigo QR de WhatsApp" data-qr-updated-at="${escapeHtml(latestQrUpdatedAt ?? '')}" />
             </div>
-            <p style="color: #ffc107; font-weight: 500;">La vista se sincroniza sola. Si ves el mismo QR por mas de 25 segundos, esta pagina se recargara automaticamente.</p>
+            <p id="qr-sync-hint" style="color: #ffc107; font-weight: 500;">La vista se sincroniza sola. Si WhatsApp genera un QR nuevo, esta imagen se reemplazara automaticamente.</p>
+            <p id="qr-updated-label" style="color:#a3a3a8;font-size:13px;margin-top:-4px;">Ultima renovacion del QR: ${escapeHtml(formatStatusTimestamp(latestQrUpdatedAt))}</p>
             ${renderStatusMetaHtml()}
           </div>
           ${renderAutoRefreshScript()}
@@ -857,6 +1039,8 @@ const client = new Client({
 
 client.on('qr', async (qr) => {
   console.log('Escanea este QR:');
+  markWhatsappProgress();
+  whatsappClientReady = false;
   appStatus = 'Esperando escaneo de codigo QR...';
   latestQrUpdatedAt = new Date().toISOString();
   latestPairingCode = '';
@@ -874,6 +1058,8 @@ client.on('qr', async (qr) => {
 });
 
 client.on('code', (code) => {
+  markWhatsappProgress();
+  whatsappClientReady = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = String(code ?? '').trim();
@@ -887,6 +1073,8 @@ client.on('code', (code) => {
 });
 
 client.on('authenticated', () => {
+  markWhatsappProgress();
+  whatsappClientReady = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = '';
@@ -904,6 +1092,7 @@ client.on('loading_screen', (percent, message) => {
     return;
   }
 
+  markWhatsappProgress();
   lastLoadingPercent = roundedPercent;
   appStatus = `Sincronizando WhatsApp... ${roundedPercent}%`;
 
@@ -920,6 +1109,8 @@ client.on('loading_screen', (percent, message) => {
 
 client.on('ready', async () => {
   console.log('Kingdoom Bot conectado');
+  markWhatsappProgress();
+  whatsappClientReady = true;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = '';
@@ -978,6 +1169,7 @@ client.on('ready', async () => {
 
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
+  whatsappClientReady = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = '';
@@ -990,8 +1182,7 @@ client.on('auth_failure', (message) => {
   );
   console.error('La sesión de WhatsApp es invalida o expiro. Borrando carpeta de autenticacion...');
   try {
-    if (fs.existsSync(authDataPath)) {
-      fs.rmSync(authDataPath, { recursive: true, force: true });
+    if (clearAuthDataPath('auth_failure')) {
       console.log('Carpeta de autenticacion borrada. Reiniciando el proceso para generar un nuevo QR...');
     }
     process.exit(1);
@@ -1002,6 +1193,7 @@ client.on('auth_failure', (message) => {
 
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
+  whatsappClientReady = false;
   schedulerStarted = false;
   realtimeStarted = false;
   try {
@@ -1014,9 +1206,12 @@ client.on('disconnected', (reason) => {
   latestPairingCode = '';
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
+  const authCleared = isLogoutDisconnectReason(reason)
+    ? clearAuthDataPath('disconnect_LOGOUT')
+    : false;
   recordRuntimeEvent(
     'disconnected',
-    `WhatsApp se desconecto con motivo: ${String(reason ?? 'sin detalle')}`,
+    `WhatsApp se desconecto con motivo: ${String(reason ?? 'sin detalle')}${authCleared ? '. Sesion local eliminada para generar QR limpio.' : ''}`,
     'WhatsApp se desconecto. Reiniciando proceso...'
   );
   process.exit(1);
@@ -1448,6 +1643,7 @@ async function initializeClientWithRetry() {
       console.log(
         `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
       );
+      markWhatsappProgress();
       recordRuntimeEvent(
         'initialize_attempt',
         `Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com.`,

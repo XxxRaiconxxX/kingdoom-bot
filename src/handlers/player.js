@@ -10,8 +10,9 @@ import {
   getPlayer,
   getRealmSnapshot,
   searchMarketItems,
+  transferGold,
   verifyAndLinkPlayer,
-  getPlayersByPhone
+  getPlayersByPhone,
 } from '../supabase.js';
 import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
@@ -310,8 +311,6 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
     }
 
     const { resolvePlayerTarget } = await import('../targetResolver.js');
-    const { updateGold } = await import('../supabase.js');
-
     const resolved = await resolvePlayerTarget(msg, identifier);
     
     if (!resolved.ok) {
@@ -328,10 +327,9 @@ TRAP \`!trampa <monto>\` - Arriesga oro en una trampa
     }
 
     try {
-      await updateGold(player.id, -amount);
-      await updateGold(targetPlayer.id, amount);
-
-      const nuevoTotal = player.gold - amount;
+      const transferResult = await transferGold(player.id, targetPlayer.id, amount);
+      const reportedTotal = Number(transferResult.sender_gold);
+      const nuevoTotal = Number.isFinite(reportedTotal) ? reportedTotal : player.gold - amount;
       return `✅ Has enviado *${amount.toLocaleString('es-PY')} oro* a *${targetPlayer.username}*.\n🪙 Tu nuevo total: *${nuevoTotal.toLocaleString('es-PY')}*`;
     } catch (err) {
       console.error('[oro transfer error]', err);

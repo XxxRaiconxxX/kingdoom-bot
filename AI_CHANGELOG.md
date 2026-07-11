@@ -416,3 +416,31 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   Se inyectaron las reglas y flujos de Graphify en el directorio de personalizaciones locales `.agents` y en `AGENTS.md`.
     *   Se configuraron los hooks de git (`post-commit`, `post-checkout`) para regenerar el grafo de manera automática.
 *   **Notas/Advertencias:** Los cambios preparan el bot para la indexación y navegación mediante grafos AST semánticos locales.
+### [Fecha: 11/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `.env.example`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Endurecimiento de la recuperacion de sesion de WhatsApp en Hugging Face cuando el cliente queda sin QR, se desconecta o arranca con auth corrupta.
+*   **Cambios Clave:**
+    *   **Watchdog de arranque:** Se agrego `WHATSAPP_CONNECT_STALL_TIMEOUT_MS` y un watchdog que reinicia el proceso si pasan demasiados segundos sin QR, con QR/codigo vencido o sin estado `ready`, evitando contenedores colgados en blanco o handshakes congelados.
+    *   **Progreso observable:** Los eventos de runtime ahora refrescan una marca de actividad interna para diferenciar un arranque vivo de uno atascado.
+    *   **Limpieza reutilizable de auth:** Se centralizo el borrado de `authDataPath` en un helper comun para usarlo en `auth_failure` y en desconexiones por `LOGOUT`, forzando un QR limpio cuando la sesion queda invalida.
+    *   **Estado explicito del cliente:** El flujo de `qr`, `code`, `authenticated`, `ready`, `auth_failure` y `disconnected` ahora mantiene `whatsappClientReady` sincronizado para que el panel y el watchdog reaccionen al estado real.
+*   **Notas/Advertencias:** Este cambio reduce los cuelgues silenciosos del Space, pero el despliegue final sigue dependiendo de subir el repo y de que Hugging Face reinicie el contenedor con almacenamiento persistente en `/data`.
+
+### [Fecha: 11/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Mejora del refresco visual del QR para que el panel cambie la imagen en caliente cuando WhatsApp genera un codigo nuevo.
+*   **Cambios Clave:**
+    *   **Endpoint dedicado:** Se agrego `/qr.json` para exponer el QR actual con `Cache-Control: no-store`, sin inflar `status.json` ni el archivo persistido de runtime.
+    *   **Refresh inline:** El script del panel ahora detecta cambios de `qrLastUpdatedAt`, pide el QR nuevo y reemplaza la imagen en vivo sin depender exclusivamente de `window.location.replace(...)`.
+    *   **Feedback visual:** El QR ahora tiene transicion visual, texto de renovacion y una marca de ultima actualizacion para que el usuario vea cuando el codigo fue reemplazado automaticamente.
+*   **Notas/Advertencias:** El panel mantiene el reload completo como fallback si cambia la estructura de la vista o si falla la actualizacion inline del QR.
+
+### [Fecha: 11/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/supabase.js`, `src/handlers/player.js`, `src/handlers/auctionsRealtime.js`, `test_connection_watchdog.js`, `test_phone_lookup_cache.js`, `test_auctions_realtime.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Auditoria extrema de rendimiento y consistencia del runtime, consultas de jugador, transferencias y anuncios realtime.
+*   **Cambios Clave:**
+    *   **[Supabase - Cache concurrente]:** las consultas simultaneas del mismo telefono comparten una sola promesa y las mutaciones de oro invalidan el perfil cacheado; la prueba reproduce 20 llamadas concurrentes con una sola lectura inicial.
+    *   **[Economia - Transferencia atomica]:** `!oro` deja de debitar y acreditar con dos RPC independientes y usa `transfer_player_gold`, compartida con la web mediante `supabase_player_transfers.sql`.
+    *   **[Realtime - Sin duplicados]:** los cierres de subasta se reclaman por ID antes del envio y se liberan si WhatsApp falla, evitando anuncios repetidos por eventos UPDATE duplicados.
+    *   **[WhatsApp - Watchdog preciso]:** los eventos HTTP y de diagnostico ya no renuevan el watchdog; solo QR, codigo, autenticacion, carga, ready e intentos reales cuentan como progreso de conexion.
+*   **Notas/Advertencias:** La RPC de transferencia debe aplicarse en Supabase antes de desplegar el bot. La eficacia final del runtime requiere validar el Space `axel785/kingdoom-whatsapp`; las pruebas locales no sustituyen esa comprobacion.

@@ -1,5 +1,29 @@
 import { supabase } from '../supabase.js';
 
+const MAX_COMPLETION_ANNOUNCEMENTS = 1000;
+const claimedCompletionAnnouncements = new Set();
+
+export function claimCompletedAuctionAnnouncement(oldAuction, newAuction) {
+  const auctionId = String(newAuction?.id ?? '').trim();
+  if (!auctionId || newAuction?.status !== 'completed' || oldAuction?.status === 'completed') {
+    return false;
+  }
+
+  if (claimedCompletionAnnouncements.has(auctionId)) {
+    return false;
+  }
+
+  claimedCompletionAnnouncements.add(auctionId);
+  if (claimedCompletionAnnouncements.size > MAX_COMPLETION_ANNOUNCEMENTS) {
+    claimedCompletionAnnouncements.delete(claimedCompletionAnnouncements.values().next().value);
+  }
+  return true;
+}
+
+export function releaseCompletedAuctionAnnouncement(auctionId) {
+  claimedCompletionAnnouncements.delete(String(auctionId ?? '').trim());
+}
+
 function formatTimeRemaining(expiresAt) {
   const diffMs = new Date(expiresAt) - new Date();
   if (diffMs <= 0) return 'Expirado';
@@ -100,13 +124,11 @@ export function startAuctionsRealtime(client) {
         table: 'market_auctions',
       },
       async (payload) => {
+        const oldAuction = payload.old;
+        const newAuction = payload.new;
+        if (!claimCompletedAuctionAnnouncement(oldAuction, newAuction)) return;
+
         try {
-          const oldAuction = payload.old;
-          const newAuction = payload.new;
-
-          // Only announce if status just changed to completed
-          if (newAuction.status !== 'completed' || (oldAuction && oldAuction.status === 'completed')) return;
-
           console.log('[Realtime] Subasta completada:', newAuction);
 
           let winnerName = 'Nadie';
@@ -129,6 +151,7 @@ export function startAuctionsRealtime(client) {
 
           await client.sendMessage(chatId, msg);
         } catch (err) {
+          releaseCompletedAuctionAnnouncement(newAuction?.id);
           console.error('[Realtime resolve] Error:', err);
         }
       }

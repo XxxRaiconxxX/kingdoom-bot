@@ -21,6 +21,8 @@ const PLAYER_SELECT_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin,
 const PLAYER_IDENTITY_COLUMNS = 'id, username, gold, weekly_gold, phone, is_admin, banned';
 const PLAYER_LIFECYCLE_SELECT_COLUMNS = 'id, username, phone, lifecycle_status, left_group_at, archive_due_at, archived_at, reactivated_at, recycled_at, purged_at';
 const phoneLookupCache = new Map();
+const pendingPhoneLookups = new Map();
+let phoneLookupRevision = 0;
 const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
 let missionPrefixFilterSupported = true;
 const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
@@ -82,6 +84,25 @@ function writePhoneLookupCache(phone, players) {
     players,
     expiresAt: Date.now() + PHONE_LOOKUP_TTL_MS,
   });
+}
+
+function invalidatePlayerLookupCache(playerIds) {
+  const normalizedIds = new Set(
+    (Array.isArray(playerIds) ? playerIds : [playerIds])
+      .map((playerId) => String(playerId ?? '').trim())
+      .filter(Boolean)
+  );
+
+  phoneLookupRevision += 1;
+  if (normalizedIds.size === 0) {
+    return;
+  }
+
+  for (const [phone, cached] of phoneLookupCache.entries()) {
+    if (cached.players.some((player) => normalizedIds.has(String(player?.id ?? '')))) {
+      phoneLookupCache.delete(phone);
+    }
+  }
 }
 
 function readEnv(...names) {
@@ -192,28 +213,47 @@ export async function getPlayersByPhone(whatsappNumber) {
     return cachedPlayers;
   }
 
-  const { data, error } = await supabase
-    .from('players')
-    .select(PLAYER_SELECT_COLUMNS)
-    .ilike('phone', `%${phone}%`)
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    console.error('[getPlayersByPhone]', error.message);
-    return [];
+  const pendingLookup = pendingPhoneLookups.get(phone);
+  if (pendingLookup) {
+    return pendingLookup;
   }
 
-  if (!data) return [];
+  const lookupRevision = phoneLookupRevision;
+  const lookupPromise = (async () => {
+    const { data, error } = await supabase
+      .from('players')
+      .select(PLAYER_SELECT_COLUMNS)
+      .ilike('phone', `%${phone}%`)
+      .order('created_at', { ascending: true });
 
-  // Exact match filtering to avoid substring issues (e.g., 59598112345 matching 595981123456)
-  const matchedPlayers = data.filter(player => {
-    if (!player.phone) return false;
-    const phones = player.phone.split(',').map(p => p.trim());
-    return phones.includes(phone);
-  });
+    if (error) {
+      console.error('[getPlayersByPhone]', error.message);
+      return [];
+    }
 
-  writePhoneLookupCache(phone, matchedPlayers);
-  return matchedPlayers;
+    if (!data) return [];
+
+    // Exact match filtering to avoid substring issues (e.g., 59598112345 matching 595981123456)
+    const matchedPlayers = data.filter(player => {
+      if (!player.phone) return false;
+      const phones = player.phone.split(',').map(p => p.trim());
+      return phones.includes(phone);
+    });
+
+    if (lookupRevision === phoneLookupRevision) {
+      writePhoneLookupCache(phone, matchedPlayers);
+    }
+    return matchedPlayers;
+  })();
+
+  pendingPhoneLookups.set(phone, lookupPromise);
+  try {
+    return await lookupPromise;
+  } finally {
+    if (pendingPhoneLookups.get(phone) === lookupPromise) {
+      pendingPhoneLookups.delete(phone);
+    }
+  }
 }
 
 function isMissingLifecycleSchemaError(error) {
@@ -1512,6 +1552,37 @@ export async function updateGold(playerId, amount) {
     console.error('[updateGold] Logic Error:', data[0].message);
     throw new Error(data[0].message || 'No se pudo actualizar el oro.');
   }
+
+  invalidatePlayerLookupCache(playerId);
+}
+
+export async function transferGold(fromPlayerId, toPlayerId, amount) {
+  const safeAmount = Math.trunc(Number(amount));
+  if (!Number.isSafeInteger(safeAmount) || safeAmount <= 0) {
+    throw new Error('La cantidad de oro debe ser mayor a cero.');
+  }
+
+  const { data, error } = await supabase.rpc('transfer_player_gold', {
+    p_from_player_id: fromPlayerId,
+    p_to_player_id: toPlayerId,
+    p_amount: safeAmount,
+  });
+
+  if (error) {
+    console.error('[transferGold]', error.message);
+    if (error.code === '42883' || error.code === 'PGRST202') {
+      throw new Error('Falta aplicar supabase_player_transfers.sql en Supabase.');
+    }
+    throw new Error('No se pudo transferir el oro.');
+  }
+
+  const result = Array.isArray(data) ? data[0] : null;
+  if (!result?.success) {
+    throw new Error(result?.message || 'No se pudo transferir el oro.');
+  }
+
+  invalidatePlayerLookupCache([fromPlayerId, toPlayerId]);
+  return result;
 }
 
 export async function placeBet(playerId, amount, gameType) {
