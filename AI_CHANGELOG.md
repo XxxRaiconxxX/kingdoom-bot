@@ -464,3 +464,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Backoff observable:** Los fallos consecutivos aumentan la espera hasta 60 segundos y conservan 40 eventos internos para diagnostico.
     *   **Shutdown de plataforma:** `SIGTERM` y `SIGINT` cierran Chromium antes de finalizar, reduciendo sesiones corruptas durante rebuilds o reinicios de Hugging Face.
 *   **Notas/Advertencias:** El hardware gratuito de Hugging Face puede dormir por inactividad; este flujo recupera la sesion al volver, pero no puede impedir la politica de suspension de la plataforma.
+
+### [Fecha: 13/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Correccion del `Runtime error` en Hugging Face causado por recuperaciones que mataban el proceso durante la espera de QR o la reconexion.
+*   **Cambios Clave:**
+    *   **Recuperacion en caliente:** `requestProcessRestart` deja de ejecutar `process.exit(1)` en rutas recuperables y ahora cierra Chromium, limpia estado transitorio y relanza `client.initialize()` dentro del mismo proceso.
+    *   **Inicializacion single-flight:** `initializeClientWithRetry` reutiliza una sola promesa activa para evitar solapamientos entre watchdog, desconexiones y reintentos manuales.
+    *   **Handle limpio de Puppeteer:** al cerrar el navegador ahora se limpian `pupBrowser` y `pupPage`, reduciendo referencias zombis antes del siguiente `initialize`.
+    *   **Prueba anti-regresion:** la auditoria automatizada ahora falla si un reinicio recuperable vuelve a introducir `process.exit(1)` o deja de reinicializar el cliente en caliente.
+*   **Notas/Advertencias:** Este ajuste elimina la salida fatal del contenedor en reconexiones recuperables; si WhatsApp invalida la sesion de forma definitiva, seguira siendo necesario volver a escanear el QR.

@@ -126,6 +126,7 @@ let realtimeStarted = false;
 let readyBootstrapComplete = false;
 let restartRequested = false;
 let shutdownRequested = false;
+let initializePromise = null;
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
@@ -1665,101 +1666,111 @@ client.on('message', async (msg) => {
 });
 
 async function initializeClientWithRetry() {
-  for (let attempt = 1; attempt <= WHATSAPP_INIT_MAX_RETRIES; attempt += 1) {
-    try {
-      const removedLocks = cleanupStaleChromiumLocks(authDataPath);
-      if (removedLocks.length > 0) {
-        console.warn(`[whatsapp init] Locks huerfanos removidos: ${removedLocks.join(', ')}`);
-        recordRuntimeEvent(
-          'chromium_locks_cleaned',
-          `Se removieron ${removedLocks.length} lock(s) huerfanos antes del intento ${attempt}.`,
-          'Preparando sesion persistente...'
-        );
-      }
-      console.log(
-        `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
-      );
-      markWhatsappProgress();
-      recordRuntimeEvent(
-        'initialize_attempt',
-        `Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com.`,
-        'Conectando a WhatsApp...'
-      );
-      await client.initialize();
-      return;
-    } catch (err) {
-      const formattedError = formatInitializeError(err);
-      const isLastAttempt = attempt >= WHATSAPP_INIT_MAX_RETRIES;
-      console.error(
-        `[whatsapp init] Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`
-      );
-      recordRuntimeEvent(
-        'initialize_failure',
-        `Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`,
-        'Fallo al conectar con WhatsApp.'
-      );
-
-      if (client.pupBrowser) {
-        try {
-          console.log('[whatsapp init] Cerrando navegador huerfano para liberar el bloqueo de sesion...');
-          await client.pupBrowser.close();
-        } catch (closeErr) {
-          console.error('[whatsapp init] Error al cerrar el navegador:', closeErr);
-        }
-        client.pupBrowser = null;
-      }
-
-      if (isLastAttempt) {
-        if (WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE) {
-          console.error(
-            '[whatsapp init] Se agotaron los reintentos de inicializacion. El entorno permite borrar autenticacion y reiniciar contenedor...'
-          );
-          recordRuntimeEvent(
-            'initialize_failed_reset_auth',
-            `Se agotaron los reintentos y WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE esta activo. Error final: ${formattedError}`,
-            'Fallo grave de inicializacion. Borrando sesion y reiniciando...'
-          );
-          try {
-            if (fs.existsSync(authDataPath)) {
-              fs.rmSync(authDataPath, { recursive: true, force: true });
-              console.log('[whatsapp init] Carpeta de autenticacion borrada.');
-            }
-          } catch (cleanErr) {
-            console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
-          }
-        } else {
-          console.error(
-            '[whatsapp init] Se agotaron los reintentos de inicializacion. Reiniciando sin borrar autenticacion para conservar sesion.'
-          );
-          recordRuntimeEvent(
-            'initialize_failed_restart',
-            `Se agotaron los reintentos, pero la autenticacion se conserva. Error final: ${formattedError}`,
-            'Fallo de inicializacion. Reiniciando sin borrar sesion...'
-          );
-        }
-        const reconnectDelayMs = calculateReconnectDelayMs(
-          runtimeStatus.restartCount + 1,
-          WHATSAPP_INIT_RETRY_DELAY_MS,
-          WHATSAPP_RECONNECT_MAX_DELAY_MS
-        );
-        requestProcessRestart(
-          'initialize_exhausted_restart',
-          `Se agotaron ${WHATSAPP_INIT_MAX_RETRIES} intento(s). Error final: ${formattedError}`,
-          {
-            clearAuth: WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE,
-            delayMs: reconnectDelayMs,
-          }
-        );
-        return;
-      }
-
-      const nextDelayMs = WHATSAPP_INIT_RETRY_DELAY_MS * attempt;
-      console.log(
-        `[whatsapp init] Reintentando en ${Math.round(nextDelayMs / 1000)}s...`
-      );
-      await sleep(nextDelayMs);
-    }
+  if (initializePromise) {
+    return initializePromise;
   }
+
+  initializePromise = (async () => {
+    for (let attempt = 1; attempt <= WHATSAPP_INIT_MAX_RETRIES; attempt += 1) {
+      try {
+        const removedLocks = cleanupStaleChromiumLocks(authDataPath);
+        if (removedLocks.length > 0) {
+          console.warn(`[whatsapp init] Locks huerfanos removidos: ${removedLocks.join(', ')}`);
+          recordRuntimeEvent(
+            'chromium_locks_cleaned',
+            `Se removieron ${removedLocks.length} lock(s) huerfanos antes del intento ${attempt}.`,
+            'Preparando sesion persistente...'
+          );
+        }
+        console.log(
+          `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
+        );
+        markWhatsappProgress();
+        recordRuntimeEvent(
+          'initialize_attempt',
+          `Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com.`,
+          'Conectando a WhatsApp...'
+        );
+        await client.initialize();
+        return;
+      } catch (err) {
+        const formattedError = formatInitializeError(err);
+        const isLastAttempt = attempt >= WHATSAPP_INIT_MAX_RETRIES;
+        console.error(
+          `[whatsapp init] Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`
+        );
+        recordRuntimeEvent(
+          'initialize_failure',
+          `Fallo intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES}: ${formattedError}`,
+          'Fallo al conectar con WhatsApp.'
+        );
+
+        if (client.pupBrowser) {
+          try {
+            console.log('[whatsapp init] Cerrando navegador huerfano para liberar el bloqueo de sesion...');
+            await client.pupBrowser.close();
+          } catch (closeErr) {
+            console.error('[whatsapp init] Error al cerrar el navegador:', closeErr);
+          }
+          client.pupBrowser = null;
+        }
+
+        if (isLastAttempt) {
+          if (WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE) {
+            console.error(
+              '[whatsapp init] Se agotaron los reintentos de inicializacion. El entorno permite borrar autenticacion y reintentar en caliente...'
+            );
+            recordRuntimeEvent(
+              'initialize_failed_reset_auth',
+              `Se agotaron los reintentos y WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE esta activo. Error final: ${formattedError}`,
+              'Fallo grave de inicializacion. Borrando sesion y reintentando...'
+            );
+            try {
+              if (fs.existsSync(authDataPath)) {
+                fs.rmSync(authDataPath, { recursive: true, force: true });
+                console.log('[whatsapp init] Carpeta de autenticacion borrada.');
+              }
+            } catch (cleanErr) {
+              console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
+            }
+          } else {
+            console.error(
+              '[whatsapp init] Se agotaron los reintentos de inicializacion. Se hara una recuperacion interna conservando autenticacion.'
+            );
+            recordRuntimeEvent(
+              'initialize_failed_restart',
+              `Se agotaron los reintentos, pero la autenticacion se conserva. Error final: ${formattedError}`,
+              'Fallo de inicializacion. Reintentando sin borrar sesion...'
+            );
+          }
+          const reconnectDelayMs = calculateReconnectDelayMs(
+            runtimeStatus.restartCount + 1,
+            WHATSAPP_INIT_RETRY_DELAY_MS,
+            WHATSAPP_RECONNECT_MAX_DELAY_MS
+          );
+          requestProcessRestart(
+            'initialize_exhausted_restart',
+            `Se agotaron ${WHATSAPP_INIT_MAX_RETRIES} intento(s). Error final: ${formattedError}`,
+            {
+              clearAuth: WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE,
+              delayMs: reconnectDelayMs,
+            }
+          );
+          return;
+        }
+
+        const nextDelayMs = WHATSAPP_INIT_RETRY_DELAY_MS * attempt;
+        console.log(
+          `[whatsapp init] Reintentando en ${Math.round(nextDelayMs / 1000)}s...`
+        );
+        await sleep(nextDelayMs);
+      }
+    }
+  })().finally(() => {
+    initializePromise = null;
+  });
+
+  return initializePromise;
 }
 
 process.on('unhandledRejection', (reason) => {
@@ -1806,6 +1817,9 @@ async function closeWhatsappBrowser() {
     ]);
   } catch (error) {
     console.warn('[whatsapp shutdown]', formatInitializeError(error));
+  } finally {
+    client.pupBrowser = null;
+    client.pupPage = null;
   }
 }
 
@@ -1819,16 +1833,39 @@ function requestProcessRestart(event, detail, options = {}) {
   runtimeStatus.restartCount += 1;
   recordRuntimeEvent(
     event,
-    `${detail} Reinicio ordenado en ${Math.round(delayMs / 1000)}s${clearAuth ? '; la autenticacion se limpiara despues de cerrar Chromium' : '; la autenticacion se conservara'}.`,
+    `${detail} Recuperacion ordenada en ${Math.round(delayMs / 1000)}s${clearAuth ? '; la autenticacion se limpiara despues de cerrar Chromium' : '; la autenticacion se conservara'}.`,
     'Recuperando conexion de WhatsApp...'
   );
 
   setTimeout(async () => {
-    await closeWhatsappBrowser();
-    if (clearAuth) {
-      clearAuthDataPath(event);
+    try {
+      await closeWhatsappBrowser();
+      if (clearAuth) {
+        clearAuthDataPath(event);
+      }
+      restartRequested = false;
+      readyBootstrapComplete = false;
+      latestQrDataUrl = '';
+      latestQrUpdatedAt = null;
+      latestPairingCode = '';
+      latestPairingCodeUpdatedAt = null;
+      lastLoadingPercent = null;
+      recordRuntimeEvent(
+        'restart_reinitialize',
+        `Se lanzara una nueva inicializacion interna tras el evento ${event}.`,
+        'Reiniciando cliente de WhatsApp...'
+      );
+      await initializeClientWithRetry();
+    } catch (error) {
+      restartRequested = false;
+      const formattedError = formatInitializeError(error);
+      console.error(`[whatsapp recovery] ${formattedError}`);
+      recordRuntimeEvent(
+        'restart_reinitialize_failure',
+        `La recuperacion interna fallo: ${formattedError}`,
+        'Error al recuperar WhatsApp.'
+      );
     }
-    process.exit(1);
   }, delayMs);
 
   return true;
