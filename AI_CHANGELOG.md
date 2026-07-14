@@ -485,3 +485,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Handle limpio de Puppeteer:** al cerrar el navegador ahora se limpian `pupBrowser` y `pupPage`, reduciendo referencias zombis antes del siguiente `initialize`.
     *   **Prueba anti-regresion:** la auditoria automatizada ahora falla si un reinicio recuperable vuelve a introducir `process.exit(1)` o deja de reinicializar el cliente en caliente.
 *   **Notas/Advertencias:** Este ajuste elimina la salida fatal del contenedor en reconexiones recuperables; si WhatsApp invalida la sesion de forma definitiva, seguira siendo necesario volver a escanear el QR.
+
+### [Fecha: 14/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Observabilidad reforzada para diagnosticar sesiones conectadas que no dejan logs ni responden comandos en Hugging Face.
+*   **Cambios Clave:**
+    *   **Runtime audible:** `recordRuntimeEvent(...)` ahora tambien emite cada evento en consola, no solo en `status.json`, para que el panel de logs del Space refleje autenticacion, ready, watchdog y reinicios.
+    *   **Traza de comandos:** el listener `client.on('message')` registra entradas relevantes (`[message inbound]`), respuestas (`[message reply]`) y fallos (`message_failed`) con chat, remitente y comando resumido.
+    *   **Alerta de lentitud:** los comandos con prefijo generan un aviso `message_processing_slow` si exceden el umbral configurable `COMMAND_PROCESSING_WARN_MS`, ayudando a distinguir entre cuelgue y respuesta lenta.
+    *   **Lectura de ready/logout mas limpia:** el log `Kingdoom Bot conectado` ya no se repite en `ready` duplicados y el flujo `disconnected: LOGOUT` ahora deja claro en consola que la sesion persistida sera descartada antes de reinicializar.
+    *   **Guardia de payload vacio:** la lectura del cuerpo del mensaje deja de asumir `msg.body` siempre string, evitando silencios si WhatsApp entrega un payload no textual.
+*   **Notas/Advertencias:** Este cambio mejora mucho el diagnostico en Hugging Face, pero la causa final de un comando sin respuesta aun debe confirmarse con una prueba en vivo revisando si aparece `message_inbound`, `message_processing_slow`, `message_replied` o `message_failed`.

@@ -127,6 +127,10 @@ let readyBootstrapComplete = false;
 let restartRequested = false;
 let shutdownRequested = false;
 let initializePromise = null;
+const COMMAND_PROCESSING_WARN_MS = Math.max(
+  15000,
+  Number.parseInt(process.env.COMMAND_PROCESSING_WARN_MS ?? '30000', 10) || 30000
+);
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
@@ -192,6 +196,13 @@ function ensurePrefixedBody(command, originalBody, parsedBody) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function summarizeTextForLog(value, maxLength = 120) {
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, Math.max(16, maxLength));
 }
 
 function runRestrictedGroupSerial(key, task) {
@@ -563,6 +574,9 @@ function recordRuntimeEvent(event, detail = '', statusOverride = null) {
     recentEvents: [entry, ...runtimeStatus.recentEvents].slice(0, 40),
   };
 
+  console.log(
+    `[runtime event] ${entry.at} event=${entry.event} status="${entry.status}"${entry.detail ? ` detail="${entry.detail}"` : ''}`
+  );
   persistRuntimeStatus();
   return entry;
 }
@@ -1135,7 +1149,6 @@ client.on('loading_screen', (percent, message) => {
 });
 
 client.on('ready', async () => {
-  console.log('Kingdoom Bot conectado');
   markWhatsappProgress();
   whatsappClientReady = true;
   runtimeStatus.restartCount = 0;
@@ -1160,6 +1173,8 @@ client.on('ready', async () => {
     );
     return;
   }
+
+  console.log('Kingdoom Bot conectado');
   readyBootstrapComplete = true;
   
   try {
@@ -1224,6 +1239,7 @@ client.on('auth_failure', (message) => {
 
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
+  const shouldClearAuth = isLogoutDisconnectReason(reason);
   whatsappClientReady = false;
   readyBootstrapComplete = false;
   schedulerStarted = false;
@@ -1238,10 +1254,13 @@ client.on('disconnected', (reason) => {
   latestPairingCode = '';
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
+  if (shouldClearAuth) {
+    console.warn('[whatsapp disconnected] Motivo LOGOUT detectado; se descartara la sesion persistida antes de reinicializar.');
+  }
   requestProcessRestart(
     'disconnected_restart',
     `WhatsApp se desconecto con motivo: ${String(reason ?? 'sin detalle')}`,
-    { clearAuth: isLogoutDisconnectReason(reason) }
+    { clearAuth: shouldClearAuth }
   );
 });
 
@@ -1293,7 +1312,7 @@ client.on('message', async (msg) => {
     }
   }
 
-  const text = msg.body.trim();
+  const text = typeof msg.body === 'string' ? msg.body.trim() : '';
   const sender = msg.author || msg.from;
 
   // Intercept replies (Blackjack, Tesoros, etc.)
@@ -1455,6 +1474,40 @@ client.on('message', async (msg) => {
   }
 
   const { command, body, hasPrefix } = parseCommand(text);
+  const isDirectChat = !String(msg.from ?? '').endsWith('@g.us');
+  const shouldTraceMessageFlow = hasPrefix || isDirectChat;
+  const commandLabel = hasPrefix && command ? `!${command}` : '(sin comando)';
+  const messageSummary = summarizeTextForLog(text, 96);
+  let slowMessageTimer = null;
+
+  if (shouldTraceMessageFlow) {
+    console.log(
+      `[message inbound] chat=${msg.from} sender=${sender} type=${msg.type ?? 'unknown'} command=${commandLabel} body="${messageSummary || '[vacio]'}"`
+    );
+    recordRuntimeEvent(
+      'message_inbound',
+      `Chat ${msg.from} desde ${sender}: ${commandLabel}${messageSummary ? ` :: ${messageSummary}` : ''}`,
+      hasPrefix ? `Procesando ${commandLabel}...` : appStatus
+    );
+  }
+
+  if (hasPrefix) {
+    slowMessageTimer = setTimeout(() => {
+      console.warn(
+        `[message slow] chat=${msg.from} sender=${sender} command=${commandLabel} supero ${COMMAND_PROCESSING_WARN_MS}ms`
+      );
+      recordRuntimeEvent(
+        'message_processing_slow',
+        `${commandLabel} sigue en curso despues de ${COMMAND_PROCESSING_WARN_MS}ms en ${msg.from}.`,
+        `Procesando ${commandLabel}...`
+      );
+    }, COMMAND_PROCESSING_WARN_MS);
+
+    if (typeof slowMessageTimer.unref === 'function') {
+      slowMessageTimer.unref();
+    }
+  }
+
   let senderPlayersPromise = null;
   const getSenderPlayers = () => {
     if (!senderPlayersPromise) {
@@ -1658,10 +1711,39 @@ client.on('message', async (msg) => {
 
     if (reply) {
       await sendBotText(msg, reply, { context: command || 'message' });
+      if (slowMessageTimer) {
+        clearTimeout(slowMessageTimer);
+        slowMessageTimer = null;
+      }
+      if (shouldTraceMessageFlow) {
+        console.log(
+          `[message reply] chat=${msg.from} sender=${sender} command=${commandLabel} chars=${String(reply).length}`
+        );
+        recordRuntimeEvent(
+          'message_replied',
+          `${commandLabel} respondido en ${msg.from} para ${sender}.`,
+          hasPrefix ? `Respuesta enviada para ${commandLabel}.` : appStatus
+        );
+      }
     }
   } catch (err) {
+    if (slowMessageTimer) {
+      clearTimeout(slowMessageTimer);
+      slowMessageTimer = null;
+    }
+    if (shouldTraceMessageFlow) {
+      recordRuntimeEvent(
+        'message_failed',
+        `${commandLabel} fallo en ${msg.from}: ${formatInitializeError(err)}`,
+        hasPrefix ? `Fallo ${commandLabel}.` : appStatus
+      );
+    }
     console.error('Error:', err);
     await sendEmergencyText(msg, 'El reino esta en llamas... intenta de nuevo en un momento.', 'message_error');
+  } finally {
+    if (slowMessageTimer) {
+      clearTimeout(slowMessageTimer);
+    }
   }
 });
 
