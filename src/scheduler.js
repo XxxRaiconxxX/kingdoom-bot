@@ -16,6 +16,15 @@ import {
 } from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
+const NOTIFICATION_QUEUE_FETCH_LIMIT = Number(process.env.WHATSAPP_QUEUE_FETCH_LIMIT ?? 5);
+const NOTIFICATION_MAX_SUCCESS_PER_RUN = Math.max(1, Number(process.env.WHATSAPP_QUEUE_MAX_SUCCESS_PER_RUN ?? 1));
+const NOTIFICATION_MIN_INTERVAL_MS = Math.max(30_000, Number(process.env.WHATSAPP_QUEUE_MIN_INTERVAL_MS ?? 90_000));
+const NOTIFICATION_MAX_INTERVAL_MS = Math.max(NOTIFICATION_MIN_INTERVAL_MS, Number(process.env.WHATSAPP_QUEUE_MAX_INTERVAL_MS ?? 180_000));
+const NOTIFICATION_HOURLY_LIMIT = Math.max(1, Number(process.env.WHATSAPP_QUEUE_HOURLY_LIMIT ?? 20));
+const NOTIFICATION_HOURLY_COOLDOWN_MS = Math.max(5 * 60 * 1000, Number(process.env.WHATSAPP_QUEUE_HOURLY_COOLDOWN_MS ?? 30 * 60 * 1000));
+const BULK_NOTIFICATION_HOURLY_LIMIT = Math.max(1, Number(process.env.WHATSAPP_QUEUE_BULK_HOURLY_LIMIT ?? 6));
+const BULK_NOTIFICATION_MIN_INTERVAL_MS = Math.max(NOTIFICATION_MIN_INTERVAL_MS, Number(process.env.WHATSAPP_QUEUE_BULK_MIN_INTERVAL_MS ?? 4 * 60 * 1000));
+const BULK_NOTIFICATION_MAX_INTERVAL_MS = Math.max(BULK_NOTIFICATION_MIN_INTERVAL_MS, Number(process.env.WHATSAPP_QUEUE_BULK_MAX_INTERVAL_MS ?? 8 * 60 * 1000));
 const schedulerState = {
   expiredAuctionsRunning: false,
   dailyResetRunning: false,
@@ -25,6 +34,12 @@ const schedulerState = {
   roleplayAccessRunning: false,
 };
 let notificationDispatchPausedUntil = 0;
+let nextNotificationDispatchAt = 0;
+const notificationRateWindow = {
+  startedAt: 0,
+  sentCount: 0,
+  bulkSentCount: 0,
+};
 
 function isWhatsappClientReady(client, isClientReady) {
   try {
@@ -37,6 +52,108 @@ function isWhatsappClientReady(client, isClientReady) {
   } catch {
     return false;
   }
+}
+
+function randomBetween(min, max) {
+  if (max <= min) return min;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function resetNotificationWindowIfNeeded(now) {
+  if (!notificationRateWindow.startedAt || now - notificationRateWindow.startedAt >= 60 * 60 * 1000) {
+    notificationRateWindow.startedAt = now;
+    notificationRateWindow.sentCount = 0;
+    notificationRateWindow.bulkSentCount = 0;
+  }
+}
+
+function classifyNotificationMessage(message) {
+  const text = String(message ?? '').toLowerCase();
+
+  if (
+    text.includes('acceso restringido por inactividad de rol') ||
+    text.includes('acceso restaurado por inactividad de rol') ||
+    text.includes('desbloquear minijuegos') ||
+    text.includes('gracia activa')
+  ) {
+    return 'critical';
+  }
+
+  if (
+    text.includes('un nuevo ciclo comienza en el reino') ||
+    text.includes('el rey supremo te observa') ||
+    text.includes('esta semana')
+  ) {
+    return 'bulk';
+  }
+
+  return 'standard';
+}
+
+function pickNotificationIntervalMs(priority) {
+  if (priority === 'bulk') {
+    return randomBetween(
+      BULK_NOTIFICATION_MIN_INTERVAL_MS,
+      BULK_NOTIFICATION_MAX_INTERVAL_MS
+    );
+  }
+
+  return randomBetween(NOTIFICATION_MIN_INTERVAL_MS, NOTIFICATION_MAX_INTERVAL_MS);
+}
+
+function canDispatchNotification(now, priority) {
+  resetNotificationWindowIfNeeded(now);
+
+  if (now < notificationDispatchPausedUntil || now < nextNotificationDispatchAt) {
+    return false;
+  }
+
+  if (notificationRateWindow.sentCount >= NOTIFICATION_HOURLY_LIMIT) {
+    notificationDispatchPausedUntil = Math.max(
+      notificationDispatchPausedUntil,
+      now + NOTIFICATION_HOURLY_COOLDOWN_MS
+    );
+    console.warn(
+      `[scheduler] Cola privada en enfriamiento: se alcanzo el tope de ${NOTIFICATION_HOURLY_LIMIT} mensajes por hora.`
+    );
+    return false;
+  }
+
+  if (priority === 'bulk' && notificationRateWindow.bulkSentCount >= BULK_NOTIFICATION_HOURLY_LIMIT) {
+    notificationDispatchPausedUntil = Math.max(
+      notificationDispatchPausedUntil,
+      now + NOTIFICATION_HOURLY_COOLDOWN_MS
+    );
+    console.warn(
+      `[scheduler] Cola bulk en enfriamiento: se alcanzo el tope de ${BULK_NOTIFICATION_HOURLY_LIMIT} mensajes promocionales por hora.`
+    );
+    return false;
+  }
+
+  return true;
+}
+
+function noteNotificationDelivered(now, priority) {
+  resetNotificationWindowIfNeeded(now);
+  notificationRateWindow.sentCount += 1;
+  if (priority === 'bulk') {
+    notificationRateWindow.bulkSentCount += 1;
+  }
+  nextNotificationDispatchAt = now + pickNotificationIntervalMs(priority);
+}
+
+function prioritizePendingNotifications(pending) {
+  const rank = {
+    critical: 0,
+    standard: 1,
+    bulk: 2,
+  };
+
+  return [...(pending ?? [])].sort((left, right) => {
+    const leftPriority = classifyNotificationMessage(left?.message);
+    const rightPriority = classifyNotificationMessage(right?.message);
+    return rank[leftPriority] - rank[rightPriority];
+  });
 }
 
 async function runScheduledJob(key, label, task) {
@@ -165,7 +282,7 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
             .select('id, player_phone, message')
             .eq('sent', false)
             .order('created_at', { ascending: true })
-            .limit(5);
+            .limit(NOTIFICATION_QUEUE_FETCH_LIMIT);
 
           if (error) {
             console.error('[scheduler] Error leyendo cola:', error.message);
@@ -173,19 +290,33 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
           }
 
           if (pending && pending.length > 0) {
-            for (const item of pending) {
+            let deliveredThisRun = 0;
+
+            for (const item of prioritizePendingNotifications(pending)) {
+              const now = Date.now();
+              const priority = classifyNotificationMessage(item.message);
               if (!isWhatsappClientReady(client, isClientReady)) {
                 console.warn('[scheduler] Cola en pausa: WhatsApp ya no esta listo para despachar.');
                 return;
               }
 
+              if (!canDispatchNotification(now, priority)) {
+                return;
+              }
+
               try {
                 await client.sendMessage(formatJid(item.player_phone), item.message);
-                await new Promise((resolve) => setTimeout(resolve, 1500));
+                noteNotificationDelivered(now, priority);
                 await botStateSupabase
                   .from('bot_notifications_queue')
                   .update({ sent: true, sent_at: new Date().toISOString() })
                   .eq('id', item.id);
+                deliveredThisRun += 1;
+
+                if (deliveredThisRun >= NOTIFICATION_MAX_SUCCESS_PER_RUN) {
+                  // ponytail: el rate limit vive en memoria para no agregar migracion ahora; si algun dia hace falta continuidad tras reinicio, se persiste en Supabase.
+                  return;
+                }
               } catch (err) {
                 console.error(`[scheduler] Error despachando a ${item.player_phone}:`, err.message);
                 if (isTransientWhatsappDeliveryError(err)) {

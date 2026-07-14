@@ -4,6 +4,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 14/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Endurecido el despacho privado de la cola de notificaciones para bajar el riesgo de deteccion de spam por WhatsApp.
+*   **Cambios Clave:**
+*   **[Bot - Rate Limit Privado]:** la cola ya no intenta vaciar hasta 5 envios seguidos con pausa fija de 1.5 s; ahora sale como maximo 1 envio exitoso por ciclo del scheduler.
+*   **[Bot - Ritmo Humano]:** se agrego intervalo aleatorio entre mensajes (`WHATSAPP_QUEUE_MIN_INTERVAL_MS` / `WHATSAPP_QUEUE_MAX_INTERVAL_MS`) para evitar un patron mecanico.
+*   **[Bot - Tope Horario]:** se incorpora una ventana en memoria con limite horario (`WHATSAPP_QUEUE_HOURLY_LIMIT`) y enfriamiento (`WHATSAPP_QUEUE_HOURLY_COOLDOWN_MS`) cuando se alcanza el techo.
+*   **[Bot - Prioridad de Cola]:** los avisos criticos (bloqueo/desbloqueo por roleplay) se priorizan sobre mensajes bulk/promocionales. Las campanas masivas usan techo horario y enfriamiento propios (`WHATSAPP_QUEUE_BULK_HOURLY_LIMIT`, `WHATSAPP_QUEUE_BULK_MIN_INTERVAL_MS`, `WHATSAPP_QUEUE_BULK_MAX_INTERVAL_MS`) para no competir de igual a igual con las alertas importantes.
+*   **[Bot - Parametrizacion]:** el fetch de pendientes y los limites del despachador quedan ajustables por variables de entorno sin tocar codigo.
+*   **Notas/Advertencias:** El limitador vive en memoria del proceso para no requerir migracion ahora. Si el contenedor reinicia, la ventana se reinicia tambien. Validado con `node --check src/scheduler.js`.
+
 ### [Fecha: 10/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Corregido el fallo donde el Oraculo generaba respuesta correctamente pero WhatsApp Web fallaba al entregarla y el bot terminaba enviando el mensaje generico de error.
