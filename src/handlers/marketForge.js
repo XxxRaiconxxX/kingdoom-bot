@@ -1,4 +1,5 @@
 import { normalizePhone } from '../adminStore.js';
+import { safeGetQuotedDetails } from '../targetResolver.js';
 import {
   clearMarketForgeSession,
   getMarketForgeSession,
@@ -29,19 +30,24 @@ async function extractQuotedReference(msg) {
     return { url: '', imageDataUrl: '', quotedText: '' };
   }
 
-  const quoted = await msg.getQuotedMessage();
-  const quotedText = String(quoted.body || quoted.caption || '').trim();
+  const quotedDetails = await safeGetQuotedDetails(msg);
+  const quotedText = String(quotedDetails.body || '').trim();
   const quotedUrl = extractFirstUrl(quotedText);
 
-  if (quoted.hasMedia) {
-    const media = await quoted.downloadMedia().catch(() => null);
-    if (media && isImageMimeType(media.mimetype)) {
-      return {
-        url: quotedUrl,
-        imageDataUrl: `data:${media.mimetype};base64,${media.data}`,
-        quotedText,
-      };
+  try {
+    const quoted = await msg.getQuotedMessage();
+    if (quoted && quoted.hasMedia) {
+      const media = await quoted.downloadMedia().catch(() => null);
+      if (media && isImageMimeType(media.mimetype)) {
+        return {
+          url: quotedUrl,
+          imageDataUrl: `data:${media.mimetype};base64,${media.data}`,
+          quotedText,
+        };
+      }
     }
+  } catch (err) {
+    console.warn('[marketForge] Error downloading quoted media:', err.message ?? err);
   }
 
   return { url: quotedUrl, imageDataUrl: '', quotedText };

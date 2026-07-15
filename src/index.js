@@ -34,6 +34,7 @@ import { handleBlackjack, handleBlackjackReply, activeSessions } from './handler
 import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
+import { safeGetQuotedDetails } from './targetResolver.js';
 import {
   ensureDir,
   ensureParentDir,
@@ -44,7 +45,32 @@ import {
 } from './runtimePaths.js';
 import { calculateReconnectDelayMs, cleanupStaleChromiumLocks } from './whatsappRecovery.js';
 
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, Message } = pkg;
+
+// monkey-patch reply to prevent silent failures with @lid senders or long text
+if (Message && Message.prototype) {
+  const originalReply = Message.prototype.reply;
+  Message.prototype.reply = async function (content, chatId, options = {}) {
+    const sender = this.author || this.from;
+    const isLid = String(sender).endsWith('@lid');
+    const isLong = typeof content === 'string' && content.length > 600;
+
+    if (isLid || isLong) {
+      // Send directly without quote to prevent silent drop/error
+      return this.client.sendMessage(chatId || this.from, content, options);
+    }
+
+    try {
+      return await originalReply.call(this, content, chatId, {
+        ignoreQuoteErrors: true,
+        ...options,
+      });
+    } catch (err) {
+      console.warn('[Message.reply patch] Quoted reply failed; falling back to direct send.', err.message ?? err);
+      return this.client.sendMessage(chatId || this.from, content, options);
+    }
+  };
+}
 
 const PORT = process.env.PORT || 3000;
 const WHATSAPP_INIT_MAX_RETRIES = Math.max(
@@ -1318,9 +1344,9 @@ client.on('message', async (msg) => {
   // Intercept replies (Blackjack, Tesoros, etc.)
   if (msg.hasQuotedMsg) {
     try {
-      const quoted = await msg.getQuotedMessage();
-      if (quoted) {
-        const quotedId = quoted.id._serialized;
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      if (quotedDetails.hasQuoted && quotedDetails.id) {
+        const quotedId = quotedDetails.id;
 
         // Blackjack session replies
         if (activeSessions.has(quotedId)) {

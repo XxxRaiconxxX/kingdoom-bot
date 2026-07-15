@@ -22,7 +22,7 @@ import {
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
-import { resolvePlayerTarget } from '../targetResolver.js';
+import { resolvePlayerTarget, safeGetQuotedDetails } from '../targetResolver.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
@@ -779,8 +779,8 @@ export async function handleAdminCommand(msg, client) {
     }
     let identifier = '';
     if (msg.hasQuotedMsg) {
-      const quoted = await msg.getQuotedMessage();
-      identifier = extractPhone(quoted.author || quoted.from);
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      identifier = extractPhone(quotedDetails.author);
     } else {
       identifier = parts.slice(2).join(' ').trim();
     }
@@ -821,8 +821,8 @@ export async function handleAdminCommand(msg, client) {
     }
     let identifier = '';
     if (msg.hasQuotedMsg) {
-      const quoted = await msg.getQuotedMessage();
-      identifier = extractPhone(quoted.author || quoted.from);
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      identifier = extractPhone(quotedDetails.author);
     } else {
       identifier = parts.slice(2).join(' ').trim();
     }
@@ -864,8 +864,8 @@ export async function handleAdminCommand(msg, client) {
 
     if (msg.hasQuotedMsg) {
       // Caso 1: Respondiendo a un mensaje -> !registrar <nombre> [oro]
-      const quoted = await msg.getQuotedMessage();
-      targetPhone = quoted.author || quoted.from;
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      targetPhone = quotedDetails.author;
       
       username = parts[1];
       if (parts[2]) {
@@ -935,8 +935,8 @@ export async function handleAdminCommand(msg, client) {
     let identifier = '';
     
     if (msg.hasQuotedMsg) {
-      const quoted = await msg.getQuotedMessage();
-      targetPhone = quoted.author || quoted.from;
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      targetPhone = quotedDetails.author;
       identifier = parts.slice(1).join(' ').trim();
     } else {
       targetPhone = parts[1];
@@ -1034,8 +1034,8 @@ export async function handleAdminCommand(msg, client) {
     let amount = 0;
 
     if (msg.hasQuotedMsg) {
-      const quoted = await msg.getQuotedMessage();
-      identifier = extractPhone(quoted.author || quoted.from);
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      identifier = extractPhone(quotedDetails.author);
       amount = parseInt(String(parts[1] ?? '').replace(/\./g, ''));
     } else {
       amount = parseInt(String(parts[parts.length - 1] ?? '').replace(/\./g, ''));
@@ -1122,8 +1122,8 @@ export async function handleAdminCommand(msg, client) {
   if (cmd === '!ban' || cmd === '!eliminar' || cmd === '!kick') {
     let identifier = '';
     if (msg.hasQuotedMsg) {
-      const quoted = await msg.getQuotedMessage();
-      identifier = extractPhone(quoted.author || quoted.from);
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      identifier = extractPhone(quotedDetails.author);
     } else {
       identifier = parts.slice(1).join(' ').trim();
     }

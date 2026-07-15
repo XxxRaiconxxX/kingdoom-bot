@@ -22,10 +22,55 @@ export function getMentionedPhone(msg) {
   return mentioned ? normalizePhone(mentioned) : '';
 }
 
+export async function safeGetQuotedDetails(msg) {
+  if (!msg || !msg.hasQuotedMsg) {
+    return { hasQuoted: false, id: null, author: null, body: null };
+  }
+
+  let id = null;
+  let author = null;
+  let body = null;
+
+  if (msg._data) {
+    const rawQuoted = msg._data.quotedMsg;
+    if (rawQuoted) {
+      if (rawQuoted.id) {
+        id = rawQuoted.id._serialized || rawQuoted.id;
+      }
+      author = rawQuoted.author || rawQuoted.from || null;
+      body = rawQuoted.body || rawQuoted.caption || null;
+    }
+    if (!author) {
+      author = msg._data.quotedParticipant || null;
+    }
+  }
+
+  // Fallback to getQuotedMessage if anything is missing
+  if (!id || !author) {
+    try {
+      const quoted = await msg.getQuotedMessage();
+      if (quoted) {
+        id = id || quoted.id?._serialized || null;
+        author = author || quoted.author || quoted.from || null;
+        body = body || quoted.body || quoted.caption || null;
+      }
+    } catch (err) {
+      console.warn('[safeGetQuotedDetails] Fallback getQuotedMessage failed:', err.message ?? err);
+    }
+  }
+
+  return {
+    hasQuoted: true,
+    id,
+    author,
+    body,
+  };
+}
+
 export async function extractTargetIdentifier(msg, fallbackIdentifier = '') {
   if (msg?.hasQuotedMsg) {
-    const quoted = await msg.getQuotedMessage();
-    const quotedPhone = normalizePhone(quoted?.author || quoted?.from);
+    const quotedDetails = await safeGetQuotedDetails(msg);
+    const quotedPhone = normalizePhone(quotedDetails.author);
     if (quotedPhone) {
       return { identifier: quotedPhone, source: 'quoted' };
     }
