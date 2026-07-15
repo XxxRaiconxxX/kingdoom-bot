@@ -55,6 +55,16 @@ assert.ok(
   'Duplicate ready events must not restore readiness before client.getState confirms it.'
 );
 
+const messageHandlerSource = sourceBetween(
+  "client.on('message'",
+  'async function initializeClientWithRetry()'
+);
+assert.ok(
+  messageHandlerSource.indexOf('IGNORED_INTERNAL_MESSAGE_TYPES.has') <
+    messageHandlerSource.indexOf('safeGetQuotedDetails(msg)'),
+  'Internal encryption notifications must be ignored before quoted-message resolution.'
+);
+
 for (const [startMarker, endMarker] of [
   ["client.on('auth_failure'", "client.on('disconnected'"],
   ["client.on('disconnected'", "client.on('change_state'"],
@@ -210,5 +220,60 @@ assert.equal(
   recoveredState.events.some(([event]) => event === 'ready_state_recovered'),
   true
 );
+
+const requestProcessRestartSource = sourceBetween(
+  'function requestProcessRestart(',
+  'async function shutdownForSignal('
+);
+const restartTimers = [];
+const restartEvents = [];
+const clearedAuthEvents = [];
+const exitCodes = [];
+const restartContext = {
+  restartRequested: false,
+  restartClearAuthRequested: false,
+  restartClearAuthEvent: '',
+  shutdownRequested: false,
+  whatsappClientReady: true,
+  runtimeStatus: { restartCount: 0 },
+  WHATSAPP_RESTART_GRACE_MS: 2500,
+  recordRuntimeEvent: (...args) => restartEvents.push(args),
+  closeWhatsappBrowser: async () => {},
+  clearAuthDataPath: (event) => clearedAuthEvents.push(event),
+  sleep: async () => {},
+  formatInitializeError: (error) => error?.message ?? String(error),
+  process: { exit: (code) => exitCodes.push(code) },
+  setTimeout: (callback, delayMs) => {
+    restartTimers.push({ callback, delayMs });
+    return restartTimers.length;
+  },
+  Math,
+  Number,
+};
+vm.runInNewContext(requestProcessRestartSource, restartContext);
+
+assert.equal(
+  restartContext.requestProcessRestart('unhandled_rejection_restart', 'context reset'),
+  true
+);
+assert.equal(
+  restartContext.requestProcessRestart(
+    'disconnected_restart',
+    'WhatsApp se desconecto con motivo: LOGOUT',
+    { clearAuth: true }
+  ),
+  true
+);
+assert.equal(restartTimers.length, 1);
+assert.equal(restartContext.runtimeStatus.restartCount, 1);
+assert.equal(restartContext.restartClearAuthRequested, true);
+assert.equal(
+  restartEvents.some(([event]) => event === 'restart_auth_clear_escalated'),
+  true
+);
+
+await restartTimers[0].callback();
+assert.deepEqual(clearedAuthEvents, ['disconnected_restart']);
+assert.deepEqual(exitCodes, [1]);
 
 console.log('CONNECTION_WATCHDOG_OK');

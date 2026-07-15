@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   calculateReconnectDelayMs,
+  classifyWhatsappRuntimeError,
   cleanupStaleChromiumLocks,
 } from './src/whatsappRecovery.js';
 
@@ -21,6 +22,20 @@ assert.equal(fs.existsSync(path.join(sessionPath, 'Preferences')), true);
 assert.equal(calculateReconnectDelayMs(1, 5000, 60000), 5000);
 assert.equal(calculateReconnectDelayMs(4, 5000, 60000), 40000);
 assert.equal(calculateReconnectDelayMs(8, 5000, 60000), 60000);
+assert.deepEqual(
+  classifyWhatsappRuntimeError(
+    new Error('Protocol error (Runtime.callFunctionOn): Execution context was destroyed.')
+  ),
+  { transientContext: true, restartable: true }
+);
+assert.deepEqual(
+  classifyWhatsappRuntimeError(new Error('Protocol error: Session closed.')),
+  { transientContext: false, restartable: true }
+);
+assert.deepEqual(
+  classifyWhatsappRuntimeError(new Error('ordinary handler failure')),
+  { transientContext: false, restartable: false }
+);
 
 fs.rmSync(authPath, { recursive: true, force: true });
 console.log('WHATSAPP_RECOVERY_OK');

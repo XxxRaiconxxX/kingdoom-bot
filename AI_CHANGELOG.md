@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 15/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Eliminadas las rutas locales que amplificaban la perdida de contexto de Chromium hasta convertirla en reinicio con autenticacion obsoleta y ruido masivo de notificaciones internas.
+*   **Cambios Clave:**
+    *   **[Bot - Navegacion Recuperable]:** `Execution context was destroyed` en una promesa asincrona ya no reinicia inmediatamente el worker; pausa readiness y espera `disconnected` o la comprobacion activa para distinguir navegacion transitoria de desconexion real.
+    *   **[Bot - LOGOUT Prioritario]:** un `LOGOUT` puede elevar un reinicio ya programado a limpieza de autenticacion, evitando que un error anterior conserve una sesion que WhatsApp ya invalido.
+    *   **[Bot - Ingreso Limpio]:** los eventos internos `e2e_notification` se descartan antes de deduplicacion, resolucion de mensajes citados y despacho de comandos, eliminando los fallos repetidos de `safeGetQuotedDetails`.
+    *   **[Bot - Clasificacion Central]:** la politica de errores de runtime vive en `src/whatsappRecovery.js` y conserva reinicio inmediato para `Session closed`, `Target closed`, timeouts y errores de protocolo no transitorios.
+    *   **[Pruebas]:** se valida clasificacion de errores, descarte temprano de notificaciones internas y escalamiento `reinicio conservador -> LOGOUT con limpieza`, sin crear dos timers ni dos reinicios.
+*   **Notas/Advertencias:** `whatsapp-web.js@1.34.7` ya es la ultima release estable instalada. Las propuestas upstream observadas para navegacion destruida y recuperacion de ciphertext no estan integradas en una release, por lo que no se modifico la dependencia ni `package-lock.json`. El cierre exige el mismo SHA en `origin` y `huggingface`, QR generado por ese runtime y verificacion posterior a la vinculacion.
+
+### [Fecha: 15/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Corregido el falso estado `ready` donde el telefono cerraba la sesion, el bot seguia mostrando "Conectado" y nunca generaba un QR nuevo.
 *   **Cambios Clave:**

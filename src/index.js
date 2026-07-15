@@ -43,7 +43,11 @@ import {
   getRuntimeStatusFilePath,
   isAuthPathLikelyPersistent,
 } from './runtimePaths.js';
-import { calculateReconnectDelayMs, cleanupStaleChromiumLocks } from './whatsappRecovery.js';
+import {
+  calculateReconnectDelayMs,
+  classifyWhatsappRuntimeError,
+  cleanupStaleChromiumLocks,
+} from './whatsappRecovery.js';
 
 const { Client, LocalAuth, Message } = pkg;
 
@@ -166,6 +170,8 @@ let schedulerStarted = false;
 let realtimeStarted = false;
 let readyBootstrapComplete = false;
 let restartRequested = false;
+let restartClearAuthRequested = false;
+let restartClearAuthEvent = '';
 let shutdownRequested = false;
 let initializePromise = null;
 const COMMAND_PROCESSING_WARN_MS = Math.max(
@@ -1425,9 +1431,14 @@ client.on('group_leave', async (notification) => {
 
 const activityCache = new Map();
 const processedMessages = new Set(); // deduplication cache
+const IGNORED_INTERNAL_MESSAGE_TYPES = new Set(['e2e_notification']);
 
 client.on('message', async (msg) => {
-  if (msg.fromMe || msg.isStatus) return;
+  if (
+    msg.fromMe ||
+    msg.isStatus ||
+    IGNORED_INTERNAL_MESSAGE_TYPES.has(String(msg.type ?? '').toLowerCase())
+  ) return;
 
   // Deduplication check
   if (msg.id && msg.id._serialized) {
@@ -1986,36 +1997,33 @@ async function initializeClientWithRetry() {
   return initializePromise;
 }
 
-process.on('unhandledRejection', (reason) => {
-  const formattedError = formatInitializeError(reason);
-  console.error(`[process unhandledRejection] ${formattedError}`);
-  
-  if (
-    formattedError.includes('auth timeout') || 
-    formattedError.includes('ERR_TIMED_OUT') || 
-    formattedError.includes('Target closed') || 
-    formattedError.includes('Session closed') ||
-    formattedError.includes('Protocol error')
-  ) {
-    console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
-    requestProcessRestart('unhandled_rejection_restart', formattedError);
+function handleProcessRuntimeError(logLabel, restartEvent, error, deferTransientContext) {
+  const formattedError = formatInitializeError(error);
+  const classification = classifyWhatsappRuntimeError(error);
+  console.error(`[process ${logLabel}] ${formattedError}`);
+
+  if (classification.transientContext && deferTransientContext) {
+    whatsappClientReady = false;
+    recordRuntimeEvent(
+      'execution_context_navigation',
+      `${formattedError} Se espera el resultado de disconnected o de la comprobacion activa antes de reiniciar.`,
+      'Verificando conexion de WhatsApp...'
+    );
+    return;
   }
+
+  if (classification.restartable) {
+    console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el proceso...');
+    requestProcessRestart(restartEvent, formattedError);
+  }
+}
+
+process.on('unhandledRejection', (reason) => {
+  handleProcessRuntimeError('unhandledRejection', 'unhandled_rejection_restart', reason, true);
 });
 
 process.on('uncaughtException', (error) => {
-  const formattedError = formatInitializeError(error);
-  console.error(`[process uncaughtException] ${formattedError}`);
-  
-  if (
-    formattedError.includes('auth timeout') || 
-    formattedError.includes('ERR_TIMED_OUT') || 
-    formattedError.includes('Target closed') || 
-    formattedError.includes('Session closed') ||
-    formattedError.includes('Protocol error')
-  ) {
-    console.error('El cliente de WhatsApp esta en un estado irrecuperable. Reiniciando el contenedor...');
-    requestProcessRestart('uncaught_exception_restart', formattedError);
-  }
+  handleProcessRuntimeError('uncaughtException', 'uncaught_exception_restart', error, false);
 });
 
 async function closeWhatsappBrowser() {
@@ -2037,11 +2045,27 @@ async function closeWhatsappBrowser() {
 }
 
 function requestProcessRestart(event, detail, options = {}) {
-  if (restartRequested || shutdownRequested) return false;
+  if (shutdownRequested) return false;
+
+  const clearAuth = options.clearAuth === true;
+  if (restartRequested) {
+    if (clearAuth && !restartClearAuthRequested) {
+      restartClearAuthRequested = true;
+      restartClearAuthEvent = event;
+      recordRuntimeEvent(
+        'restart_auth_clear_escalated',
+        `${detail} El reinicio ya estaba programado y ahora descartara la autenticacion invalida.`,
+        'Recuperando conexion de WhatsApp...'
+      );
+      return true;
+    }
+    return false;
+  }
 
   restartRequested = true;
+  restartClearAuthRequested = clearAuth;
+  restartClearAuthEvent = clearAuth ? event : '';
   whatsappClientReady = false;
-  const clearAuth = options.clearAuth === true;
   const delayMs = Math.max(WHATSAPP_RESTART_GRACE_MS, Number(options.delayMs) || 0);
   runtimeStatus.restartCount += 1;
   recordRuntimeEvent(
@@ -2053,8 +2077,8 @@ function requestProcessRestart(event, detail, options = {}) {
   setTimeout(async () => {
     try {
       await closeWhatsappBrowser();
-      if (clearAuth) {
-        clearAuthDataPath(event);
+      if (restartClearAuthRequested) {
+        clearAuthDataPath(restartClearAuthEvent || event);
       }
       recordRuntimeEvent(
         'restart_worker_exit',

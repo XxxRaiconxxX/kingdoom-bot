@@ -29,3 +29,19 @@ export function calculateReconnectDelayMs(attempt, baseDelayMs, maxDelayMs) {
   const safeMax = Math.max(safeBase, Number(maxDelayMs) || safeBase);
   return Math.min(safeMax, safeBase * (2 ** (safeAttempt - 1)));
 }
+
+export function classifyWhatsappRuntimeError(error) {
+  const message = String(error?.message ?? error).toLowerCase();
+  const transientContext =
+    message.includes('execution context was destroyed') ||
+    message.includes('most likely because of a navigation');
+  const restartable = [
+    'auth timeout',
+    'err_timed_out',
+    'target closed',
+    'session closed',
+    'protocol error',
+  ].some((marker) => message.includes(marker));
+
+  return { transientContext, restartable };
+}
