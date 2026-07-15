@@ -1952,9 +1952,9 @@ function requestProcessRestart(event, detail, options = {}) {
         clearAuthDataPath(event);
       }
       recordRuntimeEvent(
-        'restart_process_exit',
-        `Saliendo del proceso para forzar un reinicio limpio del contenedor tras el evento ${event}.`,
-        'Reiniciando bot...'
+        'restart_worker_exit',
+        `Saliendo del proceso del bot tras el evento ${event}; el supervisor lo recreara sin desmontar la sesion persistente.`,
+        'Reiniciando proceso del bot...'
       );
       await sleep(1000);
       process.exit(1);

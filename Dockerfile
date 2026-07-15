@@ -20,4 +20,4 @@ COPY src/ ./src/
 # Crear carpeta de auth y dar permisos para compatibilidad con el usuario no-root de Hugging Face
 RUN mkdir -p /app/.wwebjs_auth && chmod -R 777 /app
 
-CMD ["node", "src/index.js"]
+CMD ["node", "src/launcher.js"]

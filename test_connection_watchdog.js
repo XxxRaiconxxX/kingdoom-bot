@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-const source = fs.readFileSync(new URL('./src/index.js', import.meta.url), 'utf8');
+const source = fs
+  .readFileSync(new URL('./src/index.js', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
 
 function sourceBetween(startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -69,22 +71,6 @@ const watchdogSource = sourceBetween(
   'function startWhatsappConnectWatchdog()',
   "recordRuntimeEvent(\n  'boot'"
 );
-const restartSource = sourceBetween(
-  'function requestProcessRestart(',
-  'async function shutdownForSignal('
-);
-
-assert.equal(
-  restartSource.includes('process.exit(1)'),
-  false,
-  'Recoverable WhatsApp restarts must not kill the Node process in production.'
-);
-assert.equal(
-  restartSource.includes('await initializeClientWithRetry();'),
-  true,
-  'Recoverable WhatsApp restarts must reinitialize the client in-process.'
-);
-
 function runWatchdogScenario({ ready, qrAgeMs }) {
   const callbacks = [];
   const restarts = [];

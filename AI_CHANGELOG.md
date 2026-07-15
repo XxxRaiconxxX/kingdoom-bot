@@ -507,3 +507,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Telemetria insuficiente:** El cambio `102e278` hace que `requestProcessRestart(...)` termine con `process.exit(1)`. Despues del arranque, cada renovacion imprime el QR ASCII completo y agrega otro evento `qr`, desplazando del buffer de Hugging Face y del historial persistido de 40 eventos el disparador original.
     *   **Trazabilidad corregida:** Se documenta el comportamiento de `102e278`, que habia modificado solo `src/index.js` sin actualizar changelog ni memoria y contradecia la recuperacion en caliente registrada el 13/07/2026.
 *   **Notas/Advertencias:** Este cierre registra solo el diagnostico; no cambia la logica del bot. El Space seguia esperando un QR nuevo y el motivo exacto del primer reinicio ya no era recuperable con la telemetria retenida. La recuperacion operativa inmediata requiere desvincular la sesion antigua, escanear el QR vigente y confirmar la secuencia `authenticated` -> `ready`.
+
+### [Fecha: 15/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/launcher.js`, `src/index.js`, `package.json`, `Dockerfile`, `test_connection_watchdog.js`, `test_process_supervisor.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Correccion del apagado completo del Space cuando `whatsapp-web.js` solicita recrear un cliente obsoleto.
+*   **Cambios Clave:**
+    *   **Supervisor interno:** Docker y `npm start` mantienen un proceso padre liviano que recrea el proceso del bot dentro del mismo contenedor, evitando desmontar el bucket `/data` en cada desconexion.
+    *   **Cliente realmente limpio:** `requestProcessRestart(...)` conserva la salida controlada del proceso hijo, necesaria para no reutilizar referencias obsoletas de Puppeteer, pero ya no obliga a Hugging Face a reciclar todo el Space.
+    *   **Backoff y shutdown:** los reinicios consecutivos usan espera exponencial de 3 a 30 segundos y `SIGTERM`/`SIGINT` se reenvian al bot para conservar su cierre ordenado de Chromium.
+    *   **Pruebas reparadas:** el test del watchdog normaliza CRLF en Windows y la nueva prueba bloquea despliegues que omitan el supervisor en Docker o `npm start`.
+*   **Notas/Advertencias:** La sesion activa ya estaba en estado QR antes de este cambio; el supervisor evita que la proxima desconexion recicle el Space, pero la vinculacion actual requiere un escaneo fisico para volver a `ready`.

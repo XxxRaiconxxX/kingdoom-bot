@@ -2,7 +2,7 @@
   "name": "kingdoom-bot",
   "type": "module",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node src/launcher.js",
     "dev": "node --watch src/index.js",
     "graphify:setup": "node scripts/graphify-manager.mjs setup",
     "graphify:doctor": "node scripts/graphify-manager.mjs doctor",
