@@ -496,3 +496,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Lectura de ready/logout mas limpia:** el log `Kingdoom Bot conectado` ya no se repite en `ready` duplicados y el flujo `disconnected: LOGOUT` ahora deja claro en consola que la sesion persistida sera descartada antes de reinicializar.
     *   **Guardia de payload vacio:** la lectura del cuerpo del mensaje deja de asumir `msg.body` siempre string, evitando silencios si WhatsApp entrega un payload no textual.
 *   **Notas/Advertencias:** Este cambio mejora mucho el diagnostico en Hugging Face, pero la causa final de un comando sin respuesta aun debe confirmarse con una prueba en vivo revisando si aparece `message_inbound`, `message_processing_slow`, `message_replied` o `message_failed`.
+
+### [Fecha: 15/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Diagnostico en vivo de la sesion de WhatsApp que reaparecio en QR tras reinicios del Space de Hugging Face.
+*   **Cambios Clave:**
+    *   **Estado de produccion:** El Space `axel785/kingdoom-whatsapp` estaba `RUNNING` sobre `bebf666`, pero el proceso activo solo emitia QR y no habia alcanzado `authenticated` ni `ready`; `restartCount` permanecia en 3.
+    *   **Persistencia verificada:** El bucket `axel785/kingdoom-whatsapp-state` seguia montado con escritura en `/data` y conservaba el perfil `LocalAuth`; no se encontro evidencia de perdida total del directorio ni errores de recuperacion en los logs de LevelDB.
+    *   **Causa probable:** La evidencia apunta a una restauracion logica invalida o incompleta de la sesion local. Que el telefono aun mostrara el dispositivo vinculado no confirmaba que la instancia nueva conservara claves utilizables.
+    *   **Telemetria insuficiente:** El cambio `102e278` hace que `requestProcessRestart(...)` termine con `process.exit(1)`. Despues del arranque, cada renovacion imprime el QR ASCII completo y agrega otro evento `qr`, desplazando del buffer de Hugging Face y del historial persistido de 40 eventos el disparador original.
+    *   **Trazabilidad corregida:** Se documenta el comportamiento de `102e278`, que habia modificado solo `src/index.js` sin actualizar changelog ni memoria y contradecia la recuperacion en caliente registrada el 13/07/2026.
+*   **Notas/Advertencias:** Este cierre registra solo el diagnostico; no cambia la logica del bot. El Space seguia esperando un QR nuevo y el motivo exacto del primer reinicio ya no era recuperable con la telemetria retenida. La recuperacion operativa inmediata requiere desvincular la sesion antigua, escanear el QR vigente y confirmar la secuencia `authenticated` -> `ready`.
