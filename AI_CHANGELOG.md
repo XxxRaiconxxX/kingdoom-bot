@@ -4,6 +4,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 15/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `.env.example`, `README.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Corregido el falso estado `ready` donde el telefono cerraba la sesion, el bot seguia mostrando "Conectado" y nunca generaba un QR nuevo.
+*   **Cambios Clave:**
+    *   **[Bot - Salud Activa]:** el watchdog ahora consulta `client.getState()` incluso despues de `ready`; una lectura distinta de `CONNECTED` pausa los envios y tres fallos consecutivos reinician el worker mediante el supervisor existente.
+    *   **[Bot - QR Recuperable]:** solo `UNPAIRED` y `UNPAIRED_IDLE` descartan la autenticacion persistida al reiniciar, de modo que una sesion realmente cerrada vuelve a solicitar QR sin borrar auth por errores transitorios.
+    *   **[Bot - Telemetria]:** `/status.json` expone estado interno, ultima comprobacion, contador/limite de fallos y error de lectura para evitar diagnosticos basados unicamente en el evento `ready`.
+    *   **[Bot - Deduplicacion]:** las rafagas repetidas de `authenticated` se ignoran y `ready_duplicate` se limita a una entrada por minuto sin restaurar por si solo la bandera de conexion.
+    *   **[Pruebas]:** cubiertos los escenarios `CONNECTED`, `UNPAIRED`, error de pagina, recuperacion `OPENING -> CONNECTED`, QR fresco y QR vencido.
+*   **Notas/Advertencias:** Validado localmente con `node --check src/index.js`, `node test_connection_watchdog.js`, `node test_whatsapp_recovery.js`, `node test_process_supervisor.js`, `node test_scheduler_delivery_guard.js` y `npm run graphify:update`. El cierre operativo exige el mismo SHA en `origin` y `huggingface`, seguido de verificacion en vivo del Space.
+
 ### [Fecha: 14/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Endurecido el despacho privado de la cola de notificaciones para bajar el riesgo de deteccion de spam por WhatsApp.

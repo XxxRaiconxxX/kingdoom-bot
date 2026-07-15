@@ -89,6 +89,14 @@ const WHATSAPP_CONNECT_STALL_TIMEOUT_MS = Math.max(
   60000,
   Number.parseInt(process.env.WHATSAPP_CONNECT_STALL_TIMEOUT_MS ?? '150000', 10) || 150000
 );
+const WHATSAPP_READY_HEALTH_FAILURE_LIMIT = Math.max(
+  2,
+  Number.parseInt(process.env.WHATSAPP_READY_HEALTH_FAILURE_LIMIT ?? '3', 10) || 3
+);
+const WHATSAPP_READY_HEALTH_TIMEOUT_MS = Math.max(
+  3000,
+  Number.parseInt(process.env.WHATSAPP_READY_HEALTH_TIMEOUT_MS ?? '10000', 10) || 10000
+);
 const WHATSAPP_RESTART_GRACE_MS = Math.max(
   1000,
   Number.parseInt(process.env.WHATSAPP_RESTART_GRACE_MS ?? '2500', 10) || 2500
@@ -145,6 +153,13 @@ let lastLoadingPercent = null;
 let appStatus = 'Inicializando servidor...';
 let whatsappClientReady = false;
 let lastWhatsappProgressAt = Date.now();
+let lastWhatsappState = null;
+let lastWhatsappStateCheckedAt = null;
+let whatsappStateFailureCount = 0;
+let whatsappStateCheckError = '';
+let whatsappStateCheckInFlight = false;
+let authenticatedEventSeen = false;
+let lastReadyDuplicateLoggedAt = 0;
 const welcomeConfig = buildWelcomeConfig();
 const playerLifecycleConfig = buildPlayerLifecycleConfig();
 let schedulerStarted = false;
@@ -559,6 +574,11 @@ function buildPublicStatus() {
     lastEventDetail: runtimeStatus.lastEventDetail,
     recentEvents: runtimeStatus.recentEvents.slice(0, 12),
     restartCount: runtimeStatus.restartCount,
+    whatsappState: lastWhatsappState,
+    whatsappStateLastCheckedAt: lastWhatsappStateCheckedAt,
+    whatsappStateFailureCount,
+    whatsappStateFailureLimit: WHATSAPP_READY_HEALTH_FAILURE_LIMIT,
+    whatsappStateCheckError: whatsappStateCheckError || null,
     authPersistence: authPathPersistent ? 'persistent' : 'ephemeral',
     persistenceMode,
     manualResetMode:
@@ -786,7 +806,7 @@ function renderAutoRefreshScript() {
 }
 
 function startWhatsappConnectWatchdog() {
-  const interval = setInterval(() => {
+  const interval = setInterval(async () => {
     const hasFreshQr =
       !!latestQrDataUrl &&
       !!latestQrUpdatedAt &&
@@ -798,9 +818,77 @@ function startWhatsappConnectWatchdog() {
       Number.isFinite(Date.parse(latestPairingCodeUpdatedAt)) &&
       (Date.now() - Date.parse(latestPairingCodeUpdatedAt)) < WHATSAPP_CONNECT_STALL_TIMEOUT_MS;
 
-    if (whatsappClientReady || hasFreshQr || hasFreshPairingCode) {
+    if (restartRequested || shutdownRequested || hasFreshQr || hasFreshPairingCode) {
       return;
     }
+
+    if (readyBootstrapComplete) {
+      if (whatsappStateCheckInFlight) return;
+
+      whatsappStateCheckInFlight = true;
+      let normalizedState = 'CHECK_ERROR';
+      let stateCheckError = '';
+
+      try {
+        const state = await Promise.race([
+          client.getState(),
+          sleep(WHATSAPP_READY_HEALTH_TIMEOUT_MS).then(() => {
+            throw new Error(
+              `Timeout consultando el estado de WhatsApp tras ${WHATSAPP_READY_HEALTH_TIMEOUT_MS}ms`
+            );
+          }),
+        ]);
+        normalizedState = String(state ?? 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+      } catch (error) {
+        stateCheckError = formatInitializeError(error);
+      } finally {
+        whatsappStateCheckInFlight = false;
+      }
+
+      lastWhatsappState = normalizedState;
+      lastWhatsappStateCheckedAt = new Date().toISOString();
+      whatsappStateCheckError = stateCheckError;
+
+      if (normalizedState === 'CONNECTED') {
+        const recovered = whatsappStateFailureCount > 0 || !whatsappClientReady;
+        whatsappStateFailureCount = 0;
+        whatsappClientReady = true;
+
+        if (recovered) {
+          recordRuntimeEvent(
+            'ready_state_recovered',
+            'La comprobacion activa confirmo nuevamente el estado CONNECTED.',
+            'Conectado a WhatsApp.'
+          );
+        }
+        return;
+      }
+
+      whatsappStateFailureCount += 1;
+      whatsappClientReady = false;
+      appStatus = 'Verificando conexion de WhatsApp...';
+      const healthDetail = stateCheckError
+        ? `No se pudo consultar client.getState(): ${stateCheckError}`
+        : `client.getState() devolvio ${normalizedState}`;
+      const attemptDetail = `${healthDetail} (${whatsappStateFailureCount}/${WHATSAPP_READY_HEALTH_FAILURE_LIMIT}).`;
+
+      if (whatsappStateFailureCount === 1) {
+        recordRuntimeEvent('ready_state_mismatch', attemptDetail, appStatus);
+      } else {
+        persistRuntimeStatus();
+      }
+
+      if (whatsappStateFailureCount >= WHATSAPP_READY_HEALTH_FAILURE_LIMIT) {
+        requestProcessRestart(
+          'ready_state_mismatch_restart',
+          `${healthDetail} durante ${whatsappStateFailureCount} comprobaciones consecutivas.`,
+          { clearAuth: normalizedState === 'UNPAIRED' || normalizedState === 'UNPAIRED_IDLE' }
+        );
+      }
+      return;
+    }
+
+    if (whatsappClientReady) return;
 
     const idleMs = Date.now() - lastWhatsappProgressAt;
     if (idleMs < WHATSAPP_CONNECT_STALL_TIMEOUT_MS) {
@@ -1108,6 +1196,7 @@ client.on('qr', async (qr) => {
   console.log('Escanea este QR:');
   markWhatsappProgress();
   whatsappClientReady = false;
+  authenticatedEventSeen = false;
   appStatus = 'Esperando escaneo de codigo QR...';
   latestQrUpdatedAt = new Date().toISOString();
   latestPairingCode = '';
@@ -1127,6 +1216,7 @@ client.on('qr', async (qr) => {
 client.on('code', (code) => {
   markWhatsappProgress();
   whatsappClientReady = false;
+  authenticatedEventSeen = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = String(code ?? '').trim();
@@ -1140,6 +1230,9 @@ client.on('code', (code) => {
 });
 
 client.on('authenticated', () => {
+  if (readyBootstrapComplete || authenticatedEventSeen) return;
+
+  authenticatedEventSeen = true;
   markWhatsappProgress();
   whatsappClientReady = false;
   latestQrDataUrl = '';
@@ -1175,8 +1268,27 @@ client.on('loading_screen', (percent, message) => {
 });
 
 client.on('ready', async () => {
+  if (readyBootstrapComplete) {
+    const now = Date.now();
+    if (
+      whatsappClientReady &&
+      (now - lastReadyDuplicateLoggedAt) >= 60000
+    ) {
+      lastReadyDuplicateLoggedAt = now;
+      recordRuntimeEvent(
+        'ready_duplicate',
+        'WhatsApp repitio el evento ready; se conserva el runtime ya inicializado.',
+        'Conectado a WhatsApp.'
+      );
+    }
+    return;
+  }
+
   markWhatsappProgress();
   whatsappClientReady = true;
+  authenticatedEventSeen = true;
+  whatsappStateFailureCount = 0;
+  whatsappStateCheckError = '';
   runtimeStatus.restartCount = 0;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
@@ -1190,15 +1302,6 @@ client.on('ready', async () => {
       : 'Cliente conectado. La sesion sigue en almacenamiento temporal; si el contenedor reinicia, puede volver a pedir QR.',
     'Conectado a WhatsApp.'
   );
-
-  if (readyBootstrapComplete) {
-    recordRuntimeEvent(
-      'ready_duplicate',
-      'WhatsApp repitio el evento ready; se conserva el runtime ya inicializado.',
-      'Conectado a WhatsApp.'
-    );
-    return;
-  }
 
   console.log('Kingdoom Bot conectado');
   readyBootstrapComplete = true;
@@ -1249,6 +1352,7 @@ client.on('ready', async () => {
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', message);
   whatsappClientReady = false;
+  authenticatedEventSeen = false;
   readyBootstrapComplete = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
@@ -1267,6 +1371,7 @@ client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', reason);
   const shouldClearAuth = isLogoutDisconnectReason(reason);
   whatsappClientReady = false;
+  authenticatedEventSeen = false;
   readyBootstrapComplete = false;
   schedulerStarted = false;
   realtimeStarted = false;
