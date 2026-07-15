@@ -23,6 +23,27 @@ const PLAYER_LIFECYCLE_SELECT_COLUMNS = 'id, username, phone, lifecycle_status, 
 const phoneLookupCache = new Map();
 const pendingPhoneLookups = new Map();
 let phoneLookupRevision = 0;
+
+const readQueryCache = new Map();
+async function getCachedOrFetch(key, ttlMs, fetchFn) {
+  const now = Date.now();
+  const cached = readQueryCache.get(key);
+  if (cached && now < cached.expiresAt) {
+    return cached.data;
+  }
+
+  const promise = fetchFn();
+  readQueryCache.set(key, { data: promise, expiresAt: now + ttlMs });
+
+  try {
+    const data = await promise;
+    readQueryCache.set(key, { data, expiresAt: Date.now() + ttlMs });
+    return data;
+  } catch (err) {
+    readQueryCache.delete(key);
+    throw err;
+  }
+}
 const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
 let missionPrefixFilterSupported = true;
 const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
@@ -1369,25 +1390,29 @@ export async function verifyAndLinkPlayer(whatsappNumber, searchKey) {
 }
 
 export async function getLeaderboard() {
-  const { data, error } = await supabase
-    .from('players')
-    .select('username, gold, weekly_gold')
-    .order('weekly_gold', { ascending: false })
-    .limit(10);
+  return getCachedOrFetch('leaderboard', 5 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('players')
+      .select('username, gold, weekly_gold')
+      .order('weekly_gold', { ascending: false })
+      .limit(10);
 
-  if (error) console.error('[getLeaderboard]', error.message);
-  return data ?? [];
+    if (error) console.error('[getLeaderboard]', error.message);
+    return data ?? [];
+  });
 }
 
 export async function getGoldLeaderboard(limit = 10) {
-  const { data, error } = await supabase
-    .from('players')
-    .select('username, gold')
-    .order('gold', { ascending: false })
-    .limit(limit);
+  return getCachedOrFetch(`gold_leaderboard:${limit}`, 5 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('players')
+      .select('username, gold')
+      .order('gold', { ascending: false })
+      .limit(limit);
 
-  if (error) console.error('[getGoldLeaderboard]', error.message);
-  return data ?? [];
+    if (error) console.error('[getGoldLeaderboard]', error.message);
+    return data ?? [];
+  });
 }
 
 export async function getMarketItems() {
@@ -1423,20 +1448,22 @@ export async function getMarketItemDetails(query) {
 }
 
 export async function getRealmSnapshot() {
-  const [{ count: totalPlayers }, { count: availableItems }, { data: richest }, { data: weeklyChampion }] =
-    await Promise.all([
-      supabase.from('players').select('id', { count: 'exact', head: true }),
-      supabase.from('market_items').select('id', { count: 'exact', head: true }).neq('stock_status', 'sold-out'),
-      supabase.from('players').select('username, gold').order('gold', { ascending: false }).limit(1).maybeSingle(),
-      supabase.from('players').select('username, weekly_gold').order('weekly_gold', { ascending: false }).limit(1).maybeSingle(),
-    ]);
+  return getCachedOrFetch('realm_snapshot', 5 * 60 * 1000, async () => {
+    const [{ count: totalPlayers }, { count: availableItems }, { data: richest }, { data: weeklyChampion }] =
+      await Promise.all([
+        supabase.from('players').select('id', { count: 'exact', head: true }),
+        supabase.from('market_items').select('id', { count: 'exact', head: true }).neq('stock_status', 'sold-out'),
+        supabase.from('players').select('username, gold').order('gold', { ascending: false }).limit(1).maybeSingle(),
+        supabase.from('players').select('username, weekly_gold').order('weekly_gold', { ascending: false }).limit(1).maybeSingle(),
+      ]);
 
-  return {
-    totalPlayers: totalPlayers ?? 0,
-    availableItems: availableItems ?? 0,
-    richest: richest ?? null,
-    weeklyChampion: weeklyChampion ?? null,
-  };
+    return {
+      totalPlayers: totalPlayers ?? 0,
+      availableItems: availableItems ?? 0,
+      richest: richest ?? null,
+      weeklyChampion: weeklyChampion ?? null,
+    };
+  });
 }
 
 export async function getLinkStatusByWhatsapp(whatsappNumber) {
@@ -1472,16 +1499,18 @@ export async function getStaffSnapshot() {
 }
 
 export async function getActiveMissions(limit = 5) {
-  const { data, error } = await supabase
-    .from('realm_missions')
-    .select('id, title, description, instructions, reward_gold, max_participants, difficulty, type, status, visible, created_at')
-    .eq('visible', true)
-    .neq('status', 'closed')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  return getCachedOrFetch(`active_missions:${limit}`, 3 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('realm_missions')
+      .select('id, title, description, instructions, reward_gold, max_participants, difficulty, type, status, visible, created_at')
+      .eq('visible', true)
+      .neq('status', 'closed')
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-  if (error) console.error('[getActiveMissions]', error.message);
-  return data ?? [];
+    if (error) console.error('[getActiveMissions]', error.message);
+    return data ?? [];
+  });
 }
 
 export async function getMissionDetails(query) {
@@ -1506,15 +1535,17 @@ export async function getMissionDetails(query) {
 }
 
 export async function getActiveEvents(limit = 5) {
-  const { data, error } = await supabase
-    .from('realm_events')
-    .select('id, title, description, long_description, start_date, end_date, status, rewards, requirements, participation_reward_gold, max_participants')
-    .neq('status', 'finished')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  return getCachedOrFetch(`active_events:${limit}`, 3 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('realm_events')
+      .select('id, title, description, long_description, start_date, end_date, status, rewards, requirements, participation_reward_gold, max_participants')
+      .neq('status', 'finished')
+      .order('created_at', { ascending: false })
+      .limit(limit);
 
-  if (error) console.error('[getActiveEvents]', error.message);
-  return data ?? [];
+    if (error) console.error('[getActiveEvents]', error.message);
+    return data ?? [];
+  });
 }
 
 export async function getEventDetails(query) {

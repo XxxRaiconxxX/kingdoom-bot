@@ -1650,12 +1650,12 @@ client.on('message', async (msg) => {
               await updateGold(player.id, -appliedPenalty);
             }
 
-            await recordRestrictedGroupCommandViolation({
+            recordRestrictedGroupCommandViolation({
               playerId: player.id,
               scopeKey: RESTRICTED_MINIGAME_SCOPE_KEY,
               commandName: command,
               penaltyGold: appliedPenalty,
-            });
+            }).catch((err) => console.error('[restricted command violation log error]', err));
           }
 
           try {

@@ -36,7 +36,7 @@ function getProviderKeyCount(provider) {
 }
 
 function getProviderOrder() {
-  const requested = String(process.env.AI_PROVIDER_ORDER || 'nvidia,groq,gemini')
+  const requested = String(process.env.AI_PROVIDER_ORDER || 'groq,gemini,nvidia')
     .split(',')
     .map((provider) => provider.trim().toLowerCase())
     .filter(Boolean);
@@ -48,7 +48,7 @@ function getProviderOrder() {
     }
   }
 
-  return unique.length ? unique : ['nvidia', 'groq', 'gemini'];
+  return unique.length ? unique : ['groq', 'gemini', 'nvidia'];
 }
 
 function getKeyFingerprint(key) {
