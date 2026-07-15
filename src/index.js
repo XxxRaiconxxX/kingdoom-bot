@@ -1951,28 +1951,17 @@ function requestProcessRestart(event, detail, options = {}) {
       if (clearAuth) {
         clearAuthDataPath(event);
       }
-      restartRequested = false;
-      readyBootstrapComplete = false;
-      latestQrDataUrl = '';
-      latestQrUpdatedAt = null;
-      latestPairingCode = '';
-      latestPairingCodeUpdatedAt = null;
-      lastLoadingPercent = null;
       recordRuntimeEvent(
-        'restart_reinitialize',
-        `Se lanzara una nueva inicializacion interna tras el evento ${event}.`,
-        'Reiniciando cliente de WhatsApp...'
+        'restart_process_exit',
+        `Saliendo del proceso para forzar un reinicio limpio del contenedor tras el evento ${event}.`,
+        'Reiniciando bot...'
       );
-      await initializeClientWithRetry();
+      await sleep(1000);
+      process.exit(1);
     } catch (error) {
-      restartRequested = false;
       const formattedError = formatInitializeError(error);
-      console.error(`[whatsapp recovery] ${formattedError}`);
-      recordRuntimeEvent(
-        'restart_reinitialize_failure',
-        `La recuperacion interna fallo: ${formattedError}`,
-        'Error al recuperar WhatsApp.'
-      );
+      console.error(`[whatsapp recovery] Error al intentar reiniciar: ${formattedError}`);
+      process.exit(1);
     }
   }, delayMs);
 
