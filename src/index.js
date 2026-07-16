@@ -33,7 +33,7 @@ import { handleBlackjack, handleBlackjackReply, activeSessions } from './handler
 import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
-import { safeGetQuotedDetails } from './targetResolver.js';
+import { findActiveQuotedMessageKey, safeGetQuotedDetails } from './targetResolver.js';
 import {
   ensureDir,
   ensureParentDir,
@@ -54,6 +54,7 @@ import {
   createWhatsappHealthTracker,
   probeWhatsappClient,
 } from './whatsappHealth.js';
+import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
 
 const { Client, LocalAuth, Message } = pkg;
 
@@ -309,40 +310,43 @@ function getRestrictedCommandPenalty(previousViolationsCount) {
 }
 
 function buildRestrictedGroupWarningReply(commandName) {
-  return [
-    `⚠️ El comando *!${commandName}* no puede usarse en este grupo principal.`,
+  return heraldCard('Comando fuera de lugar', [
+    `El comando *!${commandName}* no puede usarse en este grupo principal.`,
     'Por favor envia mensaje al privado para continuar con este comando.',
-    'Esta fue tu advertencia gratuita de hoy.',
-  ].join('\n');
+    heraldStat('Sancion', 'Advertencia gratuita de hoy'),
+  ], { icon: '⚠️' });
 }
 
 function buildRestrictedGroupPenaltyReply(commandName, desiredPenalty, appliedPenalty, availableGoldAfter) {
   const baseLines = [
-    `⛔ El comando *!${commandName}* no puede usarse en este grupo principal.`,
+    `El comando *!${commandName}* no puede usarse en este grupo principal.`,
     'Por favor envia mensaje al privado para continuar con este comando.',
   ];
 
   if (appliedPenalty <= 0) {
-    baseLines.push(`No se pudo descontar oro porque no habia saldo disponible. Multa prevista: *${formatGoldAmount(desiredPenalty)} oro*.`);
-    return baseLines.join('\n');
+    baseLines.push(
+      heraldStat('Multa prevista', `${formatGoldAmount(desiredPenalty)} oro`),
+      'No habia saldo disponible para realizar el descuento.'
+    );
+    return heraldCard('Reincidencia sancionada', baseLines, { icon: '⛔' });
   }
 
   if (appliedPenalty < desiredPenalty) {
-    baseLines.push(`Se descontaron *${formatGoldAmount(appliedPenalty)} oro* (todo tu saldo disponible).`);
+    baseLines.push(heraldStat('Multa aplicada', `${formatGoldAmount(appliedPenalty)} oro · todo el saldo disponible`));
   } else {
-    baseLines.push(`Se descontaron *${formatGoldAmount(appliedPenalty)} oro* por reincidir hoy.`);
+    baseLines.push(heraldStat('Multa aplicada', `${formatGoldAmount(appliedPenalty)} oro`));
   }
 
-  baseLines.push(`Oro restante: *${formatGoldAmount(availableGoldAfter)}*`);
-  return baseLines.join('\n');
+  baseLines.push(heraldStat('Oro restante', formatGoldAmount(availableGoldAfter)));
+  return heraldCard('Reincidencia sancionada', baseLines, { icon: '⛔' });
 }
 
 function buildRestrictedGroupPrivateReply(commandName) {
-  return [
-    `⚠️ *!${commandName}* no se usa en el grupo principal del reino.`,
+  return heraldCard('Continua por privado', [
+    `*!${commandName}* no se usa en el grupo principal del reino.`,
     'Reenvia aqui ese comando por privado y el bot lo atendera sin problemas.',
     'En el grupo principal las reincidencias generan multa de oro durante el dia.',
-  ].join('\n');
+  ], { icon: '🛡️' });
 }
 
 function getRandomDelayMs(minMs, maxMs) {
@@ -405,11 +409,11 @@ function isEligibleRoleplayActivityMessage(msg, text) {
 }
 
 function buildRoleplayLockedReply(commandName) {
-  return [
-    `⚠️ Tu acceso a *!${commandName}* esta bloqueado por no haber roleado en los ultimos *${getRoleplayLockWindowDays()} dias*.`,
+  return heraldCard('Acceso temporalmente bloqueado', [
+    `Tu acceso a *!${commandName}* esta bloqueado por no haber roleado en los ultimos *${getRoleplayLockWindowDays()} dias*.`,
     'Vuelve a rolear en el grupo principal del reino para desbloquear minijuegos, economia y consultas recreativas.',
-    `Grupo valido: *${ROLEPLAY_ACTIVITY_GROUP_ID}*`,
-  ].join('\n');
+    heraldStat('Grupo valido', `\`${ROLEPLAY_ACTIVITY_GROUP_ID}\``),
+  ], { icon: '🔒' });
 }
 
 function formatInitializeError(error) {
@@ -1671,9 +1675,17 @@ client.on('ready', async () => {
     const orphanedBets = await getUnresolvedBets(10); // older than 10 mins
     if (orphanedBets && orphanedBets.length > 0) {
       console.log(`[Escrow] Recuperando ${orphanedBets.length} apuestas huerfanas...`);
+      let recoveredBets = 0;
+      let pendingBets = 0;
       for (const bet of orphanedBets) {
-        // Resolve bet with the original amount (refund)
-        await resolveBet(bet.id, bet.amount);
+        try {
+          await resolveBet(bet.id, bet.amount);
+          recoveredBets += 1;
+        } catch (betRecoveryError) {
+          pendingBets += 1;
+          console.error(`[Escrow] Reembolso pendiente para apuesta ${bet.id}:`, betRecoveryError);
+          continue;
+        }
         
         // Queue the notice; dispatch starts only after functional health is confirmed.
         if (bet.players && bet.players.phone) {
@@ -1689,7 +1701,10 @@ client.on('ready', async () => {
           }
         }
       }
-      console.log(`[Escrow] Apuestas huérfanas recuperadas exitosamente.`);
+      console.log(`[Escrow] Recuperadas ${recoveredBets}/${orphanedBets.length} apuestas huerfanas.`);
+      if (pendingBets > 0) {
+        console.error(`[Escrow] Permanecen ${pendingBets} apuesta(s) pendientes para el proximo ciclo.`);
+      }
     }
   } catch (escrowErr) {
     console.error('[index.js] Error al recuperar apuestas del escrow:', escrowErr);
@@ -1842,8 +1857,9 @@ client.on('message', async (msg) => {
         const quotedId = quotedDetails.id;
 
         // Blackjack session replies
-        if (activeSessions.has(quotedId)) {
-          const session = activeSessions.get(quotedId);
+        const blackjackSessionId = findActiveQuotedMessageKey(activeSessions, quotedId);
+        if (blackjackSessionId) {
+          const session = activeSessions.get(blackjackSessionId);
           
           let isAllowed = false;
           if (session.isMultiplayer) {
@@ -1853,9 +1869,9 @@ client.on('message', async (msg) => {
           }
 
           if (isAllowed) {
-            const replyText = await handleBlackjackReply(msg, session, quotedId, client);
+            const replyText = await handleBlackjackReply(msg, session, blackjackSessionId, client);
             if (replyText) {
-              await msg.reply(replyText);
+              await msg.reply(decorateCommandReply('21', replyText));
             }
             return;
           } else {
@@ -1865,9 +1881,13 @@ client.on('message', async (msg) => {
         }
 
         // Tesoro Errante replies
-        if (activeTreasures.has(quotedId)) {
-          const treasure = activeTreasures.get(quotedId);
-          await handleTreasureReply(msg, treasure, quotedId, client);
+        const treasureMessageId = findActiveQuotedMessageKey(activeTreasures, quotedId);
+        if (treasureMessageId) {
+          const treasure = activeTreasures.get(treasureMessageId);
+          const treasureReply = await handleTreasureReply(msg, treasure, treasureMessageId, client);
+          if (treasureReply) {
+            await sendBotText(msg, treasureReply, { context: 'treasure_claim' });
+          }
           return;
         }
       }
@@ -1896,7 +1916,10 @@ client.on('message', async (msg) => {
           try {
             await client.sendMessage(
               formatJid(unlockedPhone),
-              `✅ *Acceso restaurado*\nHas vuelto a rolear en el grupo principal del reino.\nLos minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.`
+              heraldCard('Acceso restaurado', [
+                'Has vuelto a rolear en el grupo principal del reino.',
+                'Los minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.',
+              ], { icon: '✅' })
             );
           } catch (unlockNotifyError) {
             console.error('[roleplay unlock notify]', unlockNotifyError);
@@ -2229,7 +2252,9 @@ client.on('message', async (msg) => {
     }
 
     if (reply) {
-      await sendBotText(msg, reply, { context: command || 'message' });
+      const replyCommand = hasPrefix ? command : isMarketSessionActive ? 'forjaritem' : '';
+      const visibleReply = replyCommand ? decorateCommandReply(replyCommand, reply) : reply;
+      await sendBotText(msg, visibleReply, { context: command || 'message' });
       whatsappHealth.markReply();
       persistRuntimeStatus();
       if (slowMessageTimer) {
@@ -2238,7 +2263,7 @@ client.on('message', async (msg) => {
       }
       if (shouldTraceMessageFlow) {
         console.log(
-          `[message reply] scope=${chatScope} command=${commandLabel} chars=${String(reply).length}`
+          `[message reply] scope=${chatScope} command=${commandLabel} chars=${String(visibleReply).length}`
         );
         recordRuntimeEvent(
           'message_replied',
@@ -2260,7 +2285,10 @@ client.on('message', async (msg) => {
       );
     }
     console.error('[message error]', formatInitializeError(err));
-    await sendEmergencyText(msg, 'El reino esta en llamas... intenta de nuevo en un momento.', 'message_error');
+    const emergencyText = hasPrefix
+      ? decorateCommandReply(command, '⚠️ El reino esta en llamas... intenta de nuevo en un momento.')
+      : 'El reino esta en llamas... intenta de nuevo en un momento.';
+    await sendEmergencyText(msg, emergencyText, 'message_error');
   } finally {
     if (slowMessageTimer) {
       clearTimeout(slowMessageTimer);

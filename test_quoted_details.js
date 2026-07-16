@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import 'dotenv/config';
 
-const { safeGetQuotedDetails } = await import('./src/targetResolver.js');
+const { findActiveQuotedMessageKey, safeGetQuotedDetails } = await import('./src/targetResolver.js');
 
 let fallbackCalls = 0;
 const staleQuote = {
@@ -30,5 +30,11 @@ const phantomQuote = await safeGetQuotedDetails({
   },
 });
 assert.equal(phantomQuote.hasQuoted, false);
+
+const serializedId = 'true_595971938097-1618930274@g.us_3EB0ABC123_240797811245267@lid';
+const activeMessages = new Map([[serializedId, { active: true }]]);
+assert.equal(findActiveQuotedMessageKey(activeMessages, serializedId), serializedId);
+assert.equal(findActiveQuotedMessageKey(activeMessages, '3EB0ABC123'), serializedId);
+assert.equal(findActiveQuotedMessageKey(activeMessages, '3EB0OTHER'), null);
 
 console.log('QUOTED_DETAILS_OK');

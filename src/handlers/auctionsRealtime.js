@@ -1,5 +1,6 @@
 import { supabase } from '../supabase.js';
 import { waitForMessageServerAck } from '../whatsappDelivery.js';
+import { heraldCard, heraldCommand, heraldSection, heraldStat } from '../formatting.js';
 
 const MAX_COMPLETION_ANNOUNCEMENTS = 1000;
 const REALTIME_HEALTH_WAIT_MS = 10 * 60 * 1000;
@@ -76,13 +77,15 @@ export function startAuctionsRealtime(client, isClientReady = () => Boolean(clie
           const newAuction = payload.new;
           console.log('[Realtime] Nueva subasta recibida.');
           const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
-          const msg = `📢 *NUEVA SUBASTA EN EL REINO* ⚖️\n\n` +
-                      `Se ha abierto la puja por *${newAuction.item_name}* [${newAuction.item_rarity.toUpperCase()}]\n` +
-                      (newAuction.item_description ? `📜 _${newAuction.item_description}_\n` : '') +
-                      `💰 Precio Inicial: *🪙 ${newAuction.start_price.toLocaleString('es-PY')} oro*\n` +
-                      `⚙️ Incremento Minimo: *🪙 ${newAuction.min_increment.toLocaleString('es-PY')} oro*\n` +
-                      `⏱️ Duracion: Expira en ${formatTimeRemaining(newAuction.expires_at)}\n\n` +
-                      `👉 Escribe \`!subastas\` para ver los detalles, o \`!pujar <nombre / numero> <monto>\` para participar.`;
+          const msg = heraldCard('Nueva subasta en el Reino', [
+            `> _Se abrio la contienda por *${newAuction.item_name}* · ${newAuction.item_rarity.toUpperCase()}._`,
+            newAuction.item_description ? `> _${newAuction.item_description}_` : '',
+            heraldStat('Precio inicial', `🪙 ${newAuction.start_price.toLocaleString('es-PY')} oro`),
+            heraldStat('Incremento minimo', `🪙 ${newAuction.min_increment.toLocaleString('es-PY')} oro`),
+            heraldStat('Expira en', formatTimeRemaining(newAuction.expires_at)),
+            heraldCommand('!subastas', 'Consulta todos los detalles.'),
+            heraldCommand('!pujar <item> <monto>', 'Entra en la contienda.'),
+          ].filter(Boolean), { icon: '📢' });
 
           await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
@@ -114,19 +117,15 @@ export function startAuctionsRealtime(client, isClientReady = () => Boolean(clie
           if (!bidder || !auction) return;
 
           const chatId = auction.whatsapp_chat_id || '595971938097-1618930274@g.us';
-          const msg = `╔════════════════════════════╗\n` +
-                      `⚖️  *NUEVA PUJA REGISTRADA*  ⚖️\n` +
-                      `╚════════════════════════════╝\n\n` +
-                      `El osado aventurero *${bidder.username}* ha entrado a la contienda por:\n` +
-                      `📦 *${auction.item_name}* [${auction.item_rarity.toUpperCase()}]\n\n` +
-                      `💰 *Puja Acumulada:* 🪙 ${newBid.amount.toLocaleString('es-PY')} oro\n` +
-                      `👑 *Líder Actual:* ${bidder.username}\n\n` +
-                      `────────────────────────\n` +
-                      `⚠️ *REGLAS DE SUBASTA EN VYRALIS:*\n` +
-                      `• El oro de tu puja se bloquea mientras seas el líder. Si alguien supera tu oferta, tu oro te será **devuelto de inmediato**.\n` +
-                      `• Se descuenta una única **comisión del 25% del valor base del ítem** no reembolsable al ingresar a la subasta.\n` +
-                      `────────────────────────\n\n` +
-                      `_¡El fuego de la subasta sigue ardiendo! ¿Quién se atreverá a superarlo?_`;
+          const msg = heraldCard('Nueva puja registrada', [
+            `> _*${bidder.username}* entro en la contienda por *${auction.item_name}* · ${auction.item_rarity.toUpperCase()}._`,
+            heraldStat('Puja acumulada', `🪙 ${newBid.amount.toLocaleString('es-PY')} oro`),
+            heraldStat('Lider actual', bidder.username),
+            heraldSection('Reglas de subasta'),
+            '- El oro queda bloqueado mientras lideras y se devuelve si superan tu oferta.',
+            '- La comision unica del 25% del valor base no es reembolsable.',
+            '_El fuego de la subasta sigue ardiendo. ¿Quien se atrevera a superarlo?_',
+          ], { icon: '⚖️' });
 
           await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
@@ -156,17 +155,19 @@ export function startAuctionsRealtime(client, isClientReady = () => Boolean(clie
           }
 
           const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
-          let msg = `🏆 *SUBASTA FINALIZADA* ⚖️\n\n` +
-                    `La subasta de *${newAuction.item_name}* ha concluido.\n`;
+          const lines = [`> _La subasta de *${newAuction.item_name}* ha concluido._`];
 
           if (newAuction.highest_bidder_id) {
-            msg += `👑 Ganador: *${winnerName}*\n` +
-                   `💰 Oferta Final: *🪙 ${newAuction.highest_bid.toLocaleString('es-PY')} oro*\n\n` +
-                   `_El item ha sido entregado en el inventario del vencedor. ¡Felicidades!_`;
+            lines.push(
+              heraldStat('Ganador', `*${winnerName}*`),
+              heraldStat('Oferta final', `🪙 ${newAuction.highest_bid.toLocaleString('es-PY')} oro`),
+              '_El articulo fue entregado al inventario del vencedor._'
+            );
           } else {
-            msg += `💨 La subasta termino sin pujadores. El articulo vuelve a las sombras del reino.`;
+            lines.push('💨 La subasta termino sin pujadores. El articulo vuelve a las sombras del reino.');
           }
 
+          const msg = heraldCard('Subasta finalizada', lines, { icon: '🏆' });
           await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
           releaseCompletedAuctionAnnouncement(newAuction?.id);

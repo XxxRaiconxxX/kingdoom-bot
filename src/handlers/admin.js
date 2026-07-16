@@ -23,7 +23,7 @@ import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhon
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
 import { recordAdminAction, getRecentAdminActions } from '../auditLog.js';
 import { resolvePlayerTarget, safeGetQuotedDetails } from '../targetResolver.js';
-import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
+import { decorateCommandReply, heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
 
@@ -471,7 +471,7 @@ export async function handleAdminCommand(msg, client) {
 
   if (cmd === '!rolestado' || cmd === '!rolbloquear' || cmd === '!roldesbloquear' || cmd === '!rolgracia' || cmd === '!rolforzaractividad') {
     if (!isPrivileged) {
-      return 'âŒ Solo el staff o los administradores pueden operar el acceso por roleo.';
+      return '❌ Solo el staff o los administradores pueden operar el acceso por roleo.';
     }
 
     const identifier = parts
@@ -480,7 +480,7 @@ export async function handleAdminCommand(msg, client) {
       .trim();
 
     if (!identifier) {
-      return `âŒ Uso: *${cmd} <jugador>*${cmd === '!rolgracia' ? ' <dias>' : ''}`;
+      return `❌ Uso: *${cmd} <jugador>*${cmd === '!rolgracia' ? ' <dias>' : ''}`;
     }
 
     const resolved = await resolvePlayerTarget(msg, identifier);
@@ -677,7 +677,7 @@ export async function handleAdminCommand(msg, client) {
 
     const result = await startMissionTracker(shortId, mentions);
     if (result.success && client) {
-      await client.sendMessage(msg.from, result.message, { mentions });
+      await client.sendMessage(msg.from, decorateCommandReply(cmd, result.message), { mentions });
       return '';
     }
     return result.message;
@@ -712,7 +712,7 @@ export async function handleAdminCommand(msg, client) {
     ], { icon: '📋' });
 
     if (client && mentions.length > 0) {
-      await client.sendMessage(msg.from, text, { mentions });
+      await client.sendMessage(msg.from, decorateCommandReply(cmd, text), { mentions });
       return '';
     }
     return text;
@@ -753,7 +753,7 @@ export async function handleAdminCommand(msg, client) {
         const text = `⚠️ Hay múltiples instancias activas para la misión *${targetShortId}*:\n\n${lines.join('\n')}`;
         
         if (client && allParticipantJids.length > 0) {
-          await client.sendMessage(msg.from, text, { mentions: allParticipantJids });
+          await client.sendMessage(msg.from, decorateCommandReply(cmd, text), { mentions: allParticipantJids });
           return '';
         }
         return text;
@@ -1336,7 +1336,7 @@ export async function handleAdminCommand(msg, client) {
         // Limpiar tracker si todos están bien
         await trackUnregisteredUsers([]);
         response += `🎉 *¡Increíble! Todos los miembros del grupo están registrados y tienen sus fichas completadas.*`;
-        await client.sendMessage(msg.from, response);
+        await client.sendMessage(msg.from, decorateCommandReply(cmd, response));
         return;
       }
 
@@ -1346,7 +1346,7 @@ export async function handleAdminCommand(msg, client) {
       response += `📢 Completen su ficha y vinculen su cuenta con \`!verificar\`.`;
 
       // Enviar el mensaje mencionando a los usuarios para que les llegue la notificación
-      await client.sendMessage(msg.from, response, { mentions });
+      await client.sendMessage(msg.from, decorateCommandReply(cmd, response), { mentions });
       return; 
     } catch (err) {
       console.error(err);
@@ -1442,7 +1442,7 @@ export async function handleAdminCommand(msg, client) {
       }
 
       if (mentions.length > 0) {
-        await client.sendMessage(msg.from, response, { mentions });
+        await client.sendMessage(msg.from, decorateCommandReply(cmd, response), { mentions });
         return;
       }
       

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase.js';
+import { heraldCard, heraldCommand, heraldSection, heraldStat } from '../formatting.js';
 
 function formatTimeRemaining(expiresAt) {
   const diffMs = new Date(expiresAt) - new Date();
@@ -38,10 +39,7 @@ export async function handleSubastas(msg, player, body) {
     return '🔔 *No hay subastas activas en el reino en este momento.*';
   }
 
-  let response = `╔════════════════════════════╗\n`;
-  response += `⚖️  *SUBASTAS DEL REINO*  ⚖️\n`;
-  response += `╚════════════════════════════╝\n`;
-  response += `_El mercado negro está en ebullición. ¡Pujas con reembolso y comisión de entrada!_\n\n`;
+  const lines = ['> _El mercado negro esta en ebullicion: pujas con reembolso y comision de entrada._'];
 
   auctions.forEach((auc, index) => {
     const timeRemaining = formatTimeRemaining(auc.expires_at);
@@ -49,19 +47,20 @@ export async function handleSubastas(msg, player, body) {
       ? `🪙 ${auc.highest_bid.toLocaleString('es-PY')} oro (${auc.highest_bidder?.username || 'Desconocido'})`
       : `🪙 0 oro (Sin pujas)`;
 
-    response += `*${index + 1}. ${auc.item_name}* [${auc.item_rarity.toUpperCase()}]\n`;
+    lines.push(heraldSection(`${index + 1}. ${auc.item_name} · ${auc.item_rarity.toUpperCase()}`));
     if (auc.item_description) {
-      response += `📜 _${auc.item_description}_\n`;
+      lines.push(`> _${auc.item_description}_`);
     }
-    response += `💰 Precio Inicial: 🪙 ${auc.start_price.toLocaleString('es-PY')} oro\n`;
-    response += `💰 Puja Acumulada: ${highestBidStr}\n`;
-    response += `⏱️ Expira en: ${timeRemaining}\n`;
-    response += `⚙️ Pujar con: \`!pujar ${index + 1} <monto>\`\n`;
-    response += `────────────────────────\n`;
+    lines.push(
+      heraldStat('Precio inicial', `🪙 ${auc.start_price.toLocaleString('es-PY')} oro`),
+      heraldStat('Puja acumulada', highestBidStr),
+      heraldStat('Expira en', timeRemaining),
+      heraldCommand(`!pujar ${index + 1} <monto>`, 'Presenta una oferta.')
+    );
   });
 
-  response += `⚠️ _Recuerda: El oro de tu puja se bloquea mientras seas el líder. Si eres superado, se te **reembolsará** de inmediato. Se cobra una única **comisión del 25% del precio base del ítem** al realizar tu primera puja (no reembolsable)._`;
-  return response;
+  lines.push('⚠️ El oro se bloquea mientras lideras. Si te superan, se *reembolsa*; la *comision unica del 25% del precio base* no es reembolsable.');
+  return heraldCard('Subastas del Reino', lines, { icon: '⚖️' });
 }
 
 export async function handlePujar(msg, player, body) {
@@ -143,14 +142,13 @@ export async function handlePujar(msg, player, body) {
 
   const remaining = result.remaining_gold ?? (player.gold - targetAmount);
 
-  return `╔════════════════════════════╗\n` +
-         `⚖️  *PUJA CONFIRMADA*  ⚖️\n` +
-         `╚════════════════════════════╝\n\n` +
-         `Has registrado tu puja por *${targetAuction.item_name}*.\n\n` +
-         `💰 *Puja Acumulada:* 🪙 ${targetAmount.toLocaleString('es-PY')} oro\n` +
-         `👛 Tu oro restante: *🪙 ${remaining.toLocaleString('es-PY')}*\n\n` +
-         `⚠️ _El oro de la puja se bloquea mientras seas líder. Si eres superado, se te devolverá. Se descuenta una única comisión del 25% del valor base del ítem no reembolsable por ingresar a la subasta._\n\n` +
-         `_La subasta sigue ardiendo en el grupo de anuncios. ¿Podrás defender tu oferta?_`;
+  return heraldCard('Puja confirmada', [
+    `> _Has entrado en la contienda por *${targetAuction.item_name}*._`,
+    heraldStat('Puja acumulada', `🪙 ${targetAmount.toLocaleString('es-PY')} oro`),
+    heraldStat('Oro disponible', `🪙 ${remaining.toLocaleString('es-PY')} oro`),
+    '⚠️ La oferta queda bloqueada mientras lideras. La comision unica de entrada no es reembolsable.',
+    '_La subasta sigue ardiendo. ¿Podras defender tu oferta?_',
+  ], { icon: '⚖️' });
 }
 
 export async function handleRetirarse(msg, player, body) {
@@ -198,6 +196,9 @@ export async function handleRetirarse(msg, player, body) {
     return `❌ *Error al retirarse:*\n${rpcError.message}`;
   }
 
-  return `🏳️ *Te has retirado de la subasta por ${targetAuction.item_name}.*\n` +
-         `_Ya no podrás realizar más pujas en este artículo. Si eres el líder actual, tu puja se mantiene bloqueada hasta que seas superado o ganes la subasta._`;
+  return heraldCard('Retirada confirmada', [
+    `> _Abandonaste la subasta por *${targetAuction.item_name}*._`,
+    'Ya no podras realizar mas pujas en este articulo.',
+    '⚠️ Si aun lideras, tu oferta permanece bloqueada hasta que te superen o finalice la subasta.',
+  ], { icon: '🏳️' });
 }

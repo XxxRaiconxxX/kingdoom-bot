@@ -3,6 +3,29 @@ import { findPlayerByIdentifier } from './supabase.js';
 
 const quotedDetailsCache = new WeakMap();
 
+function getMessageStanzaId(value) {
+  const messageId = String(value ?? '').trim();
+  if (!messageId) return '';
+
+  const serializedMatch = messageId.match(/^(?:true|false)_[^_]+_([^_]+)(?:_|$)/i);
+  return serializedMatch?.[1] || messageId;
+}
+
+export function findActiveQuotedMessageKey(activeMessages, quotedId) {
+  const candidate = String(quotedId ?? '').trim();
+  if (!candidate || !activeMessages) return null;
+  if (activeMessages.has(candidate)) return candidate;
+
+  const candidateStanza = getMessageStanzaId(candidate);
+  for (const activeId of activeMessages.keys()) {
+    if (getMessageStanzaId(activeId) === candidateStanza) {
+      return activeId;
+    }
+  }
+
+  return null;
+}
+
 function extractDigits(value) {
   return String(value ?? '').replace(/\D/g, '').trim();
 }

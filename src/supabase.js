@@ -1752,6 +1752,26 @@ export async function expireTreasureEvent(messageId) {
   return data ?? null;
 }
 
+export async function closeTreasureEvent(messageId) {
+  const { data, error } = await botStateSupabase
+    .from('bot_treasure_events')
+    .update({
+      status: 'closed',
+      closed_at: new Date().toISOString(),
+    })
+    .eq('message_id', messageId)
+    .eq('status', 'open')
+    .select('id, chat_id, message_id, max_winners, status, created_at, expires_at, closed_at')
+    .maybeSingle();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('[closeTreasureEvent]', error.message);
+    throw new Error('No se pudo cerrar el tesoro.');
+  }
+
+  return data ?? null;
+}
+
 export async function getTreasureClaims(messageId) {
   const { data: claims, error } = await botStateSupabase
     .from('bot_treasure_claims')
@@ -1793,10 +1813,12 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     .from('bot_treasure_events')
     .select('max_winners, status, expires_at')
     .eq('message_id', messageId)
+    .eq('chat_id', chatId)
     .single();
 
   if (eventError || !event) {
-    return { status: 'error' };
+    console.error('[claimTreasureReward.event]', eventError?.message || 'Evento no encontrado');
+    return { status: 'error', reason: 'event_lookup_failed' };
   }
 
   if (event.status !== 'open') {
@@ -1807,10 +1829,15 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     return { status: 'expired' };
   }
 
-  const { count: currentCount } = await botStateSupabase
+  const { count: currentCount, error: countError } = await botStateSupabase
     .from('bot_treasure_claims')
     .select('*', { count: 'exact', head: true })
     .eq('event_message_id', messageId);
+
+  if (countError || !Number.isInteger(currentCount)) {
+    console.error('[claimTreasureReward.count]', countError?.message || 'Conteo no disponible');
+    return { status: 'error', reason: 'claim_count_failed' };
+  }
 
   if (currentCount >= event.max_winners) {
     return { status: 'full' };
@@ -1826,28 +1853,36 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     .select('id')
     .maybeSingle();
 
-  if (claimError) {
-    if (claimError.code === '23505') return { status: 'duplicate' };
-    console.error('[claimTreasureReward]', claimError.message);
-    return { status: 'error' };
+  if (claimError || !claim?.id) {
+    if (claimError?.code === '23505') return { status: 'duplicate' };
+    console.error('[claimTreasureReward]', claimError?.message || 'El reclamo no devolvio un ID');
+    return { status: 'error', reason: 'claim_insert_failed' };
   }
 
   try {
     await updateGold(playerId, rewardGold);
   } catch (goldError) {
-    await botStateSupabase.from('bot_treasure_claims').delete().eq('id', claim.id);
-    console.error('[claimTreasureReward.rollback]', goldError.message);
-    return { status: 'error' };
+    console.error('[claimTreasureReward.credit_pending]', goldError.message);
+    return {
+      status: 'credit_pending',
+      reason: 'gold_update_unconfirmed',
+      reward_gold: rewardGold,
+    };
   }
 
   const newCount = currentCount + 1;
   const isFull = newCount >= event.max_winners;
 
+  let eventClosed = !isFull;
   if (isFull) {
-    await botStateSupabase
+    const { error: closeError } = await botStateSupabase
       .from('bot_treasure_events')
       .update({ status: 'closed', closed_at: new Date().toISOString() })
       .eq('message_id', messageId);
+    eventClosed = !closeError;
+    if (closeError) {
+      console.error('[claimTreasureReward.close]', closeError.message);
+    }
   }
 
   return { 
@@ -1855,7 +1890,7 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     reward_gold: rewardGold,
     winners_count: newCount,
     max_winners: event.max_winners,
-    event_status: isFull ? 'claimed' : 'open'
+    event_status: isFull ? (eventClosed ? 'claimed' : 'close_pending') : 'open'
   };
 }
 
@@ -1922,32 +1957,32 @@ export async function getDadosUsage(playerId) {
   return getBotUsageCount(playerId, 'dados_usage', 'getDadosUsage');
 }
 
-export async function incrementDadosUsage(playerId, amount = 1) {
-  return incrementBotUsageCount(playerId, 'dados_usage', getDadosUsage, 'incrementDadosUsage', amount);
+export async function incrementDadosUsage(playerId, amount = 1, maxAllowed = Number.POSITIVE_INFINITY) {
+  return incrementBotUsageCount(playerId, 'dados_usage', getDadosUsage, 'incrementDadosUsage', amount, maxAllowed);
 }
 
 export async function getBlackjackUsage(playerId) {
   return getBotUsageCount(playerId, 'blackjack_usage', 'getBlackjackUsage');
 }
 
-export async function incrementBlackjackUsage(playerId) {
-  return incrementBotUsageCount(playerId, 'blackjack_usage', getBlackjackUsage, 'incrementBlackjackUsage');
+export async function incrementBlackjackUsage(playerId, maxAllowed = Number.POSITIVE_INFINITY) {
+  return incrementBotUsageCount(playerId, 'blackjack_usage', getBlackjackUsage, 'incrementBlackjackUsage', 1, maxAllowed);
 }
 
 export async function getCofreUsage(playerId) {
   return getBotUsageCount(playerId, 'cofre_usage', 'getCofreUsage');
 }
 
-export async function incrementCofreUsage(playerId, amount = 1) {
-  return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage', amount);
+export async function incrementCofreUsage(playerId, amount = 1, maxAllowed = Number.POSITIVE_INFINITY) {
+  return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage', amount, maxAllowed);
 }
 
 export async function getTrampaUsage(playerId) {
   return getBotUsageCount(playerId, 'trampa_usage', 'getTrampaUsage');
 }
 
-export async function incrementTrampaUsage(playerId, amount = 1) {
-  return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage', amount);
+export async function incrementTrampaUsage(playerId, amount = 1, maxAllowed = Number.POSITIVE_INFINITY) {
+  return incrementBotUsageCount(playerId, 'trampa_usage', getTrampaUsage, 'incrementTrampaUsage', amount, maxAllowed);
 }
 
 function buildRestrictedGroupViolationPrefix(scopeKey = 'main') {
@@ -2058,6 +2093,21 @@ export async function recordRestrictedGroupCommandViolation({
   throw new Error('No se pudo blindar el registro de la falta del grupo.');
 }
 
+const botUsageLocks = new Map();
+
+async function runBotUsageSerial(lockKey, task) {
+  // ponytail: This lock covers the single bot process; move the limit check into an RPC if multiple replicas are introduced.
+  const previous = botUsageLocks.get(lockKey) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  botUsageLocks.set(lockKey, current);
+
+  return current.finally(() => {
+    if (botUsageLocks.get(lockKey) === current) {
+      botUsageLocks.delete(lockKey);
+    }
+  });
+}
+
 async function getBotUsageCount(playerId, claimType, logLabel) {
   const claimDate = formatAsuncionDateKey();
   const { data, error } = await botStateSupabase
@@ -2070,27 +2120,48 @@ async function getBotUsageCount(playerId, claimType, logLabel) {
 
   if (error && error.code !== 'PGRST116') {
     console.error(`[${logLabel}]`, error.message);
+    throw new Error('No se pudo consultar el contador diario.');
   }
 
   return data ? data.reward_gold : 0;
 }
 
-async function incrementBotUsageCount(playerId, claimType, getCurrentUsage, logLabel, amount = 1) {
+async function incrementBotUsageCount(
+  playerId,
+  claimType,
+  getCurrentUsage,
+  logLabel,
+  amount = 1,
+  maxAllowed = Number.POSITIVE_INFINITY
+) {
   const claimDate = formatAsuncionDateKey();
-  const current = await getCurrentUsage(playerId);
+  const lockKey = `${playerId}:${claimType}:${claimDate}`;
 
-  const { error } = await botStateSupabase
-    .from('bot_daily_claims')
-    .upsert({
-      player_id: playerId,
-      claim_type: claimType,
-      claim_date: claimDate,
-      reward_gold: current + amount
-    }, { onConflict: 'player_id, claim_type, claim_date' });
+  return runBotUsageSerial(lockKey, async () => {
+    const current = Number(await getCurrentUsage(playerId));
+    const next = current + amount;
+    if (!Number.isFinite(current) || !Number.isFinite(next) || next > maxAllowed) {
+      const limitError = new Error('El limite diario cambio mientras se procesaba la jugada.');
+      limitError.code = 'DAILY_USAGE_LIMIT';
+      throw limitError;
+    }
 
-  if (error) {
-    console.error(`[${logLabel}]`, error.message);
-  }
+    const { error } = await botStateSupabase
+      .from('bot_daily_claims')
+      .upsert({
+        player_id: playerId,
+        claim_type: claimType,
+        claim_date: claimDate,
+        reward_gold: next
+      }, { onConflict: 'player_id, claim_type, claim_date' });
+
+    if (error) {
+      console.error(`[${logLabel}]`, error.message);
+      throw new Error('No se pudo actualizar el contador diario.');
+    }
+
+    return next;
+  });
 }
 
 

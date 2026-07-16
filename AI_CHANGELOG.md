@@ -5,6 +5,30 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 16/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/targetResolver.js`, `src/index.js`, `src/supabase.js`, `src/handlers/treasure.js`, `src/handlers/games.js`, `src/handlers/blackjack.js`, `test_quoted_details.js`, `test_treasure_feedback.js`, `test_economic_settlement_guards.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Corregida la ausencia de respuesta al reclamar el Tesoro Errante y auditadas las rutas equivalentes de Dados, Trampa, Cofre, Blackjack y recuperacion de apuestas.
+*   **Cambios Clave:**
+    *   **[Citas WhatsApp]:** los IDs completos y los `quotedStanzaID` abreviados se resuelven contra una unica clave canonica, evitando que Tesoro y Blackjack ignoren respuestas validas.
+    *   **[Tesoro Visible y Seguro]:** `reclamar` marca recepcion de inmediato y siempre devuelve exito, duplicado, vencido, agotado o error. El cierre y el resumen ya no bloquean la respuesta individual; un abono ambiguo conserva el reclamo como reservado para impedir dobles creditos.
+    *   **[Liquidaciones]:** Dados, Trampa y todas las variantes de Blackjack solo anuncian ganancias despues de confirmar `resolve_bet`; si falla, informan liquidacion pendiente y mantienen la apuesta en custodia.
+    *   **[Compensaciones]:** una apuesta creada cuyo contador de uso no pudo guardarse se reembolsa antes de cancelar. Blackjack tambien reembolsa partidas sin tablero, partidas solo abandonadas y cancelaciones PvP.
+    *   **[Contadores Diarios]:** las lecturas/escrituras dejan de ocultar errores y se serializan por jugador y mecanica con revalidacion del limite, evitando carreras simultaneas dentro del proceso unico del bot.
+    *   **[Recuperador Escrow]:** cada apuesta huerfana se procesa de forma aislada; una falla ya no detiene las siguientes ni produce un log global de exito falso.
+    *   **[Pruebas]:** las 13 pruebas del repositorio, `node --check` y `git diff --check` pasan; `test_economic_settlement_guards.js` fija las nuevas garantias.
+*   **Notas/Advertencias:** No requiere migracion Supabase. Los locks de cupos/usos cubren la unica replica actual; si se agregan replicas, deben migrarse a RPCs transaccionales. Un credito de Tesoro ambiguo queda reservado y puede requerir verificacion manual de saldo. La verificacion operativa final corresponde al Space despues del despliegue.
+
+### [Fecha: 16/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/formatting.js`, `src/index.js`, `src/gmTracker.js`, `src/handlers/admin.js`, `src/handlers/auctions.js`, `src/handlers/auctionsRealtime.js`, `src/handlers/blackjack.js`, `src/handlers/games.js`, `src/handlers/player.js`, `src/handlers/welcome.js`, `test_message_formatting.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Renovada la presentacion de todas las respuestas de comandos con un contrato visual comun, compacto y compatible con el formato nativo de WhatsApp.
+*   **Cambios Clave:**
+    *   **[Formato Central]:** `heraldCard`, listas, estadisticas, secciones y comandos usan ahora jerarquia breve, citas `>`, listas `-`, negrita `*`, cursiva `_` y monoespaciado con acentos graves, sin marcos extensos ni dobles vinietas.
+    *   **[Cobertura de Comandos]:** el despachador decora automaticamente respuestas planas, validaciones y errores segun la familia del comando; tambien se cubrieron envios directos de staff, Blackjack, acceso por roleo y el APK.
+    *   **[Mensajes Principales]:** `!ayuda`, dados, cofre, trampa, Oraculo, subastas y anuncios realtime fueron migrados al mismo lenguaje visual sin cambiar apuestas, limites, saldos, RPCs ni reglas de juego.
+    *   **[Codificacion]:** eliminadas de raiz las cadenas mojibake del Oraculo y dos errores de administracion; el prompt del GM deja de pedir Markdown de negrita doble incompatible con WhatsApp.
+    *   **[Pruebas]:** `test_message_formatting.js` fija el render esperado y detecta dobles vinietas, marcos heredados, Markdown incompatible y mojibake. Las 13 pruebas del repositorio, `node --check`, `git diff --check` y `npm run graphify:update` pasan.
+*   **Notas/Advertencias:** No requiere migracion Supabase ni modifica logica economica. La representacion final debe observarse en un WhatsApp real despues del despliegue.
+
+### [Fecha: 16/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `.env.example`, `README.md`, `src/ai.js`, `src/index.js`, `src/logSanitizer.js`, `src/whatsappDelivery.js`, `src/whatsappHealth.js`, `src/scheduler.js`, `src/targetResolver.js`, `src/handlers/auctionsRealtime.js`, `src/handlers/playerLifecycle.js`, `src/handlers/treasure.js`, `src/handlers/welcome.js`, `test_connection_watchdog.js`, `test_log_sanitizer.js`, `test_quoted_details.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_health.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Sustituida la salud nominal basada en `ready/getState=CONNECTED` por una salud funcional del canal, con estabilidad previa a envios y recuperacion limitada sin bucles destructivos.
 *   **Cambios Clave:**

@@ -30,6 +30,51 @@ function formatGold(value) {
   return Number(value ?? 0).toLocaleString('es-PY');
 }
 
+function buildPendingSettlementCard(title, icon, resultLines, payout) {
+  return heraldCard(`${title} · Liquidacion pendiente`, [
+    ...resultLines,
+    heraldStat('Pago sin confirmar', `${formatGold(payout)} oro`),
+    '⚠️ El resultado fue calculado, pero la base de datos no confirmo el movimiento de oro.',
+    'La apuesta permanece en custodia y el recuperador la reembolsara si continua pendiente.',
+  ], { icon });
+}
+
+function buildBetSetupFailureCard(title, icon, cancellationStatus) {
+  const lines = cancellationStatus === 'refunded'
+    ? [
+        'La jugada no llego a iniciarse.',
+        'La apuesta creada durante el intento fue reembolsada de forma confirmada.',
+      ]
+    : [
+        'No se pudo confirmar el registro completo de la apuesta.',
+        'Si el oro llego a quedar retenido, permanece en custodia para recuperacion segura.',
+        'Revisa tu saldo antes de volver a intentarlo.',
+      ];
+
+  return heraldCard(`${title} · Apuesta no iniciada`, lines, { icon });
+}
+
+async function cancelInterruptedBet(betId, amount, context) {
+  if (!betId) return 'unconfirmed';
+
+  try {
+    await resolveBet(betId, amount);
+    return 'refunded';
+  } catch (error) {
+    console.error(`[${context}] No se pudo confirmar el reembolso compensatorio:`, error);
+    return 'pending';
+  }
+}
+
+async function getGoldWithFallback(sender, fallback, context) {
+  try {
+    return (await getPlayer(sender))?.gold ?? fallback;
+  } catch (error) {
+    console.error(`[${context}] No se pudo refrescar el saldo confirmado:`, error);
+    return fallback;
+  }
+}
+
 function isWeekendDay(date = new Date()) {
   const dayOfWeek = date.getDay();
   return dayOfWeek === 0 || dayOfWeek === 6;
@@ -70,26 +115,17 @@ function parseDadosBetConfig(body) {
 }
 
 async function applyGoldAndUsage(playerId, delta, consumeUsage) {
-  let goldApplied = false;
+  await consumeUsage(playerId);
+  if (delta === 0) return true;
 
   try {
-    if (delta !== 0) {
-      await updateGold(playerId, delta);
-      goldApplied = true;
-    }
-
-    await consumeUsage(playerId);
+    await updateGold(playerId, delta);
     return true;
   } catch (error) {
-    if (goldApplied && delta !== 0) {
-      try {
-        await updateGold(playerId, -delta);
-      } catch (rollbackError) {
-        console.error('[applyGoldAndUsage rollback]', rollbackError?.message ?? rollbackError);
-      }
-    }
-
-    throw error;
+    console.error('[applyGoldAndUsage.credit]', error);
+    const creditError = new Error('No se pudo confirmar el credito del cofre.');
+    creditError.code = 'GOLD_CREDIT_UNCONFIRMED';
+    throw creditError;
   }
 }
 
@@ -127,9 +163,11 @@ export async function handleDados(msg) {
   let betId;
   try {
     betId = await placeBet(player.id, totalExposure, 'dados');
-    await incrementDadosUsage(player.id, runs);
-  } catch {
-    return 'Error al registrar la apuesta. Intenta de nuevo.';
+    await incrementDadosUsage(player.id, runs, maxUsos);
+  } catch (error) {
+    console.error('[handleDados] placeBet/incrementUsage error:', error);
+    const cancellationStatus = await cancelInterruptedBet(betId, totalExposure, 'handleDados');
+    return buildBetSetupFailureCard('Dados del destino', '🎲', cancellationStatus);
   }
 
   let totalDelta = 0;
@@ -164,11 +202,11 @@ export async function handleDados(msg) {
     await resolveBet(betId, payout);
   } catch (err) {
     console.error('[handleDados] resolveBet error:', err);
+    return buildPendingSettlementCard('Dados del destino', '🎲', rolls, payout);
   }
 
   const remainingUsos = maxUsos - (currentUsos + runs);
-  const refreshedPlayer = await getPlayer(sender);
-  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + totalDelta);
+  const nuevoTotal = await getGoldWithFallback(sender, player.gold + totalDelta, 'handleDados');
   const resultLine = totalDelta > 0
     ? `Victoria total: +${formatGold(totalDelta)} oro`
     : totalDelta < 0
@@ -177,14 +215,14 @@ export async function handleDados(msg) {
 
   return heraldCard('Dados del destino', [
     x4
-      ? `Modo: *x4* (${runs} tiradas en cadena, ganas con suma de ${DADOS_X4_TARGET} o mas)`
-      : `Modo: *clasico* (ganas con ${DADOS_X4_TARGET} o mas)`,
+      ? heraldStat('Modo', `*x4* · ${runs} tiradas, victoria con ${DADOS_X4_TARGET} o mas`)
+      : heraldStat('Modo', `*Clasico* · victoria con ${DADOS_X4_TARGET} o mas`),
     ...rolls,
-    runs > 1 ? `Victorias: *${wins}/${runs}*` : '',
-    resultLine,
+    runs > 1 ? heraldStat('Victorias', `*${wins}/${runs}*`) : '',
+    `> _${resultLine}_`,
     heraldStat('Nuevo total', `${nuevoTotal.toLocaleString('es-PY')} oro`),
     heraldStat('Usos restantes', `${remainingUsos}/${maxUsos}`),
-  ], { icon: '' });
+  ], { icon: '🎲' });
 }
 
 export async function handleCofre(msg) {
@@ -217,30 +255,35 @@ export async function handleCofre(msg) {
 
   try {
     await applyGoldAndUsage(player.id, totalGold, (targetPlayerId) =>
-      incrementCofreUsage(targetPlayerId, runs)
+      incrementCofreUsage(targetPlayerId, runs, DAILY_MAX_COFRE)
     );
-  } catch {
-    return `Error al abrir los cofres. Intenta de nuevo.`;
+  } catch (error) {
+    console.error('[handleCofre] applyGoldAndUsage error:', error);
+    if (error?.code === 'GOLD_CREDIT_UNCONFIRMED') {
+      return heraldCard('Cofre · Acreditacion pendiente', [
+        'El uso quedo reservado, pero la base de datos no confirmo el abono de oro.',
+        'Revisa tu saldo antes de abrir otro cofre; esta jugada no se repetira automaticamente.',
+      ], { icon: '🎁' });
+    }
+    return heraldCard('Cofre no confirmado', [
+      'La base de datos no confirmo el resultado completo de la apertura.',
+      'Revisa tu saldo antes de abrir otro cofre para evitar una operacion duplicada.',
+    ], { icon: '🎁' });
   }
 
-  const refreshedPlayer = await getPlayer(sender);
-  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + totalGold);
-
-  const resultString = runs === 1 
-    ? `Resultado: ${results[0]}` 
-    : `Resultados: ${results.join(', ')}`;
+  const nuevoTotal = await getGoldWithFallback(sender, player.gold + totalGold, 'handleCofre');
 
   const header = runs === 1
     ? `${player.username} abrio un cofre antiguo...`
     : `${player.username} abrio ${runs} cofres antiguos simultaneamente...`;
 
   return heraldCard('Cofre del Reino', [
-    header,
-    resultString,
-    runs > 1 ? `Oro total ganado: +${formatGold(totalGold)}` : '',
+    `> _${header}_`,
+    heraldStat(runs === 1 ? 'Resultado' : 'Resultados', runs === 1 ? results[0] : results.join(', ')),
+    runs > 1 ? heraldStat('Oro total ganado', `+${formatGold(totalGold)}`) : '',
     heraldStat('Usos restantes', `${DAILY_MAX_COFRE - nextUsos}/${DAILY_MAX_COFRE}`),
     heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
-  ].filter(Boolean), { icon: '' });
+  ].filter(Boolean), { icon: '🎁' });
 }
 
 export async function handleTrampa(msg) {
@@ -275,9 +318,11 @@ export async function handleTrampa(msg) {
   let betId;
   try {
     betId = await placeBet(player.id, totalApuesta, 'trampa');
-    await incrementTrampaUsage(player.id, runs);
-  } catch {
-    return `Error al activar la trampa. Intenta de nuevo.`;
+    await incrementTrampaUsage(player.id, runs, DAILY_MAX_TRAMPA);
+  } catch (error) {
+    console.error('[handleTrampa] placeBet/incrementUsage error:', error);
+    const cancellationStatus = await cancelInterruptedBet(betId, totalApuesta, 'handleTrampa');
+    return buildBetSetupFailureCard('Trampa del Reino', '🕸️', cancellationStatus);
   }
 
   let totalRetorno = 0;
@@ -298,10 +343,13 @@ export async function handleTrampa(msg) {
     await resolveBet(betId, totalRetorno);
   } catch (err) {
     console.error('[handleTrampa] resolveBet error:', err);
+    return buildPendingSettlementCard('Trampa del Reino', '🕸️', [
+      `> _${player.username} activo ${runs === 1 ? 'un mecanismo oscuro' : `${runs} mecanismos oscuros`}._`,
+      heraldStat(runs === 1 ? 'Resultado' : 'Resultados', runs === 1 ? `${results[0]}.` : `${results.join(', ')}.`),
+    ], totalRetorno);
   }
 
-  const refreshedPlayer = await getPlayer(sender);
-  const nuevoTotal = refreshedPlayer?.gold ?? (player.gold + deltaNeto);
+  const nuevoTotal = await getGoldWithFallback(sender, player.gold + deltaNeto, 'handleTrampa');
 
   const resultadoEconomico = deltaNeto > 0
     ? `+${formatGold(deltaNeto)} oro netos`
@@ -309,22 +357,18 @@ export async function handleTrampa(msg) {
       ? `-${formatGold(Math.abs(deltaNeto))} oro`
       : `Sin perdida ni ganancia`;
 
-  const resultString = runs === 1 
-    ? `Resultado: ${results[0]}.` 
-    : `Resultados: ${results.join(', ')}.`;
-
   const header = runs === 1
     ? `${player.username} activo un mecanismo oscuro...`
     : `${player.username} activo ${runs} mecanismos oscuros simultaneamente...`;
 
   return heraldCard('Trampa del Reino', [
-    header,
-    resultString,
-    runs > 1 ? `Apuesta total: ${formatGold(totalApuesta)}` : '',
-    resultadoEconomico,
+    `> _${header}_`,
+    heraldStat(runs === 1 ? 'Resultado' : 'Resultados', runs === 1 ? `${results[0]}.` : `${results.join(', ')}.`),
+    runs > 1 ? heraldStat('Apuesta total', `${formatGold(totalApuesta)} oro`) : '',
+    heraldStat('Balance', resultadoEconomico),
     heraldStat('Usos restantes', `${DAILY_MAX_TRAMPA - nextUsos}/${DAILY_MAX_TRAMPA}`),
     heraldStat('Nuevo total', `${formatGold(nuevoTotal)} oro`),
-  ].filter(Boolean), { icon: '' });
+  ].filter(Boolean), { icon: '🕸️' });
 }
 
 const oraculoMemory = new Map();
@@ -366,7 +410,7 @@ function buildOracleDocSnippet(document, question) {
 
 export async function handleOraculo(msg) {
   const pregunta = msg.body.replace(/^!oraculo\s*/i, '').trim();
-  if (!pregunta) return `ðŸ”® FormulÃ¡ tu pregunta: *!oraculo Â¿CuÃ¡ndo llegarÃ¡ el invierno?*`;
+  if (!pregunta) return '🔮 Formula tu pregunta: `!oraculo ¿Cuando llegara el invierno?`';
 
   const sender = msg.author || msg.from;
   const player = await getPlayer(sender);
@@ -389,21 +433,26 @@ export async function handleOraculo(msg) {
     const relevantDocs = pickKnowledgeContext(documents, pregunta, 4);
     
     // 1. Reglas base del sistema
-    let contextStr = `\n\n=== REGLAS DEL ORACULO ===\nEres el OrÃ¡culo de Kingdoom. Ya NO hablas con poesÃ­a barata ni rimas clichÃ©s de fantasÃ­a. Eres un vidente veterano, sabio pero cansado y cÃ­nico (al estilo The Witcher). Eres directo, realista y de pocas pulgas, pero NO eres un maleducado, NO insultas gratuitamente y NO usas groserÃ­as baratas ni jergas modernas (como "chaval" o "joder"). Tu tono es el de alguien que ha visto demasiado mundo.\nHablas de forma coloquial y de taberna, ambientado en la fantasÃ­a oscura.\nTu extensiÃ³n mÃ¡xima puede ser de hasta 3 pÃ¡rrafos si necesitas dar un consejo sabio, pero puedes ser breve y tajante si te apetece.\nSi te preguntan algo tÃ©cnico o fuera del juego (Off-Rol), respÃ³ndelo integrÃ¡ndolo de forma realista como "magia extraÃ±a de otros mundos" o "asuntos de los dioses".\nNunca rompas el personaje.
-    
-    Tu soberano real es el usuario administrador "Nothing". Si alguien menciona "E.XE", entiendes que es un alias antiguo o una forma vieja de referirse al mismo soberano, pero tu forma preferida y actual es "Nothing".
-    El usuario te harÃ¡ una pregunta. Responde SIEMPRE dentro de tu personaje. 
-    NO uses asteriscos para acciones (ej. *suspira*), solo habla tu mensaje.
+    let contextStr = `\n\n=== REGLAS DEL ORACULO ===
+Eres el Oraculo de Kingdoom. Ya NO hablas con poesia barata ni rimas cliches de fantasia. Eres un vidente veterano, sabio pero cansado y cinico (al estilo The Witcher). Eres directo, realista y de pocas pulgas, pero NO eres un maleducado, NO insultas gratuitamente y NO usas groserias baratas ni jergas modernas. Tu tono es el de alguien que ha visto demasiado mundo.
+Hablas de forma coloquial y de taberna, ambientado en la fantasia oscura.
+Tu extension maxima puede ser de hasta 3 parrafos si necesitas dar un consejo sabio, pero puedes ser breve y tajante.
+Si te preguntan algo tecnico o fuera del juego (Off-Rol), respondelo integrandolo como "magia extrana de otros mundos" o "asuntos de los dioses".
+Nunca rompas el personaje.
 
-    REGLA CRÃTICA SOBRE EL INVENTARIO:
-    Si el jugador te pregunta explÃ­citamente "Â¿cuÃ¡l es mi inventario?" o "Â¿quÃ© objetos tengo?", DÃSELO DIRECTAMENTE enumerando los objetos que ves en su "Inventario Real". No lo mandes a mirar su tomo, dÃ­selo tÃº.
-    Si pregunta por un tipo especÃ­fico de objeto (ej. "mis armas") y no tiene armas pero SÃ tiene otras cosas, menciÃ³nalo sutilmente (ej. "No veo espadas en tu destino, pero al menos ese JubÃ³n te protegerÃ¡ del frÃ­o"). SÃ© Ãºtil con la informaciÃ³n de su inventario.
-    
-    REGLA CRÃTICA SOBRE OTROS JUGADORES: 
-    Solo conoces la fortuna de quien te habla. Si preguntan por el oro, nivel o secretos de OTRO aventurero, niÃ©gate: "No me pagan por espiar bolsillos ajenos" o "Vigila tu propia espalda". Â¡NO inventes datos para otras personas!
-    `;
+Tu soberano real es el usuario administrador "Nothing". Si alguien menciona "E.XE", entiendes que es un alias antiguo del mismo soberano, pero tu forma preferida y actual es "Nothing".
+El usuario te hara una pregunta. Responde SIEMPRE dentro de tu personaje.
+Entrega texto limpio para WhatsApp. No uses asteriscos para representar acciones; solo habla tu mensaje.
+
+REGLA CRITICA SOBRE EL INVENTARIO:
+Si el jugador pregunta explicitamente cual es su inventario o que objetos tiene, DICELO DIRECTAMENTE enumerando los objetos que ves en su "Inventario Real". No lo mandes a mirar su tomo.
+Si pregunta por un tipo especifico de objeto y no lo tiene, pero SI tiene otras cosas, mencionalo sutilmente y se util con la informacion real de su inventario.
+
+REGLA CRITICA SOBRE OTROS JUGADORES:
+Solo conoces la fortuna de quien te habla. Si preguntan por el oro, nivel o secretos de OTRO aventurero, niegate. NO inventes datos para otras personas.
+`;
     if (relevantDocs.length > 0) {
-      contextStr += `\n=== CONOCIMIENTO SECRETO DEL REINO ===\nUtiliza esta informaciÃ³n confidencial para responder de forma precisa:\n`;
+      contextStr += `\n=== CONOCIMIENTO SECRETO DEL REINO ===\nUtiliza esta informacion confidencial para responder de forma precisa:\n`;
       relevantDocs.forEach(doc => {
         contextStr += `* ${doc.title} (${doc.category}): ${buildOracleDocSnippet(doc, pregunta)}\n`;
       });
@@ -425,16 +474,16 @@ export async function handleOraculo(msg) {
         const inventoryStr = inventory.map(i => `${i.quantity}x ${i.item_name || i.item_id}`).join(', ');
         contextStr += `\nInventario Real (comprado en el mercado con oro): ${inventoryStr}\n`;
       } else {
-        contextStr += `\nInventario Real: El jugador NO TIENE NINGÃšN OBJETO. Sus bolsillos estÃ¡n totalmente vacÃ­os.\n`;
+        contextStr += `\nInventario Real: El jugador NO TIENE NINGUN OBJETO. Sus bolsillos estan totalmente vacios.\n`;
       }
 
       if (sheet) {
-        contextStr += `(Usa la informaciÃ³n de la ficha y su inventario real de forma SUTIL en tu profecÃ­a, como guiÃ±os. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta. VarÃ­a tus menciones: a veces hÃ¡blale sobre su equipo, a veces sobre su raza, no menciones todo a la vez).\n`;
+        contextStr += `(Usa la informacion de la ficha y su inventario real de forma SUTIL en tu profecia, como guinos. IMPORTANTE: NO menciones su cantidad de oro a menos que sea estrictamente relevante para la pregunta. Varia tus menciones y no menciones todo a la vez).\n`;
       } else {
-        contextStr += `(Usa su nombre e inventario real en tu profecÃ­a. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza o destino. Este jugador no tiene ficha de rol registrada aÃºn).\n`;
+        contextStr += `(Usa su nombre e inventario real en tu profecia. IMPORTANTE: NO menciones su cantidad de oro en cada respuesta, hazlo solo si la pregunta tiene que ver con riqueza o destino. Este jugador no tiene ficha de rol registrada aun).\n`;
       }
     } else {
-      contextStr += `El jugador es un alma forastera, no registrada en el censo. LlÃ¡malo "alma sin nombre".\n`;
+      contextStr += `El jugador es un alma forastera, no registrada en el censo. Llamalo "alma sin nombre".\n`;
     }
 
 
@@ -446,7 +495,7 @@ export async function handleOraculo(msg) {
       contextStr += `\nEventos Actuales en el Reino:\n` + events.map(e => `- ${e.title}: ${e.description}`).join('\n') + `\n`;
     }
 
-    contextStr += `(Si el jugador te pregunta sobre misiones o eventos, utiliza esta informaciÃ³n para guiarlo y motivarlo a participar. Si no pregunta, puedes mencionarlos brevemente como rumores si encajan en tu profecÃ­a).\n`;
+    contextStr += `(Si el jugador pregunta sobre misiones o eventos, utiliza esta informacion para guiarlo y motivarlo a participar. Si no pregunta, puedes mencionarlos brevemente como rumores si encajan en tu profecia).\n`;
 
     // Agregar pregunta al historial
     history.push({ role: 'user', content: pregunta });
@@ -461,15 +510,19 @@ export async function handleOraculo(msg) {
       }
     );
     
-    // Guardar respuesta y mantener solo los Ãºltimos 6 mensajes (3 interacciones)
+    // Guardar respuesta y mantener solo los ultimos 6 mensajes (3 interacciones)
     history.push({ role: 'assistant', content: respuesta });
     if (history.length > 6) {
       history.splice(0, history.length - 6);
     }
 
-    return heraldCard('El oraculo habla', [`_${respuesta}_`], { icon: 'ðŸ”®' });
+    const oracleLines = String(respuesta)
+      .split(/\n+/)
+      .map((paragraph) => `> _${paragraph.trim()}_`)
+      .filter((paragraph) => paragraph !== '> __');
+    return heraldCard('El Oraculo habla', oracleLines, { icon: '🔮' });
   } catch (err) {
     console.error('[handleOraculo]', err.message);
-    return `ðŸ”® ${describeAIError(err).userMessage}`;
+    return `🔮 ${describeAIError(err).userMessage}`;
   }
 }

@@ -9,9 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const RELEASES_DIR = path.resolve(__dirname, '../../releases');
 const APK_FILE_PATTERN = /^Kingdoom_(\d+(?:\.\d+){1,3})\.apk$/i;
-const APK_CAPTION =
-  '📲 *¡Descarga la App de creador de fichas Oficial de Kingdoom!*\n\n' +
-  'Para vivir la experiencia completa, instala nuestra app. Si tu teléfono pide permisos para instalar desde "Fuentes desconocidas", acéptalos.';
+const APK_CAPTION = heraldCard('Aplicacion oficial de Kingdoom', [
+  '> _Crea y administra tu ficha desde el telefono._',
+  'Instala el archivo adjunto para vivir la experiencia completa.',
+  '⚠️ Si Android solicita permiso para instalar desde fuentes desconocidas, habilitalo solo para completar esta instalacion.',
+], { icon: '📲' });
 
 export async function sendLatestApk(target, options = {}) {
   const apkUrl = await getLatestApkUrl();

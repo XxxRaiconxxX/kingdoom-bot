@@ -1,5 +1,6 @@
 import {
   claimTreasureReward,
+  closeTreasureEvent,
   createTreasureEvent,
   expireTreasureEvent,
   getOpenTreasureEvents,
@@ -8,6 +9,7 @@ import {
   touchPlayerActivity,
 } from '../supabase.js';
 import { waitForMessageServerAck } from '../whatsappDelivery.js';
+import { heraldCard, heraldStat } from '../formatting.js';
 
 const TARGET_GROUP = '595971938097-1618930274@g.us';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
@@ -18,6 +20,20 @@ const TREASURE_HEALTH_RETRY_MS = 5 * 60 * 1000;
 export const activeTreasures = new Map();
 
 let scheduledTimeouts = [];
+const treasureClaimLocks = new Map();
+
+function runTreasureClaimSerial(messageId, task) {
+  // ponytail: Safe for the single Space process; use a transactional RPC before adding bot replicas.
+  const previous = treasureClaimLocks.get(messageId) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  treasureClaimLocks.set(messageId, current);
+
+  return current.finally(() => {
+    if (treasureClaimLocks.get(messageId) === current) {
+      treasureClaimLocks.delete(messageId);
+    }
+  });
+}
 
 export function clearTreasureTimeouts() {
   for (const timeoutId of scheduledTimeouts) {
@@ -90,6 +106,54 @@ function normalizeTreasureReply(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/\*/g, '');
+}
+
+export function buildTreasureClaimFeedback(status, details = {}) {
+  const playerName = details.playerName || 'Aventurero';
+
+  if (status === 'duplicate') {
+    return heraldCard('Reclamo ya registrado', [
+      `*${playerName}*, tu reclamo ya figura en este tesoro.`,
+      'No se procesara un segundo pago. Revisa tu saldo si la respuesta anterior quedo pendiente.',
+    ], { icon: '⚠️' });
+  }
+
+  if (status === 'credit_pending') {
+    return heraldCard('Tesoro · Acreditacion pendiente', [
+      `*${playerName}*, tu cupo quedo reservado sin duplicar el reclamo.`,
+      heraldStat('Recompensa reservada', `${formatGold(details.rewardGold)} oro`),
+      'La base de datos no confirmo el abono. Revisa tu saldo y no vuelvas a reclamar este tesoro.',
+    ], { icon: '⚠️' });
+  }
+
+  if (status === 'expired') {
+    return heraldCard('Tesoro desvanecido', [
+      'El tiempo limite termino antes de confirmar tu reclamo.',
+      'No se acredito ninguna recompensa.',
+    ], { icon: '⌛' });
+  }
+
+  if (status === 'full' || status === 'claimed') {
+    return heraldCard('Tesoro agotado', [
+      'Los cupos de este Tesoro Errante ya fueron ocupados.',
+      'No se acredito ninguna recompensa en este intento.',
+    ], { icon: '⌛' });
+  }
+
+  if (status === 'ok') {
+    return heraldCard('Tesoro reclamado', [
+      `> _*${playerName}* abrio el cofre entre las sombras._`,
+      heraldStat('Recompensa acreditada', `+${formatGold(details.rewardGold)} oro`),
+      details.currentGold === null || details.currentGold === undefined
+        ? ''
+        : heraldStat('Nuevo total', `${formatGold(details.currentGold)} oro`),
+    ].filter(Boolean), { icon: '🎉' });
+  }
+
+  return heraldCard('Reclamo no confirmado', [
+    'Ocurrio un problema al registrar el reclamo.',
+    'No se anunciara una ganancia sin confirmacion de la base de datos. Intenta nuevamente mientras el tesoro siga abierto.',
+  ], { icon: '⚠️' });
 }
 
 function registerActiveTreasure(event, client, isClientReady) {
@@ -193,10 +257,17 @@ export async function closeTreasure(messageId, client, options = {}) {
   if (cached?.timeoutId) {
     clearTimeout(cached.timeoutId);
   }
+  if (reason === 'claimed' && cached) {
+    activeTreasures.set(messageId, { ...cached, status: 'closing', timeoutId: null });
+  }
 
   try {
-    if (!skipStatusUpdate && reason === 'expired') {
-      await expireTreasureEvent(messageId);
+    if (!skipStatusUpdate) {
+      if (reason === 'expired') {
+        await expireTreasureEvent(messageId);
+      } else if (reason === 'claimed') {
+        await closeTreasureEvent(messageId);
+      }
     }
 
     if (!isClientReady()) {
@@ -220,80 +291,123 @@ export async function closeTreasure(messageId, client, options = {}) {
   } catch (error) {
     console.error('[Treasure Close Error]', error);
   } finally {
-    activeTreasures.delete(messageId);
+    const remainingMs = cached
+      ? Math.max(0, new Date(cached.expiresAt).getTime() - Date.now())
+      : 0;
+    if (reason === 'claimed' && cached && remainingMs > 0) {
+      const timeoutId = setTimeout(() => activeTreasures.delete(messageId), remainingMs);
+      activeTreasures.set(messageId, { ...cached, status: 'claimed', timeoutId });
+    } else {
+      activeTreasures.delete(messageId);
+    }
   }
 }
 
 export async function handleTreasureReply(msg, treasure, quotedId, client) {
   if (msg.from !== TARGET_GROUP || !treasure) {
-    return;
+    return null;
   }
 
   const text = normalizeTreasureReply(msg.body);
   if (text !== 'reclamar') {
-    return;
+    return null;
+  }
+
+  if (treasure.status !== 'open') {
+    return buildTreasureClaimFeedback('full');
+  }
+
+  if (typeof msg.react === 'function') {
+    void msg.react('\u23F3').catch((reactionError) => {
+      console.warn('[Treasure] No se pudo marcar el reclamo como recibido:', reactionError?.message ?? reactionError);
+    });
   }
 
   const sender = msg.author || msg.from;
-  const player = await getPlayer(sender);
+  let player;
+  try {
+    player = await getPlayer(sender);
+  } catch (playerError) {
+    console.error('[Treasure] No se pudo resolver al jugador:', playerError);
+    return heraldCard('Reclamo no confirmado', [
+      'No pude verificar tu perfil en este momento.',
+      'No se proceso ninguna recompensa. Intenta nuevamente.',
+    ], { icon: '⚠️' });
+  }
   if (!player) {
-    await msg.reply(
-      '❌ *No estas registrado en los pergaminos del Reino.*\nEscribe *!registrar <nombre>* o hazlo desde la web para poder reclamar tesoros.'
-    );
-    return;
+    return heraldCard('Reclamo rechazado', [
+      'No estas registrado en los pergaminos del Reino.',
+      'Pide al staff que use `!registrar <nombre>` para poder reclamar tesoros.',
+    ], { icon: '❌' });
   }
 
   try {
-    const result = await claimTreasureReward(quotedId, player.id, TARGET_GROUP);
+    const result = await runTreasureClaimSerial(
+      quotedId,
+      () => claimTreasureReward(quotedId, player.id, TARGET_GROUP)
+    );
     const status = result?.status ?? 'error';
 
     if (status === 'duplicate') {
-      await msg.reply('⚠️ *Ya has reclamado una recompensa de este tesoro, aventurero.*');
-      return;
+      return buildTreasureClaimFeedback(status, { playerName: player.username });
+    }
+
+    if (status === 'credit_pending') {
+      return buildTreasureClaimFeedback(status, {
+        playerName: player.username,
+        rewardGold: result.reward_gold,
+      });
     }
 
     if (status === 'expired') {
-      await closeTreasure(quotedId, client, {
+      void closeTreasure(quotedId, client, {
         reason: 'expired',
-        skipStatusUpdate: true,
+        skipStatusUpdate: false,
         isClientReady: treasure.isClientReady,
       });
-      return;
+      return buildTreasureClaimFeedback(status);
     }
 
     if (status === 'full' || status === 'claimed') {
-      await closeTreasure(quotedId, client, {
+      void closeTreasure(quotedId, client, {
         reason: 'claimed',
-        skipStatusUpdate: true,
+        skipStatusUpdate: false,
         isClientReady: treasure.isClientReady,
       });
-      return;
+      return buildTreasureClaimFeedback(status);
     }
 
     if (status !== 'ok') {
-      return;
+      console.error(`[Treasure] Reclamo no confirmado. status=${status} reason=${result?.reason ?? 'unknown'}`);
+      return buildTreasureClaimFeedback(status);
     }
 
-    try {
-      await touchPlayerActivity(player.id);
-    } catch (activityError) {
+    void touchPlayerActivity(player.id).catch((activityError) => {
       console.error('[Treasure] Error no critico al registrar actividad del jugador:', activityError);
-    }
+    });
 
-    await msg.reply(
-      `🎉 ¡Has abierto el cofre, *${player.username}*! Has ganado *+${formatGold(result.reward_gold)} monedas de oro* 🪙.`
-    );
+    const projectedGold = Number(player.gold) + Number(result.reward_gold);
+    const currentGold = Number.isFinite(projectedGold) ? projectedGold : null;
 
-    if (result.event_status === 'claimed' || result.winners_count >= result.max_winners) {
-      await closeTreasure(quotedId, client, {
+    if (['claimed', 'close_pending'].includes(result.event_status) || result.winners_count >= result.max_winners) {
+      void closeTreasure(quotedId, client, {
         reason: 'claimed',
-        skipStatusUpdate: true,
+        skipStatusUpdate: result.event_status === 'claimed',
         isClientReady: treasure.isClientReady,
       });
     }
+
+    return buildTreasureClaimFeedback('ok', {
+      playerName: player.username,
+      rewardGold: result.reward_gold,
+      currentGold,
+    });
   } catch (error) {
     console.error('[handleTreasureReply Error]', error);
-    await msg.reply('❌ Hubo un problema magico al abrir el cofre. Intentalo de nuevo.');
+    return heraldCard('Reclamo interrumpido', [
+      'Hubo un problema al procesar el Tesoro Errante.',
+      'No se confirmara ninguna ganancia hasta verificar la operacion. Intenta nuevamente.',
+    ], { icon: '❌' });
   }
 }
 
