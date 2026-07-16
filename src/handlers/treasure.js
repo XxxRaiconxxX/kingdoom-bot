@@ -7,11 +7,13 @@ import {
   getTreasureClaims,
   touchPlayerActivity,
 } from '../supabase.js';
+import { waitForMessageServerAck } from '../whatsappDelivery.js';
 
 const TARGET_GROUP = '595971938097-1618930274@g.us';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
 const TREASURE_START_HOUR = 10;
 const TREASURE_END_HOUR = 22;
+const TREASURE_HEALTH_RETRY_MS = 5 * 60 * 1000;
 
 export const activeTreasures = new Map();
 
@@ -90,7 +92,7 @@ function normalizeTreasureReply(value) {
     .replace(/\*/g, '');
 }
 
-function registerActiveTreasure(event, client) {
+function registerActiveTreasure(event, client, isClientReady) {
   const existing = activeTreasures.get(event.message_id);
   if (existing?.timeoutId) {
     clearTimeout(existing.timeoutId);
@@ -98,7 +100,7 @@ function registerActiveTreasure(event, client) {
 
   const remainingMs = Math.max(0, new Date(event.expires_at).getTime() - Date.now());
   const timeoutId = setTimeout(() => {
-    void closeTreasure(event.message_id, client, { reason: 'expired' });
+    void closeTreasure(event.message_id, client, { reason: 'expired', isClientReady });
   }, remainingMs);
 
   activeTreasures.set(event.message_id, {
@@ -108,6 +110,7 @@ function registerActiveTreasure(event, client) {
     status: event.status,
     createdAt: event.created_at,
     expiresAt: event.expires_at,
+    isClientReady,
     timeoutId,
   });
 }
@@ -132,10 +135,10 @@ async function buildClaimsSummary(messageId) {
   ].join('\n');
 }
 
-export async function dropTreasure(client) {
+export async function dropTreasure(client, isClientReady = () => Boolean(client?.info)) {
   try {
-    if (!client || !client.info) {
-      console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo drop.');
+    if (!isClientReady()) {
+      console.log('[Treasure] Canal de WhatsApp no saludable. Omitiendo drop.');
       return null;
     }
 
@@ -158,9 +161,10 @@ export async function dropTreasure(client) {
       const chat = await client.getChatById(TARGET_GROUP);
       message = await chat.sendMessage(text);
     } catch (err) {
-      console.log(`[Treasure] getChatById failed, attempting fallback client.sendMessage... (${err.message})`);
+      console.log('[Treasure] getChatById fallo; intentando envio directo.');
       message = await client.sendMessage(TARGET_GROUP, text);
     }
+    await waitForMessageServerAck(client, message);
 
     const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
     const event = await createTreasureEvent({
@@ -170,8 +174,8 @@ export async function dropTreasure(client) {
       expiresAt,
     });
 
-    registerActiveTreasure(event, client);
-    console.log(`[Treasure] Drop persistido. ID mensaje: ${event.message_id}, cupos: ${event.max_winners}`);
+    registerActiveTreasure(event, client, isClientReady);
+    console.log(`[Treasure] Drop persistido. Cupos: ${event.max_winners}`);
     return event;
   } catch (error) {
     console.error('[Treasure Drop Error] Detalle completo:', error.stack || error);
@@ -180,7 +184,11 @@ export async function dropTreasure(client) {
 }
 
 export async function closeTreasure(messageId, client, options = {}) {
-  const { reason = 'expired', skipStatusUpdate = false } = options;
+  const {
+    reason = 'expired',
+    skipStatusUpdate = false,
+    isClientReady = () => Boolean(client?.info),
+  } = options;
   const cached = activeTreasures.get(messageId);
   if (cached?.timeoutId) {
     clearTimeout(cached.timeoutId);
@@ -191,19 +199,23 @@ export async function closeTreasure(messageId, client, options = {}) {
       await expireTreasureEvent(messageId);
     }
 
-    if (!client || !client.info) {
-      console.log('[Treasure] Cliente no inicializado o en estado zombie. Omitiendo mensaje de cierre.');
+    if (!isClientReady()) {
+      console.log('[Treasure] Canal de WhatsApp no saludable. Omitiendo mensaje de cierre.');
       return;
     }
 
     const summary = await buildClaimsSummary(messageId);
+    let closeMessage = null;
     if (summary) {
-      await client.sendMessage(TARGET_GROUP, summary);
+      closeMessage = await client.sendMessage(TARGET_GROUP, summary);
     } else if (reason === 'expired') {
-      await client.sendMessage(
+      closeMessage = await client.sendMessage(
         TARGET_GROUP,
         '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
       );
+    }
+    if (closeMessage) {
+      await waitForMessageServerAck(client, closeMessage);
     }
   } catch (error) {
     console.error('[Treasure Close Error]', error);
@@ -241,12 +253,20 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
     }
 
     if (status === 'expired') {
-      await closeTreasure(quotedId, client, { reason: 'expired', skipStatusUpdate: true });
+      await closeTreasure(quotedId, client, {
+        reason: 'expired',
+        skipStatusUpdate: true,
+        isClientReady: treasure.isClientReady,
+      });
       return;
     }
 
     if (status === 'full' || status === 'claimed') {
-      await closeTreasure(quotedId, client, { reason: 'claimed', skipStatusUpdate: true });
+      await closeTreasure(quotedId, client, {
+        reason: 'claimed',
+        skipStatusUpdate: true,
+        isClientReady: treasure.isClientReady,
+      });
       return;
     }
 
@@ -265,7 +285,11 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
     );
 
     if (result.event_status === 'claimed' || result.winners_count >= result.max_winners) {
-      await closeTreasure(quotedId, client, { reason: 'claimed', skipStatusUpdate: true });
+      await closeTreasure(quotedId, client, {
+        reason: 'claimed',
+        skipStatusUpdate: true,
+        isClientReady: treasure.isClientReady,
+      });
     }
   } catch (error) {
     console.error('[handleTreasureReply Error]', error);
@@ -273,17 +297,17 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
   }
 }
 
-export async function hydrateOpenTreasures(client) {
+export async function hydrateOpenTreasures(client, isClientReady = () => Boolean(client?.info)) {
   try {
     const openEvents = await getOpenTreasureEvents(TARGET_GROUP);
     for (const event of openEvents) {
       const expiresAtMs = new Date(event.expires_at).getTime();
       if (expiresAtMs <= Date.now()) {
-        await closeTreasure(event.message_id, client, { reason: 'expired' });
+        await closeTreasure(event.message_id, client, { reason: 'expired', isClientReady });
         continue;
       }
 
-      registerActiveTreasure(event, client);
+      registerActiveTreasure(event, client, isClientReady);
     }
 
     console.log(`[Treasure] Rehidratados ${openEvents.length} evento(s) abiertos desde Supabase.`);
@@ -292,7 +316,7 @@ export async function hydrateOpenTreasures(client) {
   }
 }
 
-export function scheduleDailyTreasures(client) {
+export function scheduleDailyTreasures(client, isClientReady = () => Boolean(client?.info)) {
   for (const timeoutId of scheduledTimeouts) {
     clearTimeout(timeoutId);
   }
@@ -334,9 +358,15 @@ export function scheduleDailyTreasures(client) {
       `[Treasure] Evento programado a las ${dateTargetStr} hora Paraguay (en ${Math.round(delay / 60000)} minutos).`
     );
 
-    const timeoutId = setTimeout(() => {
-      void dropTreasure(client);
-    }, delay);
+    const runDrop = () => {
+      if (!isClientReady() && Date.now() + TREASURE_HEALTH_RETRY_MS < system22) {
+        const retryId = setTimeout(runDrop, TREASURE_HEALTH_RETRY_MS);
+        scheduledTimeouts.push(retryId);
+        return;
+      }
+      void dropTreasure(client, isClientReady);
+    };
+    const timeoutId = setTimeout(runDrop, delay);
 
     scheduledTimeouts.push(timeoutId);
   }

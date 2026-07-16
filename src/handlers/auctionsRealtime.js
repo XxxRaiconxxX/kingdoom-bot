@@ -1,6 +1,8 @@
 import { supabase } from '../supabase.js';
+import { waitForMessageServerAck } from '../whatsappDelivery.js';
 
 const MAX_COMPLETION_ANNOUNCEMENTS = 1000;
+const REALTIME_HEALTH_WAIT_MS = 10 * 60 * 1000;
 const claimedCompletionAnnouncements = new Set();
 
 export function claimCompletedAuctionAnnouncement(oldAuction, newAuction) {
@@ -43,7 +45,23 @@ function formatTimeRemaining(expiresAt) {
   return parts.join(' ');
 }
 
-export function startAuctionsRealtime(client) {
+async function sendRealtimeAnnouncement(client, isClientReady, chatId, message) {
+  const deadline = Date.now() + REALTIME_HEALTH_WAIT_MS;
+  while (!isClientReady() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  if (!isClientReady()) {
+    const error = new Error('WhatsApp functional health is not ready for realtime delivery');
+    error.code = 'WHATSAPP_NOT_HEALTHY';
+    throw error;
+  }
+
+  const sentMessage = await client.sendMessage(chatId, message);
+  await waitForMessageServerAck(client, sentMessage);
+}
+
+export function startAuctionsRealtime(client, isClientReady = () => Boolean(client?.info)) {
   const channel = supabase
     .channel('auctions_realtime')
     .on(
@@ -56,7 +74,7 @@ export function startAuctionsRealtime(client) {
       async (payload) => {
         try {
           const newAuction = payload.new;
-          console.log('[Realtime] Nueva subasta creada:', newAuction);
+          console.log('[Realtime] Nueva subasta recibida.');
           const chatId = newAuction.whatsapp_chat_id || '595971938097-1618930274@g.us';
           const msg = `📢 *NUEVA SUBASTA EN EL REINO* ⚖️\n\n` +
                       `Se ha abierto la puja por *${newAuction.item_name}* [${newAuction.item_rarity.toUpperCase()}]\n` +
@@ -66,7 +84,7 @@ export function startAuctionsRealtime(client) {
                       `⏱️ Duracion: Expira en ${formatTimeRemaining(newAuction.expires_at)}\n\n` +
                       `👉 Escribe \`!subastas\` para ver los detalles, o \`!pujar <nombre / numero> <monto>\` para participar.`;
 
-          await client.sendMessage(chatId, msg);
+          await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
           console.error('[Realtime auctions] Error:', err);
         }
@@ -82,7 +100,7 @@ export function startAuctionsRealtime(client) {
       async (payload) => {
         try {
           const newBid = payload.new;
-          console.log('[Realtime] Nueva puja:', newBid);
+          console.log('[Realtime] Nueva puja recibida.');
 
           const [{ data: bidder }, { data: auction }] = await Promise.all([
             supabase.from('players').select('username').eq('id', newBid.player_id).single(),
@@ -110,7 +128,7 @@ export function startAuctionsRealtime(client) {
                       `────────────────────────\n\n` +
                       `_¡El fuego de la subasta sigue ardiendo! ¿Quién se atreverá a superarlo?_`;
 
-          await client.sendMessage(chatId, msg);
+          await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
           console.error('[Realtime bids] Error:', err);
         }
@@ -129,7 +147,7 @@ export function startAuctionsRealtime(client) {
         if (!claimCompletedAuctionAnnouncement(oldAuction, newAuction)) return;
 
         try {
-          console.log('[Realtime] Subasta completada:', newAuction);
+          console.log('[Realtime] Subasta completada recibida.');
 
           let winnerName = 'Nadie';
           if (newAuction.highest_bidder_id) {
@@ -149,7 +167,7 @@ export function startAuctionsRealtime(client) {
             msg += `💨 La subasta termino sin pujadores. El articulo vuelve a las sombras del reino.`;
           }
 
-          await client.sendMessage(chatId, msg);
+          await sendRealtimeAnnouncement(client, isClientReady, chatId, msg);
         } catch (err) {
           releaseCompletedAuctionAnnouncement(newAuction?.id);
           console.error('[Realtime resolve] Error:', err);

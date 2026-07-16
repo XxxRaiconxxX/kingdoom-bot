@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createHash } from 'node:crypto';
+import { sanitizeLogText } from './logSanitizer.js';
 
 const apiKeyCooldowns = new Map();
 const NVIDIA_API_BASE_URL = process.env.NVIDIA_API_BASE_URL || 'https://integrate.api.nvidia.com/v1';
@@ -52,13 +54,13 @@ function getProviderOrder() {
 }
 
 function getKeyFingerprint(key) {
-  return String(key ?? '').trim().slice(0, 12);
+  return createHash('sha256').update(String(key ?? '').trim()).digest('hex').slice(0, 12);
 }
 
 function logProviderSuccess(provider, key, modelName, extra = '') {
   const fingerprint = getKeyFingerprint(key);
   const suffix = extra ? ` ${extra}` : '';
-  console.log(`[ai] Provider ${provider} respondio correctamente con modelo ${modelName} y key ${fingerprint}...${suffix}`);
+  console.log(`[ai] Provider ${provider} respondio correctamente con modelo ${modelName} y key-id ${fingerprint}.${suffix}`);
 }
 
 function getCooldownId(provider, key, modelName, scope = 'key') {
@@ -325,7 +327,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
         continue;
       }
 
-      console.log(`[ai] Intentando con clave API index ${i} (${key.substring(0, 8)}...) y modelo ${modelName}`);
+      console.log(`[ai] Intentando con clave API index ${i} (key-id ${getKeyFingerprint(key)}) y modelo ${modelName}`);
 
       try {
         const genAI = new GoogleGenerativeAI(key);
@@ -668,7 +670,7 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
       }
     } catch (err) {
       lastError = err;
-      console.error(`[ai] Provider ${provider} fallo:`, err?.message ?? err);
+      console.error(`[ai] Provider ${provider} fallo:`, sanitizeLogText(err?.message ?? err));
     }
   }
 

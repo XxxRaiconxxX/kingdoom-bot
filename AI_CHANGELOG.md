@@ -4,6 +4,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 16/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `.env.example`, `README.md`, `src/ai.js`, `src/index.js`, `src/logSanitizer.js`, `src/whatsappDelivery.js`, `src/whatsappHealth.js`, `src/scheduler.js`, `src/targetResolver.js`, `src/handlers/auctionsRealtime.js`, `src/handlers/playerLifecycle.js`, `src/handlers/treasure.js`, `src/handlers/welcome.js`, `test_connection_watchdog.js`, `test_log_sanitizer.js`, `test_quoted_details.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_health.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Sustituida la salud nominal basada en `ready/getState=CONNECTED` por una salud funcional del canal, con estabilidad previa a envios y recuperacion limitada sin bucles destructivos.
+*   **Cambios Clave:**
+    *   **[Bot - Salud Funcional]:** el runtime distingue `CONNECTED_UNVERIFIED`, `HEALTHY`, `DEGRADED` y `QUARANTINED`; valida socket, pagina, coleccion, puente de eventos, presencia y consultas activas, mientras el trafico entrante real certifica inmediatamente el canal.
+    *   **[Bot - Estabilidad]:** los schedulers de datos y economia siguen activos, pero la cola privada, tesoros y anuncios realtime quedan pausados hasta `HEALTHY`; el panel separa estado de socket y salud real del canal.
+    *   **[Bot - Recuperacion Acotada]:** ante perdida del puente se reenganchan los listeners existentes; si no basta, se recrea una vez el proceso conservando auth. El QR limpio queda reservado a invalidacion explicita de cuenta/sesion; se elimino el borrado opcional por reintentos de inicio agotados y una falla generica de red termina aislada sin iniciar ciclos QR/reinicio.
+    *   **[Entrega - Confirmacion]:** las notificaciones y eventos automaticos esperan ACK del servidor antes de marcar cola o evento como entregado; el fallback de consulta tiene timeout propio para no colgarse con una pagina zombie.
+    *   **[Privacidad y Ruido]:** se retiraron QR de consola, JIDs/cuerpos/IP de trazas operativas y prefijos de claves IA; los errores esperables de citas obsoletas se resuelven una sola vez por mensaje sin inundar logs.
+    *   **[Pruebas]:** cubiertos falso `CONNECTED`, puente perdido, pagina zombie, escalamiento limitado, ACK previo a persistencia, sanitizacion y citas obsoletas; las 10 pruebas del repo y `node --check` sobre los 11 modulos tocados pasan.
+*   **Notas/Advertencias:** No requiere migracion Supabase ni cambia saldos. El codigo esta validado localmente, pero no fue commiteado, subido ni verificado aun en `axel785/kingdoom-whatsapp`; la comprobacion operativa debe hacerse despues del despliegue real.
+
 ### [Fecha: 15/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Eliminadas las rutas locales que amplificaban la perdida de contexto de Chromium hasta convertirla en reinicio con autenticacion obsoleta y ruido masivo de notificaciones internas.

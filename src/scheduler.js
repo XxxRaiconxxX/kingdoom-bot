@@ -11,8 +11,10 @@ import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
 import {
+  isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   NOTIFICATION_CONTEXT_RETRY_DELAY_MS,
+  waitForMessageServerAck,
 } from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
@@ -209,7 +211,7 @@ async function sendToAll(client, buildMessage) {
         message: msg,
       });
     } catch (err) {
-      console.error(`[scheduler] Error construyendo mensaje para ${phone}:`, err.message);
+      console.error('[scheduler] Error construyendo una notificacion:', err.message);
     }
   }
 
@@ -227,8 +229,8 @@ async function sendToAll(client, buildMessage) {
 }
 
 export function startScheduler(client, isClientReady = () => Boolean(client?.info)) {
-  void hydrateOpenTreasures(client);
-  scheduleDailyTreasures(client);
+  void hydrateOpenTreasures(client, isClientReady);
+  scheduleDailyTreasures(client, isClientReady);
 
   cron.schedule(
     '*/1 * * * *',
@@ -305,12 +307,16 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
               }
 
               try {
-                await client.sendMessage(formatJid(item.player_phone), item.message);
-                noteNotificationDelivered(now, priority);
-                await botStateSupabase
+                const sentMessage = await client.sendMessage(formatJid(item.player_phone), item.message);
+                await waitForMessageServerAck(client, sentMessage);
+                const { error: sentStateError } = await botStateSupabase
                   .from('bot_notifications_queue')
                   .update({ sent: true, sent_at: new Date().toISOString() })
                   .eq('id', item.id);
+                if (sentStateError) {
+                  throw new Error(`No se pudo confirmar la entrega en la cola: ${sentStateError.message}`);
+                }
+                noteNotificationDelivered(now, priority);
                 deliveredThisRun += 1;
 
                 if (deliveredThisRun >= NOTIFICATION_MAX_SUCCESS_PER_RUN) {
@@ -318,7 +324,7 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                   return;
                 }
               } catch (err) {
-                console.error(`[scheduler] Error despachando a ${item.player_phone}:`, err.message);
+                console.error('[scheduler] Error despachando una notificacion:', err.message);
                 if (isTransientWhatsappDeliveryError(err)) {
                   notificationDispatchPausedUntil = Date.now() + NOTIFICATION_CONTEXT_RETRY_DELAY_MS;
                   console.warn(
@@ -327,8 +333,15 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                   return;
                 }
 
-                // Un destinatario invalido no debe bloquear las demas notificaciones.
-                await botStateSupabase.from('bot_notifications_queue').update({ sent: true }).eq('id', item.id);
+                if (isPermanentWhatsappRecipientError(err)) {
+                  // ponytail: la tabla no tiene estado failed; sent=true evita bloquear para siempre la cola con un destinatario invalido.
+                  await botStateSupabase.from('bot_notifications_queue').update({ sent: true }).eq('id', item.id);
+                  continue;
+                }
+
+                notificationDispatchPausedUntil = Date.now() + NOTIFICATION_CONTEXT_RETRY_DELAY_MS;
+                console.warn('[scheduler] Error no clasificado; el mensaje queda pendiente para evitar una entrega falsa.');
+                return;
               }
             }
           }
@@ -420,8 +433,8 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
           console.error('[scheduler] Error procesando cuotas de mercado:', err);
         }
 
-        void hydrateOpenTreasures(client);
-        scheduleDailyTreasures(client);
+        void hydrateOpenTreasures(client, isClientReady);
+        scheduleDailyTreasures(client, isClientReady);
       });
     },
     TZ

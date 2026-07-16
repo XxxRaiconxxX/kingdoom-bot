@@ -149,7 +149,7 @@ export async function handleGroupLeave(notification, client, config = buildPlaye
       });
       lines.push(buildLeaveSummaryLine(phone, lifecycleResult));
     } catch (error) {
-      console.error(`[group_leave] ${phone}:`, error.message);
+      console.error('[group_leave] Error actualizando un perfil:', error.message);
       lines.push(`@${phone} salio del grupo principal, pero no se pudo registrar su estado de gracia. Motivo tecnico: ${error.message}`);
     }
   }
@@ -199,7 +199,7 @@ export async function handleGroupRejoin(notification, client, config = buildPlay
         }
       }
     } catch (error) {
-      console.error(`[group_join reactivate] ${phone}:`, error.message);
+      console.error('[group_join reactivate] Error actualizando un perfil:', error.message);
     }
   }
 

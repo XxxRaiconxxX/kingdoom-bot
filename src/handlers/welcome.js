@@ -88,7 +88,7 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   const chat = await notification.getChat();
   const groupId = chat?.id?._serialized || notification.chatId || '';
   const groupName = normalizeText(chat?.name ?? '');
-  console.log(`[welcome] group_join detected – group="${chat?.name}" id="${groupId}" enabled=${config.enabled} filter=${config.groupId || config.groupName || '(none)'}`);
+  console.log(`[welcome] group_join detected enabled=${config.enabled} filterConfigured=${Boolean(config.groupId || config.groupName)}`);
 
   const hasFilter = !!(config.groupId || config.groupName);
   if (hasFilter) {

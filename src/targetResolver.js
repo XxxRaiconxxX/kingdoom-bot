@@ -1,6 +1,8 @@
 import { normalizePhone } from './adminStore.js';
 import { findPlayerByIdentifier } from './supabase.js';
 
+const quotedDetailsCache = new WeakMap();
+
 function extractDigits(value) {
   return String(value ?? '').replace(/\D/g, '').trim();
 }
@@ -27,44 +29,51 @@ export async function safeGetQuotedDetails(msg) {
     return { hasQuoted: false, id: null, author: null, body: null };
   }
 
-  let id = null;
-  let author = null;
-  let body = null;
-
-  if (msg._data) {
-    const rawQuoted = msg._data.quotedMsg;
-    if (rawQuoted) {
-      if (rawQuoted.id) {
-        id = rawQuoted.id._serialized || rawQuoted.id;
-      }
-      author = rawQuoted.author || rawQuoted.from || null;
-      body = rawQuoted.body || rawQuoted.caption || null;
-    }
-    if (!author) {
-      author = msg._data.quotedParticipant || null;
-    }
+  if (quotedDetailsCache.has(msg)) {
+    return quotedDetailsCache.get(msg);
   }
 
-  // Fallback to getQuotedMessage if anything is missing
-  if (!id || !author) {
-    try {
-      const quoted = await msg.getQuotedMessage();
-      if (quoted) {
-        id = id || quoted.id?._serialized || null;
-        author = author || quoted.author || quoted.from || null;
-        body = body || quoted.body || quoted.caption || null;
-      }
-    } catch (err) {
-      console.warn('[safeGetQuotedDetails] Fallback getQuotedMessage failed:', err.message ?? err);
-    }
-  }
+  const resolution = (async () => {
+    let id = null;
+    let author = null;
+    let body = null;
 
-  return {
-    hasQuoted: true,
-    id,
-    author,
-    body,
-  };
+    if (msg._data) {
+      const rawQuoted = msg._data.quotedMsg;
+      if (rawQuoted) {
+        if (rawQuoted.id) {
+          id = rawQuoted.id._serialized || rawQuoted.id;
+        }
+        author = rawQuoted.author || rawQuoted.from || null;
+        body = rawQuoted.body || rawQuoted.caption || null;
+      }
+      id ||= msg._data.quotedStanzaID || null;
+      author ||= msg._data.quotedParticipant || null;
+    }
+
+    if ((!id || !author) && typeof msg.getQuotedMessage === 'function') {
+      try {
+        const quoted = await msg.getQuotedMessage();
+        if (quoted) {
+          id ||= quoted.id?._serialized || quoted.id?.id || null;
+          author ||= quoted.author || quoted.from || null;
+          body ||= quoted.body || quoted.caption || null;
+        }
+      } catch {
+        // Best effort: stale and encrypted quote metadata is expected to fail sometimes.
+      }
+    }
+
+    return {
+      hasQuoted: Boolean(id || author || body),
+      id,
+      author,
+      body,
+    };
+  })();
+
+  quotedDetailsCache.set(msg, resolution);
+  return resolution;
 }
 
 export async function extractTargetIdentifier(msg, fallbackIdentifier = '') {

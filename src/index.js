@@ -1,7 +1,6 @@
 import http from 'http';
 import fs from 'fs';
 import pkg from 'whatsapp-web.js';
-import qrcode from 'qrcode-terminal';
 import qrcodeImage from 'qrcode';
 import 'dotenv/config';
 import { handlePlayerMessage } from './handlers/player.js';
@@ -48,6 +47,13 @@ import {
   classifyWhatsappRuntimeError,
   cleanupStaleChromiumLocks,
 } from './whatsappRecovery.js';
+import { sanitizeLogText } from './logSanitizer.js';
+import {
+  WHATSAPP_HEALTH_STATE,
+  chooseFunctionalRecoveryAction,
+  createWhatsappHealthTracker,
+  probeWhatsappClient,
+} from './whatsappHealth.js';
 
 const { Client, LocalAuth, Message } = pkg;
 
@@ -101,6 +107,32 @@ const WHATSAPP_READY_HEALTH_TIMEOUT_MS = Math.max(
   3000,
   Number.parseInt(process.env.WHATSAPP_READY_HEALTH_TIMEOUT_MS ?? '10000', 10) || 10000
 );
+const WHATSAPP_HEALTH_STABILITY_MS = Math.max(
+  30000,
+  Number.parseInt(process.env.WHATSAPP_HEALTH_STABILITY_MS ?? '60000', 10) || 60000
+);
+const WHATSAPP_BRIDGE_EVENT_TIMEOUT_MS = Math.max(
+  5000,
+  Number.parseInt(process.env.WHATSAPP_BRIDGE_EVENT_TIMEOUT_MS ?? '10000', 10) || 10000
+);
+const WHATSAPP_HEALTH_RECOVERY_WINDOW_MS = Math.max(
+  15 * 60 * 1000,
+  Number.parseInt(process.env.WHATSAPP_HEALTH_RECOVERY_WINDOW_MS ?? '3600000', 10) || 3600000
+);
+const WHATSAPP_HEALTH_RECOVERY_RESET_MS = Math.max(
+  5 * 60 * 1000,
+  Number.parseInt(process.env.WHATSAPP_HEALTH_RECOVERY_RESET_MS ?? '600000', 10) || 600000
+);
+const WHATSAPP_HEALTH_REATTACH_TIMEOUT_MS = Math.max(
+  30000,
+  Number.parseInt(process.env.WHATSAPP_HEALTH_REATTACH_TIMEOUT_MS ?? '60000', 10) || 60000
+);
+const WHATSAPP_ACTIVE_PRESENCE_PROBE =
+  String(process.env.WHATSAPP_ACTIVE_PRESENCE_PROBE ?? 'true').trim().toLowerCase() !== 'false';
+const WHATSAPP_ACTIVE_NETWORK_PROBE_INTERVAL_MS = Math.max(
+  60000,
+  Number.parseInt(process.env.WHATSAPP_ACTIVE_NETWORK_PROBE_INTERVAL_MS ?? '120000', 10) || 120000
+);
 const WHATSAPP_RESTART_GRACE_MS = Math.max(
   1000,
   Number.parseInt(process.env.WHATSAPP_RESTART_GRACE_MS ?? '2500', 10) || 2500
@@ -128,8 +160,6 @@ const WHATSAPP_PAIR_INTERVAL_MS = Math.max(
 );
 const RESET_AUTH_ENABLED = String(process.env.RESET_AUTH_ENABLED ?? 'false').trim().toLowerCase() === 'true';
 const RESET_AUTH_TOKEN = String(process.env.RESET_AUTH_TOKEN ?? '').trim();
-const WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE =
-  String(process.env.WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE ?? 'false').trim().toLowerCase() === 'true';
 const authDataPath = getAuthDataPath();
 const runtimeStatusFilePath = getRuntimeStatusFilePath();
 const persistenceMode = getPersistenceMode();
@@ -174,6 +204,9 @@ let restartClearAuthRequested = false;
 let restartClearAuthEvent = '';
 let shutdownRequested = false;
 let initializePromise = null;
+let functionalHealthReattachAttempted = false;
+let functionalHealthRecoveryInFlight = false;
+let lastActiveNetworkProbeAt = 0;
 const COMMAND_PROCESSING_WARN_MS = Math.max(
   15000,
   Number.parseInt(process.env.COMMAND_PROCESSING_WARN_MS ?? '30000', 10) || 30000
@@ -243,13 +276,6 @@ function ensurePrefixedBody(command, originalBody, parsedBody) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function summarizeTextForLog(value, maxLength = 120) {
-  return String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, Math.max(16, maxLength));
 }
 
 function runRestrictedGroupSerial(key, task) {
@@ -391,7 +417,7 @@ function formatInitializeError(error) {
     return 'Unknown initialization error';
   }
 
-  const message = String(error?.message ?? error);
+  const message = sanitizeLogText(error?.message ?? error);
   if (message.includes('ERR_TIMED_OUT')) {
     return `${message} | Posible causa: timeout de red saliente hacia web.whatsapp.com en el contenedor.`;
   }
@@ -546,34 +572,54 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function getRequesterAddress(req) {
-  return String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown')
-    .split(',')[0]
-    .trim();
-}
-
 const persistedRuntimeStatus = readPersistedRuntimeStatus();
+const whatsappHealth = createWhatsappHealthTracker({
+  stabilityWindowMs: WHATSAPP_HEALTH_STABILITY_MS,
+  requiredProbeSuccesses: WHATSAPP_READY_HEALTH_FAILURE_LIMIT,
+  failureLimit: WHATSAPP_READY_HEALTH_FAILURE_LIMIT,
+  initialTelemetry: persistedRuntimeStatus ?? {},
+});
+const pendingPageInboundSignals = new Map();
+const recentNodeInboundSignals = new Map();
+
+function sanitizePersistedRuntimeEvent(entry) {
+  const event = String(entry?.event ?? 'unknown');
+  return {
+    ...entry,
+    event,
+    status: sanitizeLogText(entry?.status ?? ''),
+    detail: event.startsWith('message_')
+      ? 'Detalle de mensaje previo eliminado por privacidad.'
+      : sanitizeLogText(entry?.detail ?? ''),
+  };
+}
 
 let runtimeStatus = {
   appStartedAt: new Date().toISOString(),
   status: appStatus,
   lastEvent: persistedRuntimeStatus?.lastEvent ?? 'boot',
   lastEventAt: persistedRuntimeStatus?.lastEventAt ?? null,
-  lastEventDetail: persistedRuntimeStatus?.lastEventDetail ?? '',
+  lastEventDetail: String(persistedRuntimeStatus?.lastEvent ?? '').startsWith('message_')
+    ? 'Detalle de mensaje previo eliminado por privacidad.'
+    : sanitizeLogText(persistedRuntimeStatus?.lastEventDetail ?? ''),
   recentEvents: Array.isArray(persistedRuntimeStatus?.recentEvents)
-    ? persistedRuntimeStatus.recentEvents.slice(0, 40)
+    ? persistedRuntimeStatus.recentEvents.slice(0, 40).map(sanitizePersistedRuntimeEvent)
     : [],
   restartCount: Number.parseInt(String(persistedRuntimeStatus?.restartCount ?? 0), 10) || 0,
+  functionalRecoveryAttempts:
+    Number.parseInt(String(persistedRuntimeStatus?.functionalRecoveryAttempts ?? 0), 10) || 0,
+  functionalRecoveryWindowStartedAt:
+    persistedRuntimeStatus?.functionalRecoveryWindowStartedAt ?? null,
 };
 
 function buildPublicStatus() {
+  const health = whatsappHealth.snapshot();
   return {
     status: appStatus,
     qrVisible: Boolean(latestQrDataUrl),
     qrLastUpdatedAt: latestQrUpdatedAt,
     pairingCodeEnabled: Boolean(WHATSAPP_PAIR_PHONE_NUMBER),
     pairingCodeVisible: Boolean(latestPairingCode),
-    pairingCode: latestPairingCode || null,
     pairingCodeLastUpdatedAt: latestPairingCodeUpdatedAt,
     lastEvent: runtimeStatus.lastEvent,
     lastEventAt: runtimeStatus.lastEventAt,
@@ -585,6 +631,23 @@ function buildPublicStatus() {
     whatsappStateFailureCount,
     whatsappStateFailureLimit: WHATSAPP_READY_HEALTH_FAILURE_LIMIT,
     whatsappStateCheckError: whatsappStateCheckError || null,
+    connectionHealth: health.state,
+    connectionHealthReason: health.reason,
+    connectionHealthConfidence: health.confidence,
+    connectionHealthySince: health.healthySince,
+    connectionReadyAt: health.connectedAt,
+    lastFunctionalProbeAt: health.lastProbeAt,
+    lastFunctionalProbeError: health.lastProbeError
+      ? sanitizeLogText(health.lastProbeError)
+      : null,
+    lastInboundAt: health.lastInboundAt,
+    lastSuccessfulReplyAt: health.lastSuccessfulReplyAt,
+    lastOutboundAt: health.lastOutboundAt,
+    lastOutboundAckAt: health.lastOutboundAckAt,
+    functionalProbeSuccessCount: health.consecutiveProbeSuccesses,
+    functionalProbeFailureCount: health.consecutiveProbeFailures,
+    functionalRecoveryAttempts: runtimeStatus.functionalRecoveryAttempts,
+    functionalRecoveryWindowStartedAt: runtimeStatus.functionalRecoveryWindowStartedAt,
     authPersistence: authPathPersistent ? 'persistent' : 'ephemeral',
     persistenceMode,
     manualResetMode:
@@ -607,14 +670,14 @@ function persistRuntimeStatus() {
 
 function recordRuntimeEvent(event, detail = '', statusOverride = null) {
   if (statusOverride) {
-    appStatus = statusOverride;
+    appStatus = sanitizeLogText(statusOverride);
   }
 
   const entry = {
     at: new Date().toISOString(),
     event,
     status: appStatus,
-    detail: String(detail ?? '').slice(0, 1000),
+    detail: sanitizeLogText(detail).slice(0, 1000),
   };
 
   runtimeStatus = {
@@ -634,6 +697,7 @@ function recordRuntimeEvent(event, detail = '', statusOverride = null) {
 }
 
 function renderStatusMetaHtml() {
+  const health = whatsappHealth.snapshot();
   const recentEventsHtml = runtimeStatus.recentEvents
     .slice(0, 3)
     .map((entry) => {
@@ -651,6 +715,11 @@ function renderStatusMetaHtml() {
       : RESET_AUTH_ENABLED
         ? 'Mal configurado'
         : 'Desactivado';
+  const healthColor = health.state === WHATSAPP_HEALTH_STATE.HEALTHY
+    ? '#4caf50'
+    : health.state === WHATSAPP_HEALTH_STATE.DEGRADED || health.state === WHATSAPP_HEALTH_STATE.QUARANTINED
+      ? '#ff6b6b'
+      : '#ffc107';
 
   return `
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:18px;">
@@ -663,6 +732,31 @@ function renderStatusMetaHtml() {
         <span style="display:block;color:#9696a0;font-size:12px;">Reset manual</span>
         <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${resetLabel}</strong>
         <small style="display:block;color:#9696a0;">/status.json disponible</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Socket</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${escapeHtml(health.socketState || lastWhatsappState || 'Sin verificar')}</strong>
+        <small style="display:block;color:#9696a0;">${formatStatusTimestamp(lastWhatsappStateCheckedAt)}</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Canal de mensajes</span>
+        <strong style="display:block;color:${healthColor};margin:4px 0 2px;">${escapeHtml(health.state)}</strong>
+        <small style="display:block;color:#9696a0;">${escapeHtml(health.confidence)}</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Ultimo mensaje entrante</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;font-size:13px;">${formatStatusTimestamp(health.lastInboundAt)}</strong>
+        <small style="display:block;color:#9696a0;">Trafico real</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Ultima respuesta confirmada</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;font-size:13px;">${formatStatusTimestamp(health.lastOutboundAckAt || health.lastSuccessfulReplyAt)}</strong>
+        <small style="display:block;color:#9696a0;">ACK del servidor</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Sesion lista desde</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;font-size:13px;">${formatStatusTimestamp(health.connectedAt)}</strong>
+        <small style="display:block;color:#9696a0;">Recuperaciones: ${runtimeStatus.functionalRecoveryAttempts}</small>
       </div>
     </div>
     <div style="margin-top:18px;text-align:left;border-top:1px solid #2a2a2a;padding-top:14px;">
@@ -683,6 +777,10 @@ function renderAutoRefreshScript() {
     qrLastUpdatedAt: currentStatus.qrLastUpdatedAt ?? '',
     pairingCodeVisible: currentStatus.pairingCodeVisible === true,
     pairingCodeLastUpdatedAt: currentStatus.pairingCodeLastUpdatedAt ?? '',
+    connectionHealth: currentStatus.connectionHealth ?? '',
+    lastInboundAt: currentStatus.lastInboundAt ?? '',
+    lastSuccessfulReplyAt: currentStatus.lastSuccessfulReplyAt ?? '',
+    lastFunctionalProbeAt: currentStatus.lastFunctionalProbeAt ?? '',
   });
 
   return `
@@ -716,6 +814,10 @@ function renderAutoRefreshScript() {
           markers.qrLastUpdatedAt = String(next.qrLastUpdatedAt ?? '');
           markers.pairingCodeVisible = Boolean(next.pairingCodeVisible);
           markers.pairingCodeLastUpdatedAt = String(next.pairingCodeLastUpdatedAt ?? '');
+          markers.connectionHealth = String(next.connectionHealth ?? '');
+          markers.lastInboundAt = String(next.lastInboundAt ?? '');
+          markers.lastSuccessfulReplyAt = String(next.lastSuccessfulReplyAt ?? '');
+          markers.lastFunctionalProbeAt = String(next.lastFunctionalProbeAt ?? '');
         };
 
         const reloadPage = () => {
@@ -787,6 +889,11 @@ function renderAutoRefreshScript() {
               String(next.lastEventAt ?? '') !== String(markers.lastEventAt ?? '');
             const statusChanged =
               String(next.status ?? '') !== String(markers.status ?? '');
+            const healthChanged =
+              String(next.connectionHealth ?? '') !== String(markers.connectionHealth ?? '') ||
+              String(next.lastInboundAt ?? '') !== String(markers.lastInboundAt ?? '') ||
+              String(next.lastSuccessfulReplyAt ?? '') !== String(markers.lastSuccessfulReplyAt ?? '') ||
+              String(next.lastFunctionalProbeAt ?? '') !== String(markers.lastFunctionalProbeAt ?? '');
 
             if (qrChanged && !structureChanged) {
               const updatedInline = await applyLiveQrUpdate(next);
@@ -795,7 +902,7 @@ function renderAutoRefreshScript() {
               }
             }
 
-            if (structureChanged || eventChanged || statusChanged || qrChanged || pairingChanged) {
+            if (structureChanged || eventChanged || statusChanged || healthChanged || qrChanged || pairingChanged) {
               reloadPage();
             }
           } catch (error) {
@@ -809,6 +916,226 @@ function renderAutoRefreshScript() {
       })();
     </script>
   `;
+}
+
+function isWhatsappOperational() {
+  try {
+    return Boolean(
+      whatsappClientReady &&
+      whatsappHealth.isHealthy() &&
+      client?.info &&
+      client.pupPage &&
+      !client.pupPage.isClosed()
+    );
+  } catch {
+    return false;
+  }
+}
+
+function applyWhatsappHealthStatus(health = whatsappHealth.snapshot()) {
+  if (health.state === WHATSAPP_HEALTH_STATE.HEALTHY) {
+    appStatus = 'Conectado a WhatsApp. Canal de mensajes saludable.';
+  } else if (health.state === WHATSAPP_HEALTH_STATE.CONNECTED_UNVERIFIED) {
+    appStatus = 'Conectado; verificando el canal de mensajes...';
+  } else if (health.state === WHATSAPP_HEALTH_STATE.DEGRADED) {
+    appStatus = 'Canal de WhatsApp degradado. Envios automaticos pausados.';
+  } else if (health.state === WHATSAPP_HEALTH_STATE.QUARANTINED) {
+    appStatus = 'Sesion de WhatsApp aislada. Se requiere intervencion manual.';
+  }
+  return appStatus;
+}
+
+function pauseWhatsappDelivery(reason, socketState = lastWhatsappState || 'UNKNOWN') {
+  whatsappClientReady = false;
+  let health = whatsappHealth.snapshot();
+  if (health.state !== WHATSAPP_HEALTH_STATE.DEGRADED) {
+    health = whatsappHealth.recordProbe({
+      ok: false,
+      socketState,
+      reason,
+      error: reason,
+    });
+  }
+  whatsappStateFailureCount = health.consecutiveProbeFailures;
+  whatsappStateCheckError = reason;
+  applyWhatsappHealthStatus(health);
+  return health;
+}
+
+function clearInboundHealthSignals() {
+  pendingPageInboundSignals.clear();
+  recentNodeInboundSignals.clear();
+}
+
+function recordPageInboundSignal(messageId) {
+  const normalizedId = String(messageId ?? '').trim();
+  if (!normalizedId) return;
+  const alreadyForwardedAt = recentNodeInboundSignals.get(normalizedId);
+  if (alreadyForwardedAt && Date.now() - alreadyForwardedAt < WHATSAPP_BRIDGE_EVENT_TIMEOUT_MS * 2) {
+    recentNodeInboundSignals.delete(normalizedId);
+    return;
+  }
+
+  pendingPageInboundSignals.set(normalizedId, Date.now());
+  if (pendingPageInboundSignals.size > 1000) {
+    pendingPageInboundSignals.delete(pendingPageInboundSignals.keys().next().value);
+  }
+}
+
+function markWhatsappInbound(msg, source = 'message') {
+  const messageId = String(msg?.id?._serialized ?? msg?.id?.id ?? '').trim();
+  if (messageId) {
+    pendingPageInboundSignals.delete(messageId);
+    recentNodeInboundSignals.set(messageId, Date.now());
+    if (recentNodeInboundSignals.size > 1000) {
+      recentNodeInboundSignals.delete(recentNodeInboundSignals.keys().next().value);
+    }
+  }
+
+  const wasHealthy = whatsappHealth.isHealthy();
+  const health = whatsappHealth.markInbound();
+  whatsappClientReady = true;
+  whatsappStateFailureCount = 0;
+  whatsappStateCheckError = '';
+  applyWhatsappHealthStatus(health);
+
+  if (!wasHealthy) {
+    recordRuntimeEvent(
+      'functional_health_recovered_by_inbound',
+      `El canal de eventos recibio trafico real (${source}); la sesion queda habilitada.`,
+      appStatus
+    );
+  } else {
+    persistRuntimeStatus();
+  }
+}
+
+function getStalePageInboundSignal() {
+  const now = Date.now();
+  for (const [messageId, seenAt] of recentNodeInboundSignals) {
+    if (now - seenAt >= WHATSAPP_BRIDGE_EVENT_TIMEOUT_MS * 2) {
+      recentNodeInboundSignals.delete(messageId);
+    }
+  }
+  for (const seenAt of pendingPageInboundSignals.values()) {
+    const ageMs = now - seenAt;
+    if (ageMs >= WHATSAPP_BRIDGE_EVENT_TIMEOUT_MS) {
+      return { stale: true, ageMs };
+    }
+  }
+  return { stale: false, ageMs: 0 };
+}
+
+function resetExpiredFunctionalRecoveryWindow() {
+  const startedAt = Date.parse(String(runtimeStatus.functionalRecoveryWindowStartedAt ?? ''));
+  if (
+    runtimeStatus.functionalRecoveryAttempts > 0 &&
+    (!Number.isFinite(startedAt) || Date.now() - startedAt >= WHATSAPP_HEALTH_RECOVERY_WINDOW_MS)
+  ) {
+    runtimeStatus.functionalRecoveryAttempts = 0;
+    runtimeStatus.functionalRecoveryWindowStartedAt = null;
+    functionalHealthReattachAttempted = false;
+    persistRuntimeStatus();
+  }
+}
+
+function resetFunctionalRecoveryBudgetAfterStableHealth() {
+  if (!whatsappHealth.hasSustainedHealth(WHATSAPP_HEALTH_RECOVERY_RESET_MS)) return;
+  if (!functionalHealthReattachAttempted && runtimeStatus.functionalRecoveryAttempts === 0) return;
+
+  functionalHealthReattachAttempted = false;
+  runtimeStatus.functionalRecoveryAttempts = 0;
+  runtimeStatus.functionalRecoveryWindowStartedAt = null;
+  persistRuntimeStatus();
+}
+
+async function recoverFunctionalWhatsappHealth(probe) {
+  if (functionalHealthRecoveryInFlight || restartRequested || shutdownRequested) return;
+
+  functionalHealthRecoveryInFlight = true;
+  try {
+    resetExpiredFunctionalRecoveryWindow();
+    const detail = sanitizeLogText(probe?.error || probe?.reason || 'functional health failure');
+    const canReattach = /bridge|forwarded|context/i.test(`${probe?.reason ?? ''} ${detail}`);
+    const authInvalidated =
+      ['UNPAIRED', 'UNPAIRED_IDLE'].includes(String(probe?.socketState ?? '').toUpperCase()) ||
+      probe?.reason === 'linked_account_not_confirmed';
+    let action = chooseFunctionalRecoveryAction({
+      reattachAttempted: functionalHealthReattachAttempted || !canReattach,
+      recoveryAttempts: runtimeStatus.functionalRecoveryAttempts,
+      authInvalidated,
+    });
+
+    if (action === 'reattach') {
+      functionalHealthReattachAttempted = true;
+      recordRuntimeEvent(
+        'functional_health_reattach',
+        'El puente de mensajes no responde. Se reengancharan sus listeners sin desmontar la sesion.',
+        'Reparando el canal de mensajes de WhatsApp...'
+      );
+
+      try {
+        if (typeof client.attachEventListeners !== 'function') {
+          throw new Error('La version instalada no expone attachEventListeners');
+        }
+        await Promise.race([
+          client.attachEventListeners(),
+          sleep(WHATSAPP_HEALTH_REATTACH_TIMEOUT_MS).then(() => {
+            throw new Error(`Timeout reenganchando listeners tras ${WHATSAPP_HEALTH_REATTACH_TIMEOUT_MS}ms`);
+          }),
+        ]);
+        clearInboundHealthSignals();
+        whatsappClientReady = true;
+        whatsappStateFailureCount = 0;
+        whatsappHealth.markConnected('message_bridge_reattached');
+        applyWhatsappHealthStatus();
+        recordRuntimeEvent(
+          'functional_health_reattach_complete',
+          'Los listeners fueron reenganchados. La sesion debe superar nuevamente la ventana de estabilidad.',
+          appStatus
+        );
+        return;
+      } catch (error) {
+        recordRuntimeEvent(
+          'functional_health_reattach_failed',
+          formatInitializeError(error),
+          'No se pudo reparar el puente en caliente.'
+        );
+        action = chooseFunctionalRecoveryAction({
+          reattachAttempted: true,
+          recoveryAttempts: runtimeStatus.functionalRecoveryAttempts,
+          authInvalidated,
+        });
+      }
+    }
+
+    if (action === 'restart' || action === 'reset-auth') {
+      runtimeStatus.functionalRecoveryWindowStartedAt ??= new Date().toISOString();
+      runtimeStatus.functionalRecoveryAttempts += 1;
+      persistRuntimeStatus();
+      requestProcessRestart(
+        action === 'reset-auth'
+          ? 'functional_health_clean_session_restart'
+          : 'functional_health_process_restart',
+        action === 'reset-auth'
+          ? `${detail}. La recuperacion conservando sesion ya fallo; se solicitara una vinculacion limpia.`
+          : `${detail}. Se recreara una sola vez el cliente conservando la autenticacion.`,
+        { clearAuth: action === 'reset-auth' }
+      );
+      return;
+    }
+
+    whatsappClientReady = false;
+    whatsappHealth.markQuarantined('functional recovery budget exhausted');
+    applyWhatsappHealthStatus();
+    recordRuntimeEvent(
+      'functional_health_quarantined',
+      'La sesion siguio fallando despues de una recuperacion conservadora y una vinculacion limpia. No se reiniciara en bucle.',
+      appStatus
+    );
+  } finally {
+    functionalHealthRecoveryInFlight = false;
+  }
 }
 
 function startWhatsappConnectWatchdog() {
@@ -829,67 +1156,76 @@ function startWhatsappConnectWatchdog() {
     }
 
     if (readyBootstrapComplete) {
-      if (whatsappStateCheckInFlight) return;
+      if (whatsappStateCheckInFlight || functionalHealthRecoveryInFlight) return;
 
       whatsappStateCheckInFlight = true;
-      let normalizedState = 'CHECK_ERROR';
-      let stateCheckError = '';
+      let probe;
 
       try {
-        const state = await Promise.race([
-          client.getState(),
-          sleep(WHATSAPP_READY_HEALTH_TIMEOUT_MS).then(() => {
-            throw new Error(
-              `Timeout consultando el estado de WhatsApp tras ${WHATSAPP_READY_HEALTH_TIMEOUT_MS}ms`
-            );
-          }),
-        ]);
-        normalizedState = String(state ?? 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
-      } catch (error) {
-        stateCheckError = formatInitializeError(error);
+        const runActiveNetworkProbe =
+          whatsappStateFailureCount > 0 ||
+          Date.now() - lastActiveNetworkProbeAt >= WHATSAPP_ACTIVE_NETWORK_PROBE_INTERVAL_MS;
+        if (runActiveNetworkProbe) {
+          lastActiveNetworkProbeAt = Date.now();
+        }
+
+        probe = await probeWhatsappClient(client, {
+          timeoutMs: WHATSAPP_READY_HEALTH_TIMEOUT_MS,
+          activePresenceProbe: WHATSAPP_ACTIVE_PRESENCE_PROBE,
+          activeNetworkProbe: runActiveNetworkProbe,
+          onPageInboundSignal: recordPageInboundSignal,
+        });
+
+        const stalePageSignal = getStalePageInboundSignal();
+        if (stalePageSignal.stale) {
+          probe = {
+            ...probe,
+            ok: false,
+            reason: 'page_message_not_forwarded',
+            error: `El navegador recibio un mensaje que el listener Node no proceso tras ${Math.round(stalePageSignal.ageMs / 1000)}s`,
+          };
+        }
       } finally {
         whatsappStateCheckInFlight = false;
       }
 
-      lastWhatsappState = normalizedState;
+      lastWhatsappState = probe.socketState;
       lastWhatsappStateCheckedAt = new Date().toISOString();
-      whatsappStateCheckError = stateCheckError;
+      whatsappStateCheckError = sanitizeLogText(probe.error || '');
+      const wasHealthy = whatsappHealth.isHealthy();
+      const health = whatsappHealth.recordProbe(probe);
+      whatsappStateFailureCount = health.consecutiveProbeFailures;
 
-      if (normalizedState === 'CONNECTED') {
-        const recovered = whatsappStateFailureCount > 0 || !whatsappClientReady;
-        whatsappStateFailureCount = 0;
+      if (probe.ok) {
         whatsappClientReady = true;
+        applyWhatsappHealthStatus(health);
 
-        if (recovered) {
+        if (health.state === WHATSAPP_HEALTH_STATE.HEALTHY && !wasHealthy) {
           recordRuntimeEvent(
-            'ready_state_recovered',
-            'La comprobacion activa confirmo nuevamente el estado CONNECTED.',
-            'Conectado a WhatsApp.'
+            'functional_health_healthy',
+            'Socket, pagina, puente de eventos y comprobacion activa superaron la ventana de estabilidad.',
+            appStatus
           );
+        } else {
+          persistRuntimeStatus();
         }
+        resetFunctionalRecoveryBudgetAfterStableHealth();
         return;
       }
 
-      whatsappStateFailureCount += 1;
       whatsappClientReady = false;
-      appStatus = 'Verificando conexion de WhatsApp...';
-      const healthDetail = stateCheckError
-        ? `No se pudo consultar client.getState(): ${stateCheckError}`
-        : `client.getState() devolvio ${normalizedState}`;
-      const attemptDetail = `${healthDetail} (${whatsappStateFailureCount}/${WHATSAPP_READY_HEALTH_FAILURE_LIMIT}).`;
+      applyWhatsappHealthStatus(health);
+      const healthDetail = whatsappStateCheckError || probe.reason;
+      const attemptDetail = `${healthDetail} (${health.consecutiveProbeFailures}/${WHATSAPP_READY_HEALTH_FAILURE_LIMIT}).`;
 
-      if (whatsappStateFailureCount === 1) {
-        recordRuntimeEvent('ready_state_mismatch', attemptDetail, appStatus);
+      if (health.consecutiveProbeFailures === 1) {
+        recordRuntimeEvent('functional_health_degraded', attemptDetail, appStatus);
       } else {
         persistRuntimeStatus();
       }
 
-      if (whatsappStateFailureCount >= WHATSAPP_READY_HEALTH_FAILURE_LIMIT) {
-        requestProcessRestart(
-          'ready_state_mismatch_restart',
-          `${healthDetail} durante ${whatsappStateFailureCount} comprobaciones consecutivas.`,
-          { clearAuth: normalizedState === 'UNPAIRED' || normalizedState === 'UNPAIRED_IDLE' }
-        );
+      if (whatsappHealth.hasReachedFailureLimit()) {
+        await recoverFunctionalWhatsappHealth(probe);
       }
       return;
     }
@@ -963,10 +1299,8 @@ http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/reset-auth' || url.pathname === '/reset') {
-    const requesterAddress = getRequesterAddress(req);
-
     if (!RESET_AUTH_ENABLED) {
-      console.warn(`[HTTP Reset] Intento bloqueado desde ${requesterAddress}: endpoint desactivado.`);
+      console.warn('[HTTP Reset] Intento remoto bloqueado: endpoint desactivado.');
       res.writeHead(404, htmlHeaders);
       res.end('Not found');
       return;
@@ -975,7 +1309,7 @@ http.createServer(async (req, res) => {
     if (!RESET_AUTH_TOKEN) {
       recordRuntimeEvent(
         'manual_reset_misconfigured',
-        `Se intento usar reset manual desde ${requesterAddress}, pero falta RESET_AUTH_TOKEN.`,
+        'Se intento usar reset manual, pero falta RESET_AUTH_TOKEN.',
         'Reset manual mal configurado.'
       );
       res.writeHead(503, htmlHeaders);
@@ -987,7 +1321,7 @@ http.createServer(async (req, res) => {
     if (suppliedToken !== RESET_AUTH_TOKEN) {
       recordRuntimeEvent(
         'manual_reset_denied',
-        `Token invalido para reset manual desde ${requesterAddress}.`,
+        'Token invalido para reset manual.',
         'Intento de reset manual bloqueado.'
       );
       res.writeHead(403, htmlHeaders);
@@ -997,7 +1331,7 @@ http.createServer(async (req, res) => {
 
     recordRuntimeEvent(
       'manual_reset_authorized',
-      `Reset manual autorizado desde ${requesterAddress}.`,
+      'Reset manual autorizado.',
       'Reset manual autorizado. Reiniciando bot...'
     );
 
@@ -1042,9 +1376,12 @@ http.createServer(async (req, res) => {
     `);
 
     console.warn('[HTTP Reset] Peticion de reinicio de sesion autorizada.');
+    functionalHealthReattachAttempted = false;
+    runtimeStatus.functionalRecoveryAttempts = 0;
+    runtimeStatus.functionalRecoveryWindowStartedAt = null;
     requestProcessRestart(
       'manual_reset_restart',
-      `Reset manual autorizado desde ${requesterAddress}.`,
+      'Reset manual autorizado.',
       { clearAuth: true }
     );
     return;
@@ -1141,7 +1478,7 @@ http.createServer(async (req, res) => {
             }
             h2 {
               margin-top: 0;
-              color: #4caf50;
+              color: ${whatsappHealth.isHealthy() ? '#4caf50' : '#ffc107'};
             }
             p {
               color: #a3a3a8;
@@ -1153,8 +1490,8 @@ http.createServer(async (req, res) => {
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
-            <p>Estado del sistema: <strong style="color: #4caf50;">${escapeHtml(appStatus)}</strong></p>
-            <p>Si la pagina no carga el QR, el bot esta procesando la conexion o ya se conecto exitosamente.</p>
+            <p>Estado del sistema: <strong style="color: ${whatsappHealth.isHealthy() ? '#4caf50' : '#ffc107'};">${escapeHtml(appStatus)}</strong></p>
+            <p>El socket y el canal de mensajes se verifican por separado. Los envios automaticos solo se habilitan cuando el canal figura HEALTHY.</p>
             ${latestPairingCode ? `<p style="color:#ffc107;font-weight:600;">Codigo de vinculacion: <span style="letter-spacing:0.18em;">${escapeHtml(latestPairingCode)}</span></p>` : ''}
             ${renderStatusMetaHtml()}
           </div>
@@ -1199,16 +1536,16 @@ const client = new Client({
 });
 
 client.on('qr', async (qr) => {
-  console.log('Escanea este QR:');
   markWhatsappProgress();
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.WAITING_QR, 'waiting_for_qr', 'UNPAIRED');
+  clearInboundHealthSignals();
   authenticatedEventSeen = false;
   appStatus = 'Esperando escaneo de codigo QR...';
   latestQrUpdatedAt = new Date().toISOString();
   latestPairingCode = '';
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
-  qrcode.generate(qr, { small: true });
 
   try {
     latestQrDataUrl = await qrcodeImage.toDataURL(qr);
@@ -1222,6 +1559,8 @@ client.on('qr', async (qr) => {
 client.on('code', (code) => {
   markWhatsappProgress();
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.WAITING_QR, 'waiting_for_pairing_code', 'UNPAIRED');
+  clearInboundHealthSignals();
   authenticatedEventSeen = false;
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
@@ -1241,6 +1580,8 @@ client.on('authenticated', () => {
   authenticatedEventSeen = true;
   markWhatsappProgress();
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.AUTHENTICATING, 'authenticated_syncing', 'PAIRING');
+  clearInboundHealthSignals();
   latestQrDataUrl = '';
   latestQrUpdatedAt = null;
   latestPairingCode = '';
@@ -1260,7 +1601,11 @@ client.on('loading_screen', (percent, message) => {
 
   markWhatsappProgress();
   lastLoadingPercent = roundedPercent;
-  appStatus = `Sincronizando WhatsApp... ${roundedPercent}%`;
+  if (readyBootstrapComplete) {
+    pauseWhatsappDelivery('WhatsApp reinicio la sincronizacion interna.', 'SYNCING');
+  } else {
+    appStatus = `Sincronizando WhatsApp... ${roundedPercent}%`;
+  }
 
   if (roundedPercent === 100 || roundedPercent <= 5 || roundedPercent % 10 === 0) {
     recordRuntimeEvent(
@@ -1284,7 +1629,7 @@ client.on('ready', async () => {
       recordRuntimeEvent(
         'ready_duplicate',
         'WhatsApp repitio el evento ready; se conserva el runtime ya inicializado.',
-        'Conectado a WhatsApp.'
+        applyWhatsappHealthStatus()
       );
     }
     return;
@@ -1301,12 +1646,14 @@ client.on('ready', async () => {
   latestPairingCode = '';
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
+  whatsappHealth.markConnected('ready_event');
+  applyWhatsappHealthStatus();
   recordRuntimeEvent(
     'ready',
     authPathPersistent
       ? 'Cliente conectado. La sesion usa almacenamiento persistente.'
       : 'Cliente conectado. La sesion sigue en almacenamiento temporal; si el contenedor reinicia, puede volver a pedir QR.',
-    'Conectado a WhatsApp.'
+    appStatus
   );
 
   console.log('Kingdoom Bot conectado');
@@ -1328,13 +1675,18 @@ client.on('ready', async () => {
         // Resolve bet with the original amount (refund)
         await resolveBet(bet.id, bet.amount);
         
-        // Notify player via WhatsApp if we have their phone
+        // Queue the notice; dispatch starts only after functional health is confirmed.
         if (bet.players && bet.players.phone) {
-          const jid = formatJid(bet.players.phone);
           const msgText = `🔮 *¡Intervención Divina!*\nEl oráculo detectó que tu partida de *${bet.game_type}* se interrumpió abruptamente debido a una falla espacio-temporal.\n\n🪙 Se han devuelto de forma segura *${bet.amount.toLocaleString('es-PY')} oro* a tus reservas.`;
-          await client.sendMessage(jid, msgText).catch(err => {
-            console.error(`[Escrow] Error al notificar a ${bet.players.phone}:`, err.message);
-          });
+          const { error: queueError } = await botStateSupabase
+            .from('bot_notifications_queue')
+            .insert({
+              player_phone: normalizePhone(bet.players.phone),
+              message: msgText,
+            });
+          if (queueError) {
+            console.error('[Escrow] Error al encolar la notificacion de reembolso:', queueError.message);
+          }
         }
       }
       console.log(`[Escrow] Apuestas huérfanas recuperadas exitosamente.`);
@@ -1345,19 +1697,20 @@ client.on('ready', async () => {
   // ------------------------------
 
   if (!schedulerStarted) {
-    startScheduler(client, () => whatsappClientReady);
+    startScheduler(client, isWhatsappOperational);
     schedulerStarted = true;
   }
 
   if (!realtimeStarted) {
-    startAuctionsRealtime(client);
+    startAuctionsRealtime(client, isWhatsappOperational);
     realtimeStarted = true;
   }
 });
 
 client.on('auth_failure', (message) => {
-  console.error('[whatsapp auth_failure]', message);
+  console.error('[whatsapp auth_failure]', sanitizeLogText(message));
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, 'authentication_failed', 'UNPAIRED');
   authenticatedEventSeen = false;
   readyBootstrapComplete = false;
   latestQrDataUrl = '';
@@ -1374,9 +1727,11 @@ client.on('auth_failure', (message) => {
 });
 
 client.on('disconnected', (reason) => {
-  console.warn('[whatsapp disconnected]', reason);
+  console.warn('[whatsapp disconnected]', sanitizeLogText(reason));
   const shouldClearAuth = isLogoutDisconnectReason(reason);
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, 'disconnected', String(reason ?? 'UNKNOWN'));
+  clearInboundHealthSignals();
   authenticatedEventSeen = false;
   readyBootstrapComplete = false;
   schedulerStarted = false;
@@ -1402,15 +1757,34 @@ client.on('disconnected', (reason) => {
 });
 
 client.on('change_state', (state) => {
-  console.log('[whatsapp state]', state);
+  const normalizedState = String(state ?? 'UNKNOWN').trim().toUpperCase() || 'UNKNOWN';
+  console.log('[whatsapp state]', normalizedState);
+  lastWhatsappState = normalizedState;
+  lastWhatsappStateCheckedAt = new Date().toISOString();
+  if (readyBootstrapComplete && normalizedState !== 'CONNECTED') {
+    pauseWhatsappDelivery(`WhatsApp cambio su transporte a ${normalizedState}.`, normalizedState);
+  }
   recordRuntimeEvent(
     'change_state',
-    `Nuevo estado interno: ${String(state ?? 'unknown')}`,
-    `Estado WhatsApp: ${String(state ?? 'unknown')}`
+    `Nuevo estado interno: ${normalizedState}`,
+    applyWhatsappHealthStatus()
   );
 });
 
+client.on('message_create', (msg) => {
+  if (!msg?.fromMe) return;
+  whatsappHealth.markOutbound();
+  persistRuntimeStatus();
+});
+
+client.on('message_ack', (msg, ack) => {
+  if (!msg?.fromMe || Number(ack) < 1) return;
+  whatsappHealth.markOutboundAck();
+  persistRuntimeStatus();
+});
+
 client.on('group_join', async (notification) => {
+  markWhatsappInbound(notification, 'group_join');
   try {
     await handleGroupRejoin(notification, client, playerLifecycleConfig);
     await handleGroupWelcome(notification, client, welcomeConfig);
@@ -1420,6 +1794,7 @@ client.on('group_join', async (notification) => {
 });
 
 client.on('group_leave', async (notification) => {
+  markWhatsappInbound(notification, 'group_leave');
   try {
     await handleGroupLeave(notification, client, playerLifecycleConfig);
   } catch (error) {
@@ -1439,6 +1814,8 @@ client.on('message', async (msg) => {
     msg.isStatus ||
     IGNORED_INTERNAL_MESSAGE_TYPES.has(String(msg.type ?? '').toLowerCase())
   ) return;
+
+  markWhatsappInbound(msg);
 
   // Deduplication check
   if (msg.id && msg.id._serialized) {
@@ -1619,16 +1996,16 @@ client.on('message', async (msg) => {
   const isDirectChat = !String(msg.from ?? '').endsWith('@g.us');
   const shouldTraceMessageFlow = hasPrefix || isDirectChat;
   const commandLabel = hasPrefix && command ? `!${command}` : '(sin comando)';
-  const messageSummary = summarizeTextForLog(text, 96);
+  const chatScope = isDirectChat ? 'direct' : 'group';
   let slowMessageTimer = null;
 
   if (shouldTraceMessageFlow) {
     console.log(
-      `[message inbound] chat=${msg.from} sender=${sender} type=${msg.type ?? 'unknown'} command=${commandLabel} body="${messageSummary || '[vacio]'}"`
+      `[message inbound] scope=${chatScope} type=${msg.type ?? 'unknown'} command=${commandLabel}`
     );
     recordRuntimeEvent(
       'message_inbound',
-      `Chat ${msg.from} desde ${sender}: ${commandLabel}${messageSummary ? ` :: ${messageSummary}` : ''}`,
+      `Entrada ${chatScope}: ${commandLabel}.`,
       hasPrefix ? `Procesando ${commandLabel}...` : appStatus
     );
   }
@@ -1636,11 +2013,11 @@ client.on('message', async (msg) => {
   if (hasPrefix) {
     slowMessageTimer = setTimeout(() => {
       console.warn(
-        `[message slow] chat=${msg.from} sender=${sender} command=${commandLabel} supero ${COMMAND_PROCESSING_WARN_MS}ms`
+        `[message slow] scope=${chatScope} command=${commandLabel} supero ${COMMAND_PROCESSING_WARN_MS}ms`
       );
       recordRuntimeEvent(
         'message_processing_slow',
-        `${commandLabel} sigue en curso despues de ${COMMAND_PROCESSING_WARN_MS}ms en ${msg.from}.`,
+        `${commandLabel} sigue en curso despues de ${COMMAND_PROCESSING_WARN_MS}ms.`,
         `Procesando ${commandLabel}...`
       );
     }, COMMAND_PROCESSING_WARN_MS);
@@ -1853,17 +2230,19 @@ client.on('message', async (msg) => {
 
     if (reply) {
       await sendBotText(msg, reply, { context: command || 'message' });
+      whatsappHealth.markReply();
+      persistRuntimeStatus();
       if (slowMessageTimer) {
         clearTimeout(slowMessageTimer);
         slowMessageTimer = null;
       }
       if (shouldTraceMessageFlow) {
         console.log(
-          `[message reply] chat=${msg.from} sender=${sender} command=${commandLabel} chars=${String(reply).length}`
+          `[message reply] scope=${chatScope} command=${commandLabel} chars=${String(reply).length}`
         );
         recordRuntimeEvent(
           'message_replied',
-          `${commandLabel} respondido en ${msg.from} para ${sender}.`,
+          `${commandLabel} respondido en chat ${chatScope}.`,
           hasPrefix ? `Respuesta enviada para ${commandLabel}.` : appStatus
         );
       }
@@ -1876,11 +2255,11 @@ client.on('message', async (msg) => {
     if (shouldTraceMessageFlow) {
       recordRuntimeEvent(
         'message_failed',
-        `${commandLabel} fallo en ${msg.from}: ${formatInitializeError(err)}`,
+        `${commandLabel} fallo: ${formatInitializeError(err)}`,
         hasPrefix ? `Fallo ${commandLabel}.` : appStatus
       );
     }
-    console.error('Error:', err);
+    console.error('[message error]', formatInitializeError(err));
     await sendEmergencyText(msg, 'El reino esta en llamas... intenta de nuevo en un momento.', 'message_error');
   } finally {
     if (slowMessageTimer) {
@@ -1909,6 +2288,7 @@ async function initializeClientWithRetry() {
         console.log(
           `[whatsapp init] Intento ${attempt}/${WHATSAPP_INIT_MAX_RETRIES} hacia web.whatsapp.com`
         );
+        whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, 'initialize_attempt');
         markWhatsappProgress();
         recordRuntimeEvent(
           'initialize_attempt',
@@ -1940,33 +2320,14 @@ async function initializeClientWithRetry() {
         }
 
         if (isLastAttempt) {
-          if (WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE) {
-            console.error(
-              '[whatsapp init] Se agotaron los reintentos de inicializacion. El entorno permite borrar autenticacion y reintentar en caliente...'
-            );
-            recordRuntimeEvent(
-              'initialize_failed_reset_auth',
-              `Se agotaron los reintentos y WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE esta activo. Error final: ${formattedError}`,
-              'Fallo grave de inicializacion. Borrando sesion y reintentando...'
-            );
-            try {
-              if (fs.existsSync(authDataPath)) {
-                fs.rmSync(authDataPath, { recursive: true, force: true });
-                console.log('[whatsapp init] Carpeta de autenticacion borrada.');
-              }
-            } catch (cleanErr) {
-              console.error('[whatsapp init] Error al borrar la carpeta de autenticacion:', cleanErr);
-            }
-          } else {
-            console.error(
-              '[whatsapp init] Se agotaron los reintentos de inicializacion. Se hara una recuperacion interna conservando autenticacion.'
-            );
-            recordRuntimeEvent(
-              'initialize_failed_restart',
-              `Se agotaron los reintentos, pero la autenticacion se conserva. Error final: ${formattedError}`,
-              'Fallo de inicializacion. Reintentando sin borrar sesion...'
-            );
-          }
+          console.error(
+            '[whatsapp init] Se agotaron los reintentos de inicializacion. Se reiniciara conservando autenticacion.'
+          );
+          recordRuntimeEvent(
+            'initialize_failed_restart',
+            `Se agotaron los reintentos, pero la autenticacion se conserva. Error final: ${formattedError}`,
+            'Fallo de inicializacion. Reintentando sin borrar sesion...'
+          );
           const reconnectDelayMs = calculateReconnectDelayMs(
             runtimeStatus.restartCount + 1,
             WHATSAPP_INIT_RETRY_DELAY_MS,
@@ -1976,7 +2337,6 @@ async function initializeClientWithRetry() {
             'initialize_exhausted_restart',
             `Se agotaron ${WHATSAPP_INIT_MAX_RETRIES} intento(s). Error final: ${formattedError}`,
             {
-              clearAuth: WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE,
               delayMs: reconnectDelayMs,
             }
           );
@@ -2004,6 +2364,12 @@ function handleProcessRuntimeError(logLabel, restartEvent, error, deferTransient
 
   if (classification.transientContext && deferTransientContext) {
     whatsappClientReady = false;
+    whatsappHealth.recordProbe({
+      ok: false,
+      socketState: lastWhatsappState || 'CHECK_ERROR',
+      reason: 'execution_context_navigation',
+      error: formattedError,
+    });
     recordRuntimeEvent(
       'execution_context_navigation',
       `${formattedError} Se espera el resultado de disconnected o de la comprobacion activa antes de reiniciar.`,
@@ -2066,6 +2432,8 @@ function requestProcessRestart(event, detail, options = {}) {
   restartClearAuthRequested = clearAuth;
   restartClearAuthEvent = clearAuth ? event : '';
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, event);
+  clearInboundHealthSignals();
   const delayMs = Math.max(WHATSAPP_RESTART_GRACE_MS, Number(options.delayMs) || 0);
   runtimeStatus.restartCount += 1;
   recordRuntimeEvent(
@@ -2101,6 +2469,7 @@ async function shutdownForSignal(signal) {
   if (shutdownRequested) return;
   shutdownRequested = true;
   whatsappClientReady = false;
+  whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.STOPPED, signal);
   recordRuntimeEvent(
     'process_shutdown',
     `El contenedor recibio ${signal}; cerrando Chromium antes de salir.`,

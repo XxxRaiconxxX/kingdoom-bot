@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
+import {
+  WHATSAPP_HEALTH_STATE,
+  chooseFunctionalRecoveryAction,
+  createWhatsappHealthTracker,
+} from './src/whatsappHealth.js';
 
 const source = fs
   .readFileSync(new URL('./src/index.js', import.meta.url), 'utf8')
@@ -21,7 +26,7 @@ const recordRuntimeEventSource = sourceBetween(
 assert.equal(
   recordRuntimeEventSource.includes('markWhatsappProgress()'),
   false,
-  'Generic HTTP/runtime events must not keep the WhatsApp watchdog alive.'
+  'Generic runtime events must not keep the WhatsApp watchdog alive.'
 );
 
 for (const [startMarker, endMarker] of [
@@ -52,7 +57,17 @@ const readyHandlerSource = sourceBetween("client.on('ready'", "client.on('auth_f
 assert.ok(
   readyHandlerSource.indexOf('if (readyBootstrapComplete)') <
     readyHandlerSource.indexOf('whatsappClientReady = true'),
-  'Duplicate ready events must not restore readiness before client.getState confirms it.'
+  'Duplicate ready events must not restore readiness.'
+);
+assert.ok(
+  readyHandlerSource.indexOf("whatsappHealth.markConnected('ready_event')") <
+    readyHandlerSource.indexOf('startScheduler(client, isWhatsappOperational)'),
+  'ready must become unverified before automatic services are wired.'
+);
+assert.equal(
+  readyHandlerSource.includes("'Conectado a WhatsApp.'"),
+  false,
+  'ready alone must not claim a healthy channel.'
 );
 
 const messageHandlerSource = sourceBetween(
@@ -61,8 +76,42 @@ const messageHandlerSource = sourceBetween(
 );
 assert.ok(
   messageHandlerSource.indexOf('IGNORED_INTERNAL_MESSAGE_TYPES.has') <
+    messageHandlerSource.indexOf('markWhatsappInbound(msg)'),
+  'Internal encryption notifications must not certify functional health.'
+);
+assert.ok(
+  messageHandlerSource.indexOf('markWhatsappInbound(msg)') <
     messageHandlerSource.indexOf('safeGetQuotedDetails(msg)'),
-  'Internal encryption notifications must be ignored before quoted-message resolution.'
+  'Real inbound traffic must certify the channel before command processing.'
+);
+
+const watchdogSource = sourceBetween(
+  'function startWhatsappConnectWatchdog()',
+  "recordRuntimeEvent(\n  'boot'"
+);
+assert.ok(watchdogSource.includes('probeWhatsappClient(client'));
+assert.ok(watchdogSource.includes('getStalePageInboundSignal()'));
+assert.ok(watchdogSource.includes('recoverFunctionalWhatsappHealth(probe)'));
+assert.ok(watchdogSource.includes('hasFreshQr'));
+assert.ok(watchdogSource.includes("'connect_watchdog_restart'"));
+assert.equal(
+  watchdogSource.includes("normalizedState === 'CONNECTED'"),
+  false,
+  'CONNECTED must not be the sole health decision.'
+);
+
+const operationalSource = sourceBetween(
+  'function isWhatsappOperational()',
+  'function applyWhatsappHealthStatus('
+);
+assert.ok(operationalSource.includes('whatsappHealth.isHealthy()'));
+assert.ok(source.includes('startScheduler(client, isWhatsappOperational)'));
+assert.ok(source.includes('startAuctionsRealtime(client, isWhatsappOperational)'));
+assert.equal(source.includes("from 'qrcode-terminal'"), false, 'QR credentials must not be printed to logs.');
+assert.equal(
+  source.includes('WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE'),
+  false,
+  'Initialization failures must never erase a potentially valid session.'
 );
 
 for (const [startMarker, endMarker] of [
@@ -70,155 +119,93 @@ for (const [startMarker, endMarker] of [
   ["client.on('disconnected'", "client.on('change_state'"],
 ]) {
   const handlerSource = sourceBetween(startMarker, endMarker);
-  assert.equal(
-    handlerSource.includes('process.exit('),
-    false,
-    `${startMarker} must return control to whatsapp-web.js before process exit.`
-  );
-  assert.equal(
-    handlerSource.includes('requestProcessRestart('),
-    true,
-    `${startMarker} must use the coordinated restart path.`
-  );
+  assert.equal(handlerSource.includes('process.exit('), false);
+  assert.equal(handlerSource.includes('requestProcessRestart('), true);
 }
 
 const clientOptionsSource = sourceBetween('const client = new Client({', "client.on('qr'");
-assert.equal(clientOptionsSource.includes('takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT'), true);
-assert.equal(clientOptionsSource.includes('takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS'), true);
+assert.ok(clientOptionsSource.includes('takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT'));
+assert.ok(clientOptionsSource.includes('takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS'));
 
+const changeStateSource = sourceBetween("client.on('change_state'", "client.on('message_create'");
 assert.equal(
-  sourceBetween("client.on('change_state'", "client.on('group_join'").includes(
-    'markWhatsappProgress()'
-  ),
+  changeStateSource.includes('markWhatsappProgress()'),
   false,
   'State oscillation alone must not hide a stalled connection.'
 );
 
-const watchdogSource = sourceBetween(
-  'function startWhatsappConnectWatchdog()',
-  "recordRuntimeEvent(\n  'boot'"
+const recoverySource = sourceBetween(
+  'async function recoverFunctionalWhatsappHealth(',
+  'function startWhatsappConnectWatchdog()'
 );
-async function runWatchdogScenario({
-  ready,
-  qrAgeMs,
-  states = [],
-  checks = 1,
-  bootstrapComplete = ready,
-}) {
-  const callbacks = [];
-  const restarts = [];
-  const events = [];
-  const persistedStatuses = [];
-  const stateQueue = [...states];
-  const now = Date.now();
-  const context = {
-    Date: class extends Date {
-      static now() {
-        return now;
-      }
-    },
-    WHATSAPP_CONNECT_STALL_TIMEOUT_MS: 150000,
-    WHATSAPP_READY_HEALTH_FAILURE_LIMIT: 3,
-    WHATSAPP_READY_HEALTH_TIMEOUT_MS: 10000,
-    whatsappClientReady: ready,
-    readyBootstrapComplete: bootstrapComplete,
-    whatsappStateCheckInFlight: false,
-    lastWhatsappState: null,
-    lastWhatsappStateCheckedAt: null,
-    whatsappStateFailureCount: 0,
-    whatsappStateCheckError: '',
-    restartRequested: false,
-    shutdownRequested: false,
-    appStatus: '',
-    latestQrDataUrl: qrAgeMs === null ? '' : 'data:image/png;base64,test',
-    latestQrUpdatedAt: qrAgeMs === null ? null : new Date(now - qrAgeMs).toISOString(),
-    latestPairingCode: '',
-    latestPairingCodeUpdatedAt: null,
-    lastWhatsappProgressAt: now - 200000,
-    recordRuntimeEvent: (...args) => events.push(args),
-    persistRuntimeStatus: () => persistedStatuses.push(true),
-    formatInitializeError: (error) => error?.message ?? String(error),
-    sleep: () => new Promise(() => {}),
-    runtimeStatus: { restartCount: 0 },
-    WHATSAPP_INIT_RETRY_DELAY_MS: 15000,
-    WHATSAPP_RECONNECT_MAX_DELAY_MS: 60000,
-    calculateReconnectDelayMs: () => 15000,
-    requestProcessRestart: (...args) => {
-      restarts.push(args);
-      context.restartRequested = true;
-    },
-    client: {
-      getState: async () => {
-        const nextState = stateQueue.length > 0 ? stateQueue.shift() : 'CONNECTED';
-        if (nextState instanceof Error) throw nextState;
-        return nextState;
-      },
-    },
-    setInterval: (callback) => {
-      callbacks.push(callback);
-      return { unref() {} };
-    },
-    Math,
-    Number,
-  };
+assert.ok(recoverySource.includes('client.attachEventListeners()'));
+assert.equal(
+  recoverySource.includes('client.inject()'),
+  false,
+  'Bridge repair must reattach the message listeners instead of repeating full injection.'
+);
 
-  vm.runInNewContext(`${watchdogSource}\nstartWhatsappConnectWatchdog();`, context);
-  for (let check = 0; check < checks; check += 1) {
-    await callbacks[0]();
-  }
-  return { restarts, events, persistedStatuses, context };
+let now = 0;
+const health = createWhatsappHealthTracker({
+  now: () => now,
+  stabilityWindowMs: 60_000,
+  requiredProbeSuccesses: 3,
+  failureLimit: 3,
+});
+
+assert.equal(health.markConnected().state, WHATSAPP_HEALTH_STATE.CONNECTED_UNVERIFIED);
+assert.equal(health.isHealthy(), false);
+for (const at of [0, 30_000, 60_000]) {
+  now = at;
+  health.recordProbe({ ok: true, socketState: 'CONNECTED', reason: 'probe_ok' });
 }
+assert.equal(health.isHealthy(), true, 'A stable active-probe window must enable delivery.');
 
-const healthyReady = await runWatchdogScenario({ ready: true, qrAgeMs: null });
-assert.equal(healthyReady.restarts.length, 0);
-assert.equal(healthyReady.context.lastWhatsappState, 'CONNECTED');
-assert.equal(healthyReady.context.whatsappStateFailureCount, 0);
-
+now = 90_000;
 assert.equal(
-  (await runWatchdogScenario({ ready: false, qrAgeMs: 1000 })).restarts.length,
-  0
+  health.recordProbe({
+    ok: false,
+    socketState: 'CONNECTED',
+    reason: 'message_bridge_unavailable',
+    error: 'bridge missing',
+  }).state,
+  WHATSAPP_HEALTH_STATE.DEGRADED
 );
+assert.equal(health.isHealthy(), false, 'One functional failure must pause automatic delivery.');
 
-const staleQr = await runWatchdogScenario({ ready: false, qrAgeMs: 200000 });
-assert.equal(staleQr.restarts.length, 1);
-assert.equal(staleQr.restarts[0][0], 'connect_watchdog_restart');
-assert.match(staleQr.restarts[0][1], /QR vencido sin progreso/);
+now = 95_000;
+assert.equal(health.markInbound().state, WHATSAPP_HEALTH_STATE.HEALTHY);
+assert.equal(health.snapshot().confidence, 'real_traffic');
 
-const ghostSession = await runWatchdogScenario({
-  ready: true,
-  qrAgeMs: null,
-  states: ['UNPAIRED', 'UNPAIRED', 'UNPAIRED'],
-  checks: 3,
-});
-assert.equal(ghostSession.restarts.length, 1);
-assert.equal(ghostSession.restarts[0][0], 'ready_state_mismatch_restart');
-assert.equal(ghostSession.restarts[0][2].clearAuth, true);
-assert.equal(ghostSession.context.whatsappClientReady, false);
-assert.equal(ghostSession.context.whatsappStateFailureCount, 3);
+for (let attempt = 0; attempt < 3; attempt += 1) {
+  now += 1_000;
+  health.recordProbe({ ok: false, socketState: 'CONNECTED', reason: 'active_probe_failed' });
+}
+assert.equal(health.hasReachedFailureLimit(), true);
 
-const stateCheckFailure = await runWatchdogScenario({
-  ready: true,
-  qrAgeMs: null,
-  states: [new Error('page closed'), new Error('page closed'), new Error('page closed')],
-  checks: 3,
-});
-assert.equal(stateCheckFailure.restarts.length, 1);
-assert.equal(stateCheckFailure.restarts[0][0], 'ready_state_mismatch_restart');
-assert.equal(stateCheckFailure.restarts[0][2].clearAuth, false);
-assert.match(stateCheckFailure.restarts[0][1], /page closed/);
-
-const recoveredState = await runWatchdogScenario({
-  ready: true,
-  qrAgeMs: null,
-  states: ['OPENING', 'CONNECTED'],
-  checks: 2,
-});
-assert.equal(recoveredState.restarts.length, 0);
-assert.equal(recoveredState.context.whatsappClientReady, true);
-assert.equal(recoveredState.context.whatsappStateFailureCount, 0);
 assert.equal(
-  recoveredState.events.some(([event]) => event === 'ready_state_recovered'),
-  true
+  chooseFunctionalRecoveryAction({ reattachAttempted: false, recoveryAttempts: 0 }),
+  'reattach'
+);
+assert.equal(
+  chooseFunctionalRecoveryAction({ reattachAttempted: true, recoveryAttempts: 0 }),
+  'restart'
+);
+assert.equal(
+  chooseFunctionalRecoveryAction({ reattachAttempted: true, recoveryAttempts: 1 }),
+  'quarantine'
+);
+assert.equal(
+  chooseFunctionalRecoveryAction({
+    reattachAttempted: true,
+    recoveryAttempts: 1,
+    authInvalidated: true,
+  }),
+  'reset-auth'
+);
+assert.equal(
+  chooseFunctionalRecoveryAction({ reattachAttempted: true, recoveryAttempts: 2 }),
+  'quarantine'
 );
 
 const requestProcessRestartSource = sourceBetween(
@@ -235,6 +222,9 @@ const restartContext = {
   restartClearAuthEvent: '',
   shutdownRequested: false,
   whatsappClientReady: true,
+  whatsappHealth: { markUnavailable() {} },
+  clearInboundHealthSignals() {},
+  WHATSAPP_HEALTH_STATE,
   runtimeStatus: { restartCount: 0 },
   WHATSAPP_RESTART_GRACE_MS: 2500,
   recordRuntimeEvent: (...args) => restartEvents.push(args),
@@ -253,25 +243,19 @@ const restartContext = {
 vm.runInNewContext(requestProcessRestartSource, restartContext);
 
 assert.equal(
-  restartContext.requestProcessRestart('unhandled_rejection_restart', 'context reset'),
+  restartContext.requestProcessRestart('functional_health_process_restart', 'bridge stalled'),
   true
 );
 assert.equal(
   restartContext.requestProcessRestart(
     'disconnected_restart',
-    'WhatsApp se desconecto con motivo: LOGOUT',
+    'WhatsApp disconnected: LOGOUT',
     { clearAuth: true }
   ),
   true
 );
-assert.equal(restartTimers.length, 1);
-assert.equal(restartContext.runtimeStatus.restartCount, 1);
+assert.equal(restartTimers.length, 1, 'Recovery escalation must not create a restart loop.');
 assert.equal(restartContext.restartClearAuthRequested, true);
-assert.equal(
-  restartEvents.some(([event]) => event === 'restart_auth_clear_escalated'),
-  true
-);
-
 await restartTimers[0].callback();
 assert.deepEqual(clearedAuthEvents, ['disconnected_restart']);
 assert.deepEqual(exitCodes, [1]);
