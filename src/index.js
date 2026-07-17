@@ -201,6 +201,7 @@ let schedulerStarted = false;
 let realtimeStarted = false;
 let readyBootstrapComplete = false;
 let restartRequested = false;
+let restartCanBeCancelledOnConnected = false;
 let restartClearAuthRequested = false;
 let restartClearAuthEvent = '';
 let shutdownRequested = false;
@@ -1124,7 +1125,10 @@ async function recoverFunctionalWhatsappHealth(probe) {
         action === 'reset-auth'
           ? `${detail}. La recuperacion conservando sesion ya fallo; se solicitara una vinculacion limpia.`
           : `${detail}. Se recreara una sola vez el cliente conservando la autenticacion.`,
-        { clearAuth: action === 'reset-auth' }
+        {
+          clearAuth: action === 'reset-auth',
+          cancelIfSocketRecovered: action === 'restart',
+        }
       );
       return;
     }
@@ -2442,7 +2446,11 @@ function requestProcessRestart(event, detail, options = {}) {
   if (shutdownRequested) return false;
 
   const clearAuth = options.clearAuth === true;
+  const cancelIfSocketRecovered = options.cancelIfSocketRecovered === true && !clearAuth;
   if (restartRequested) {
+    if (!cancelIfSocketRecovered) {
+      restartCanBeCancelledOnConnected = false;
+    }
     if (clearAuth && !restartClearAuthRequested) {
       restartClearAuthRequested = true;
       restartClearAuthEvent = event;
@@ -2457,6 +2465,7 @@ function requestProcessRestart(event, detail, options = {}) {
   }
 
   restartRequested = true;
+  restartCanBeCancelledOnConnected = cancelIfSocketRecovered;
   restartClearAuthRequested = clearAuth;
   restartClearAuthEvent = clearAuth ? event : '';
   whatsappClientReady = false;
@@ -2472,6 +2481,35 @@ function requestProcessRestart(event, detail, options = {}) {
 
   setTimeout(async () => {
     try {
+      if (
+        restartCanBeCancelledOnConnected &&
+        !restartClearAuthRequested &&
+        String(lastWhatsappState ?? '').toUpperCase() === 'CONNECTED'
+      ) {
+        restartRequested = false;
+        restartCanBeCancelledOnConnected = false;
+        restartClearAuthRequested = false;
+        restartClearAuthEvent = '';
+        whatsappClientReady = readyBootstrapComplete;
+        whatsappStateFailureCount = 0;
+        whatsappStateCheckError = '';
+        runtimeStatus.restartCount = Math.max(0, runtimeStatus.restartCount - 1);
+        runtimeStatus.functionalRecoveryAttempts = Math.max(
+          0,
+          runtimeStatus.functionalRecoveryAttempts - 1
+        );
+        if (runtimeStatus.functionalRecoveryAttempts === 0) {
+          runtimeStatus.functionalRecoveryWindowStartedAt = null;
+        }
+        whatsappHealth.markConnected('restart_cancelled_socket_recovered');
+        recordRuntimeEvent(
+          'restart_cancelled_socket_recovered',
+          `Se cancelo el reinicio ${event}: el socket volvio a CONNECTED antes de cerrar Chromium. El canal sera verificado nuevamente.`,
+          applyWhatsappHealthStatus()
+        );
+        return;
+      }
+
       await closeWhatsappBrowser();
       if (restartClearAuthRequested) {
         clearAuthDataPath(restartClearAuthEvent || event);

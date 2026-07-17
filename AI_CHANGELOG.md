@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Corregida la carrera donde una recuperacion ya programada cerraba Chromium aunque el socket hubiera vuelto a `CONNECTED` antes de vencer la espera.
+*   **Cambios Clave:**
+    *   **[Causa Confirmada]:** el log de produccion mostro `OPENING`, programacion de `functional_health_process_restart`, retorno a `PAIRING/CONNECTED` y, un segundo despues, `restart_worker_exit`; ese temporizador obsoleto destruyo una conexion ya recuperada y desemboco en QR.
+    *   **[Cancelacion Segura]:** solo los reinicios conservadores de salud pueden cancelarse al recuperar `CONNECTED`. El canal vuelve a `CONNECTED_UNVERIFIED` y debe superar nuevamente las sondas antes de habilitar envios.
+    *   **[Escalamiento Intacto]:** `LOGOUT`, `auth_failure`, limpieza de autenticacion y cualquier reinicio duro posterior desactivan la cancelacion y siguen cerrando el worker como antes.
+    *   **[Prueba de Regresion]:** se reproduce `OPENING -> reinicio pendiente -> CONNECTED` y se verifica que no haya `process.exit(1)`; tambien se prueba que una escalada con limpieza de auth no pueda cancelarse.
+*   **Notas/Advertencias:** No requiere migracion Supabase ni cambia economia. La sesion que ya quedo solicitando QR no puede recuperarse desde codigo y necesita un escaneo vigente. Cambio validado con las 13 pruebas del repositorio y preparado para el despliegue de este cierre.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/treasure.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Eliminado el Tesoro Errante visible pero imposible de reclamar cuando WhatsApp no confirma el ACK del mensaje a tiempo.
 *   **Cambios Clave:**

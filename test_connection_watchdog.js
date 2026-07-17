@@ -216,18 +216,32 @@ const restartTimers = [];
 const restartEvents = [];
 const clearedAuthEvents = [];
 const exitCodes = [];
+const restartHealthReasons = [];
 const restartContext = {
   restartRequested: false,
+  restartCanBeCancelledOnConnected: false,
   restartClearAuthRequested: false,
   restartClearAuthEvent: '',
   shutdownRequested: false,
   whatsappClientReady: true,
-  whatsappHealth: { markUnavailable() {} },
+  readyBootstrapComplete: true,
+  lastWhatsappState: 'OPENING',
+  whatsappStateFailureCount: 3,
+  whatsappStateCheckError: 'socket opening',
+  whatsappHealth: {
+    markUnavailable() {},
+    markConnected: (reason) => restartHealthReasons.push(reason),
+  },
   clearInboundHealthSignals() {},
   WHATSAPP_HEALTH_STATE,
-  runtimeStatus: { restartCount: 0 },
+  runtimeStatus: {
+    restartCount: 0,
+    functionalRecoveryAttempts: 1,
+    functionalRecoveryWindowStartedAt: '2026-07-17T18:30:34.170Z',
+  },
   WHATSAPP_RESTART_GRACE_MS: 2500,
   recordRuntimeEvent: (...args) => restartEvents.push(args),
+  applyWhatsappHealthStatus: () => 'Conectado; verificando el canal de mensajes...',
   closeWhatsappBrowser: async () => {},
   clearAuthDataPath: (event) => clearedAuthEvents.push(event),
   sleep: async () => {},
@@ -243,7 +257,36 @@ const restartContext = {
 vm.runInNewContext(requestProcessRestartSource, restartContext);
 
 assert.equal(
-  restartContext.requestProcessRestart('functional_health_process_restart', 'bridge stalled'),
+  restartContext.requestProcessRestart(
+    'functional_health_process_restart',
+    'socket opening',
+    { cancelIfSocketRecovered: true }
+  ),
+  true
+);
+restartContext.lastWhatsappState = 'CONNECTED';
+await restartTimers[0].callback();
+assert.deepEqual(exitCodes, [], 'A recovered socket must not be killed by a stale timer.');
+assert.equal(restartContext.restartRequested, false);
+assert.equal(restartContext.runtimeStatus.restartCount, 0);
+assert.equal(restartContext.runtimeStatus.functionalRecoveryAttempts, 0);
+assert.equal(restartContext.runtimeStatus.functionalRecoveryWindowStartedAt, null);
+assert.equal(restartContext.whatsappClientReady, true);
+assert.deepEqual(restartHealthReasons, ['restart_cancelled_socket_recovered']);
+assert.equal(
+  restartEvents.some(([event]) => event === 'restart_cancelled_socket_recovered'),
+  true
+);
+
+restartContext.lastWhatsappState = 'OPENING';
+restartContext.runtimeStatus.functionalRecoveryAttempts = 1;
+restartContext.runtimeStatus.functionalRecoveryWindowStartedAt = '2026-07-17T18:31:00.000Z';
+assert.equal(
+  restartContext.requestProcessRestart(
+    'functional_health_process_restart',
+    'socket opening',
+    { cancelIfSocketRecovered: true }
+  ),
   true
 );
 assert.equal(
@@ -254,9 +297,10 @@ assert.equal(
   ),
   true
 );
-assert.equal(restartTimers.length, 1, 'Recovery escalation must not create a restart loop.');
+assert.equal(restartTimers.length, 2, 'Recovery escalation must not create a restart loop.');
 assert.equal(restartContext.restartClearAuthRequested, true);
-await restartTimers[0].callback();
+restartContext.lastWhatsappState = 'CONNECTED';
+await restartTimers[1].callback();
 assert.deepEqual(clearedAuthEvents, ['disconnected_restart']);
 assert.deepEqual(exitCodes, [1]);
 
