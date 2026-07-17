@@ -843,6 +843,7 @@ function handleRemoteAuthEvent(event, payload = {}) {
   }
 
   if (event === 'restored') {
+    reconnectAudit.start('remote_auth_restore');
     remoteAuthStatus = {
       ...remoteAuthStatus,
       snapshotState: payload.usedFallback ? 'restored_fallback' : 'restored',

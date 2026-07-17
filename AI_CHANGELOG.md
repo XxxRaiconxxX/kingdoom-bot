@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Cerrado el ultimo hueco de auditoria detectado durante la primera restauracion real de `RemoteAuth` en Hugging Face.
+*   **Cambios Clave:**
+    *   **[Restauracion Comprobada]:** el reinicio controlado de `2177880` creo un proceso nuevo, restauro `remote_auth_snapshot_restored`, no emitio QR y regreso a `HEALTHY` con `active_network` y `/healthz=200`.
+    *   **[Causa del Hueco]:** la API de reinicio de Hugging Face reemplazo el contenedor sin dejar un `SIGTERM` observable en el historial persistido; por eso la restauracion era real pero no existia un intento pendiente que pudiera producir `reconnection_verified`.
+    *   **[Auditoria Autonoma]:** cada snapshot restaurado inicia `remote_auth_restore`. Si ya existe un intento pendiente se conserva; si la plataforma arranco en frio se crea uno nuevo y solo una prueba funcional puede completarlo.
+    *   **[Prueba de Regresion]:** la inspeccion automatizada exige que el evento de restauracion permanezca conectado a `reconnectAudit`, junto con la prueba integral del store remoto.
+*   **Notas/Advertencias:** No cambia autenticacion almacenada, economia, Supabase ni dependencias y no requiere otro QR. El despliegue de este ajuste debe restaurar el mismo snapshot y producir `reconnection_verified` aun si Hugging Face vuelve a omitir `SIGTERM`.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `.env.example`, `README.md`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `src/index.js`, `src/remoteAuth.js`, `src/runtimePaths.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_remote_auth.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Sustituido el perfil `LocalAuth` mutable sobre el bucket de Hugging Face por snapshots `RemoteAuth` versionados y verificables, despues de que una prueba real demostrara que los archivos persistian pero la sesion volvia a QR.
 *   **Cambios Clave:**

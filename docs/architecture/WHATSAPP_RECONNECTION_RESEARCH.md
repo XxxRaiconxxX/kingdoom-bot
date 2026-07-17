@@ -94,6 +94,8 @@ externo, pero un ping no sustituye una garantia contractual de disponibilidad.
 - Cada reinicio automatico crea un intento persistente con inicio, causa y resultado.
 - Los `SIGTERM` de despliegue o reinicio de Hugging Face tambien crean un intento pendiente para
   comprobar la restauracion en el siguiente proceso.
+- Toda restauracion de snapshot crea `remote_auth_restore` si la plataforma reemplazo el proceso
+  sin entregar `SIGTERM`; asi el canal nuevo tambien debe completar una prueba funcional.
 - `reconnection_verified` solo se emite despues de una prueba funcional real.
 - `reconnection_failed_pairing_required` se emite si el intento termina en QR o codigo.
 - `/healthz` responde `200` solo con canal funcional y `503` en cualquier estado visual o incompleto.

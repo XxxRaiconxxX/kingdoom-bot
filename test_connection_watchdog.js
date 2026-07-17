@@ -139,6 +139,10 @@ const clientOptionsSource = sourceBetween('const client = new Client({', "client
 assert.ok(source.includes('new ResilientRemoteAuth({'));
 assert.ok(source.includes('new VersionedFileRemoteAuthStore({'));
 assert.ok(source.includes("WHATSAPP_AUTH_STRATEGY ?? (isHuggingFaceSpace ? 'remote' : 'local')"));
+assert.ok(
+  source.includes("reconnectAudit.start('remote_auth_restore')"),
+  'A restored snapshot must create an auditable reconnection even without SIGTERM.'
+);
 assert.ok(clientOptionsSource.includes('takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT'));
 assert.ok(clientOptionsSource.includes('takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS'));
 
