@@ -5,8 +5,18 @@ Fecha: 2026-07-17
 ## Resultado ejecutivo
 
 El Space no estaba perdiendo todo el disco en cada reinicio: Hugging Face tiene el bucket
-`axel785/kingdoom-whatsapp-state` montado con escritura en `/data`, y `LocalAuth` guarda el
-perfil bajo `/data/kingdoom-bot/.wwebjs_auth`. El problema principal era distinto:
+`axel785/kingdoom-whatsapp-state` montado con escritura en `/data`. Sin embargo, la prueba real
+del 17/07/2026 demostro que eso no vuelve confiable a un perfil Chromium `LocalAuth` vivo:
+
+1. Se vinculo el telefono, el bot alcanzo `HEALTHY`, respondio comandos y `/healthz` devolvio 200.
+2. El marcador de `/data` sobrevivio al siguiente rebuild y reporto `verified_across_restart`.
+3. El proceso nuevo no restauro la sesion y emitio QR de todos modos.
+
+Por tanto, “el volumen persiste” y “la sesion se restaura” son propiedades distintas. El perfil
+mutable de Chromium ya no se ejecuta directamente sobre el bucket. El runtime usa `RemoteAuth`
+con cache efimero y snapshots ZIP versionados en `/data`.
+
+La auditoria inicial tambien encontro que:
 
 1. `ready` y varias sondas estructurales podian terminar mostrando `HEALTHY` sin una prueba
    funcional reciente de la conexion actual.
@@ -17,8 +27,10 @@ perfil bajo `/data/kingdoom-bot/.wwebjs_auth`. El problema principal era distint
 4. El reset de autenticacion borraba toda `.wwebjs_auth`, incluida la carpeta `state` del bot,
    en vez de limitarse al perfil Chromium `session`.
 
-El telefono mostro que no quedaba ningun dispositivo vinculado. En ese estado no existe una
-sesion del servidor que pueda reconectarse: el QR actual es una revinculacion obligatoria.
+Antes del primer escaneo, el telefono mostro que no quedaba ningun dispositivo vinculado. En ese
+estado no existia una sesion del servidor que pudiera reconectarse. La vinculacion posterior sirvio
+para probar `LocalAuth`; su fallo entre rebuilds obliga a un ultimo escaneo para crear el primer
+snapshot remoto.
 
 ## Evidencia y fuentes primarias
 
@@ -39,9 +51,10 @@ sesion del servidor que pueda reconectarse: el QR actual es una revinculacion ob
 - El cliente de `whatsapp-web.js` acepta `CONNECTED`, `OPENING`, `PAIRING` y `TIMEOUT` durante
   cambios de estado; reiniciar inmediatamente en los tres ultimos compite con su recuperacion:
   https://github.com/pedroslopez/whatsapp-web.js/blob/main/src/Client.js
-- `RemoteAuth` espera antes del primer respaldo y su flujo de desconexion elimina la sesion del
-  store. Adoptarlo sin un wrapper y backups versionados agregaria una nueva ventana de perdida:
-  https://github.com/pedroslopez/whatsapp-web.js/blob/main/src/authStrategies/RemoteAuth.js
+- `RemoteAuth` tarda cerca de un minuto en guardar la primera sesion. En la version instalada
+  `1.34.7`, su flujo base de desconexion elimina la sesion remota y la extraccion espera un evento
+  que puede terminar antes de completar todos los archivos; ambos puntos requieren wrapper:
+  https://github.com/wwebjs/whatsapp-web.js/blob/v1.34.7/src/authStrategies/RemoteAuth.js
 - Hay reportes reproducibles donde una sesion autentica pero no vuelve a `ready` despues de
   restaurar un contenedor; archivos presentes no equivalen a canal operativo:
   https://github.com/pedroslopez/whatsapp-web.js/issues/5717
@@ -50,16 +63,16 @@ sesion del servidor que pueda reconectarse: el QR actual es una revinculacion ob
 
 ### Mantener LocalAuth sobre el bucket montado
 
-Es la opcion de menor riesgo inmediato porque conserva el perfil ya usado, no introduce una
-migracion y satisface el requisito de persistencia de `LocalAuth`. Se agrega evidencia entre
-boots y salud funcional estricta para dejar de confundir archivos presentes con sesion activa.
+Descartado despues de la prueba controlada. El marcador y los archivos sobrevivieron al rebuild,
+pero WhatsApp volvio a QR. Continuar ajustando reintentos alrededor del mismo perfil solo ocultaria
+el fallo y produciria nuevas reconexiones visuales sin credenciales restaurables.
 
 ### Migrar ahora a RemoteAuth
 
-No se eligio para este incidente. Requiere una nueva vinculacion, un store implementado y probado,
-backups versionados, control de corrupcion y una proteccion contra el borrado remoto en desconexiones
-transitorias. El beneficio no compensa ese riesgo mientras `/data` ya esta montado de forma
-persistente.
+Opcion seleccionada. El store implementa la interfaz oficial sobre el bucket ya montado, sin una
+base nueva ni dependencias nuevas. Chromium trabaja en `/tmp`; el bucket recibe ZIP inmutables con
+SHA-256, manifiesto atomico y tres versiones. El wrapper conserva el store en desconexiones
+transitorias, lo purga solo ante invalidacion explicita y espera la finalizacion real del extractor.
 
 ### Mover el bot a un VPS con volumen local
 
@@ -87,16 +100,26 @@ externo, pero un ping no sustituye una garantia contractual de disponibilidad.
 - `OPENING`, `PAIRING` y `TIMEOUT` esperan 180 segundos antes de escalar.
 - Un QR activo no provoca reinicios por antiguedad.
 - El marcador de persistencia diferencia ruta configurada de datos comprobados en otro boot.
-- Un reset elimina solo `session`; no borra `state` ni otros datos persistidos del bot.
+- Hugging Face elige `RemoteAuth`; local conserva `LocalAuth` salvo configuracion explicita.
+- El perfil activo vive en `/tmp` y el store en `/data/kingdoom-bot/remote-auth`.
+- Los snapshots se verifican antes de publicar y antes de restaurar; si el ultimo falla SHA-256,
+  se usa una version anterior.
+- El primer snapshot se marca disponible solo despues del guardado real de `RemoteAuth`.
+- Desconexiones transitorias y cierres conservan snapshots; invalidaciones explicitas los purgan.
+- Antes de un reinicio controlado se intenta guardar y luego se cierra Chromium.
+- Un reset remoto no borra `state` ni otros datos persistidos del bot.
 
 ## Criterio de validacion en produccion
 
 Despues del unico escaneo necesario, el cierre exitoso requiere:
 
-1. `connectionHealth=HEALTHY`.
-2. `lastFunctionalProofType` con `active_network`, `inbound_traffic` o `server_ack`.
-3. `/healthz` con HTTP 200.
-4. Ante una desconexion posterior, `lastReconnectResult.outcome=verified` sin QR.
+1. `authStrategyMode=remote`.
+2. `remoteAuthSnapshotAvailable=true` y `reconnectReady=true` despues del primer minuto.
+3. `connectionHealth=HEALTHY`.
+4. `lastFunctionalProofType` con `active_network`, `inbound_traffic` o `server_ack`.
+5. `/healthz` con HTTP 200.
+6. Reinicio controlado del Space sin QR y con `remote_auth_snapshot_restored`.
+7. `lastReconnectResult.outcome=verified` despues de una prueba funcional del proceso restaurado.
 
 Si aparece QR, la reconexion se registra como fallida y no se presenta como recuperacion exitosa.
 

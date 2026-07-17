@@ -31,8 +31,8 @@ function normalizeReconnectRecord(value) {
   };
 }
 
-export function cleanupStaleChromiumLocks(authDataPath) {
-  const sessionPath = path.join(authDataPath, 'session');
+export function cleanupStaleChromiumLocks(authDataPath, sessionDirName = 'session') {
+  const sessionPath = path.join(authDataPath, sessionDirName);
   const removed = [];
 
   for (const fileName of CHROMIUM_LOCK_FILES) {

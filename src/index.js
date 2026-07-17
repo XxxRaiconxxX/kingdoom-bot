@@ -40,6 +40,8 @@ import {
   getAuthDataPath,
   getAuthFilePath,
   getPersistenceMode,
+  getRemoteAuthCachePath,
+  getRemoteAuthStorePath,
   getRuntimeStatusFilePath,
   isAuthPathLikelyPersistent,
 } from './runtimePaths.js';
@@ -58,6 +60,7 @@ import {
   createWhatsappHealthTracker,
   probeWhatsappClient,
 } from './whatsappHealth.js';
+import { ResilientRemoteAuth, VersionedFileRemoteAuthStore } from './remoteAuth.js';
 import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
 
 const { Client, LocalAuth, Message } = pkg;
@@ -142,6 +145,18 @@ const WHATSAPP_TRANSIENT_STATE_GRACE_MS = Math.max(
   60000,
   Number.parseInt(process.env.WHATSAPP_TRANSIENT_STATE_GRACE_MS ?? '180000', 10) || 180000
 );
+const WHATSAPP_REMOTE_AUTH_BACKUP_INTERVAL_MS = Math.max(
+  60000,
+  Number.parseInt(process.env.WHATSAPP_REMOTE_AUTH_BACKUP_INTERVAL_MS ?? '300000', 10) || 300000
+);
+const WHATSAPP_REMOTE_AUTH_BACKUP_TIMEOUT_MS = Math.max(
+  10000,
+  Number.parseInt(process.env.WHATSAPP_REMOTE_AUTH_BACKUP_TIMEOUT_MS ?? '30000', 10) || 30000
+);
+const WHATSAPP_REMOTE_AUTH_KEEP_SNAPSHOTS = Math.max(
+  2,
+  Number.parseInt(process.env.WHATSAPP_REMOTE_AUTH_KEEP_SNAPSHOTS ?? '3', 10) || 3
+);
 const WHATSAPP_RESTART_GRACE_MS = Math.max(
   1000,
   Number.parseInt(process.env.WHATSAPP_RESTART_GRACE_MS ?? '2500', 10) || 2500
@@ -169,16 +184,43 @@ const WHATSAPP_PAIR_INTERVAL_MS = Math.max(
 );
 const RESET_AUTH_ENABLED = String(process.env.RESET_AUTH_ENABLED ?? 'false').trim().toLowerCase() === 'true';
 const RESET_AUTH_TOKEN = String(process.env.RESET_AUTH_TOKEN ?? '').trim();
+const isHuggingFaceSpace = Boolean(
+  process.env.SPACE_ID ||
+  process.env.HF_SPACE_ID ||
+  process.env.SPACE_HOST ||
+  process.env.SPACE_AUTHOR_NAME ||
+  String(process.env.SYSTEM ?? '').trim().toLowerCase() === 'spaces'
+);
+const whatsappAuthStrategyMode = String(
+  process.env.WHATSAPP_AUTH_STRATEGY ?? (isHuggingFaceSpace ? 'remote' : 'local')
+).trim().toLowerCase();
+if (!['local', 'remote'].includes(whatsappAuthStrategyMode)) {
+  throw new Error('WHATSAPP_AUTH_STRATEGY must be local or remote');
+}
 const authDataPath = getAuthDataPath();
 const authSessionPath = getAuthFilePath('session');
 const authPersistenceMarkerPath = getAuthFilePath('.kingdoom-persistence.json');
+const remoteAuthCachePath = getRemoteAuthCachePath();
+const remoteAuthStorePath = getRemoteAuthStorePath();
+const chromiumAuthDataPath = whatsappAuthStrategyMode === 'remote'
+  ? remoteAuthCachePath
+  : authDataPath;
+const chromiumSessionDirName = whatsappAuthStrategyMode === 'remote'
+  ? 'RemoteAuth-kingdoom-bot'
+  : 'session';
 const runtimeStatusFilePath = getRuntimeStatusFilePath();
 const persistenceMode = getPersistenceMode();
-const authPathPersistent = isAuthPathLikelyPersistent();
+const authPathPersistent = isAuthPathLikelyPersistent(
+  whatsappAuthStrategyMode === 'remote' ? remoteAuthStorePath : authDataPath
+);
 const currentBootAt = new Date().toISOString();
 
 ensureDir(authDataPath);
 ensureParentDir(runtimeStatusFilePath);
+if (whatsappAuthStrategyMode === 'remote') {
+  ensureDir(remoteAuthCachePath);
+  ensureDir(remoteAuthStorePath);
+}
 const authPersistenceEvidence = recordPersistenceBoot(authPersistenceMarkerPath, {
   persistent: authPathPersistent,
   currentBootAt,
@@ -187,7 +229,7 @@ if (authPersistenceEvidence.error) {
   console.error('[runtime persistence]', sanitizeLogText(authPersistenceEvidence.error));
 }
 console.log(
-  `[runtime] authDataPath=${authDataPath} persistenceMode=${persistenceMode} persistent=${authPathPersistent} evidence=${authPersistenceEvidence.status}`
+  `[runtime] authStrategy=${whatsappAuthStrategyMode} authDataPath=${authDataPath} persistenceMode=${persistenceMode} persistent=${authPathPersistent} evidence=${authPersistenceEvidence.status}`
 );
 if (!authPathPersistent) {
   console.warn(
@@ -458,19 +500,30 @@ function isPuppeteerDeliveryAmbiguousError(error) {
   return message.includes('Protocol error') && message.includes('Promise was collected');
 }
 
-function isLogoutDisconnectReason(reason) {
-  return String(reason ?? '').trim().toUpperCase() === 'LOGOUT';
+function isInvalidAuthDisconnectReason(reason) {
+  return ['LOGOUT', 'UNPAIRED', 'UNPAIRED_IDLE'].includes(
+    String(reason ?? '').trim().toUpperCase()
+  );
 }
 
-function clearAuthDataPath(reasonLabel) {
+async function clearAuthDataPath(reasonLabel) {
   try {
-    if (!fs.existsSync(authSessionPath)) {
-      return false;
+    let cleared = false;
+    if (whatsappAuthStrategyMode === 'remote') {
+      await authStrategy.purgeRemoteSession();
+      await authStrategy.removeLocalSession();
+      cleared = true;
     }
 
-    fs.rmSync(authSessionPath, { recursive: true, force: true });
-    console.log(`[auth cleanup] Perfil de autenticacion eliminado: ${reasonLabel}`);
-    return true;
+    if (fs.existsSync(authSessionPath)) {
+      fs.rmSync(authSessionPath, { recursive: true, force: true });
+      cleared = true;
+    }
+
+    if (cleared) {
+      console.log(`[auth cleanup] Perfil de autenticacion eliminado: ${reasonLabel}`);
+    }
+    return cleared;
   } catch (error) {
     console.error('[auth cleanup] Error al eliminar carpeta de autenticacion:', error);
     return false;
@@ -605,6 +658,15 @@ const whatsappHealth = createWhatsappHealthTracker({
   initialTelemetry: persistedRuntimeStatus ?? {},
 });
 const reconnectAudit = createReconnectAudit(persistedRuntimeStatus ?? {});
+let remoteAuthStatus = {
+  mode: whatsappAuthStrategyMode,
+  snapshotState: whatsappAuthStrategyMode === 'remote' ? 'checking' : 'not_applicable',
+  snapshotAvailable: false,
+  lastSnapshotAt: persistedRuntimeStatus?.remoteAuthLastSnapshotAt ?? null,
+  lastRestoreAt: null,
+  usedFallback: false,
+  lastError: null,
+};
 const pendingPageInboundSignals = new Map();
 const recentNodeInboundSignals = new Map();
 
@@ -641,6 +703,9 @@ let runtimeStatus = {
 function buildPublicStatus() {
   const health = whatsappHealth.snapshot();
   const reconnect = reconnectAudit.snapshot();
+  const reconnectReady = whatsappAuthStrategyMode === 'remote'
+    ? remoteAuthStatus.snapshotAvailable
+    : authPersistenceEvidence.verifiedAcrossRestart;
   return {
     status: appStatus,
     operational: isWhatsappOperational(),
@@ -681,6 +746,14 @@ function buildPublicStatus() {
     functionalRecoveryAttempts: runtimeStatus.functionalRecoveryAttempts,
     functionalRecoveryWindowStartedAt: runtimeStatus.functionalRecoveryWindowStartedAt,
     ...reconnect,
+    authStrategyMode: whatsappAuthStrategyMode,
+    reconnectReady,
+    remoteAuthSnapshotState: remoteAuthStatus.snapshotState,
+    remoteAuthSnapshotAvailable: remoteAuthStatus.snapshotAvailable,
+    remoteAuthLastSnapshotAt: remoteAuthStatus.lastSnapshotAt,
+    remoteAuthLastRestoreAt: remoteAuthStatus.lastRestoreAt,
+    remoteAuthUsedFallback: remoteAuthStatus.usedFallback,
+    remoteAuthLastError: remoteAuthStatus.lastError,
     authPersistence: authPathPersistent ? 'persistent' : 'ephemeral',
     authPersistenceEvidence: authPersistenceEvidence.status,
     authPersistenceVerifiedAcrossRestart: authPersistenceEvidence.verifiedAcrossRestart,
@@ -746,6 +819,92 @@ function recordVerifiedFunctionalHealth(event, detail, proof) {
   );
 }
 
+function handleRemoteAuthEvent(event, payload = {}) {
+  const at = new Date().toISOString();
+  if (event === 'saved') {
+    const firstSnapshot = !remoteAuthStatus.snapshotAvailable;
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: 'saved',
+      snapshotAvailable: true,
+      lastSnapshotAt: payload.createdAt || at,
+      lastError: null,
+    };
+    if (firstSnapshot) {
+      recordRuntimeEvent(
+        'remote_auth_snapshot_saved',
+        'La sesion fue archivada y verificada en el bucket persistente.',
+        appStatus
+      );
+    } else {
+      persistRuntimeStatus();
+    }
+    return;
+  }
+
+  if (event === 'restored') {
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: payload.usedFallback ? 'restored_fallback' : 'restored',
+      snapshotAvailable: true,
+      lastSnapshotAt: payload.createdAt || remoteAuthStatus.lastSnapshotAt,
+      lastRestoreAt: at,
+      usedFallback: payload.usedFallback === true,
+      lastError: null,
+    };
+    recordRuntimeEvent(
+      payload.usedFallback ? 'remote_auth_snapshot_fallback_restored' : 'remote_auth_snapshot_restored',
+      payload.usedFallback
+        ? 'El snapshot mas reciente fallo su integridad; se restauro una version anterior valida.'
+        : 'La sesion se restauro desde un snapshot verificado del bucket.',
+      appStatus
+    );
+    return;
+  }
+
+  if (event === 'save_failed') {
+    const error = sanitizeLogText(payload.error || 'remote auth snapshot failed');
+    const shouldRecord = remoteAuthStatus.lastError !== error;
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: remoteAuthStatus.snapshotAvailable ? 'save_failed_using_previous' : 'save_failed',
+      lastError: error,
+    };
+    if (shouldRecord) {
+      recordRuntimeEvent(
+        'remote_auth_snapshot_failed',
+        `${error}. El ultimo snapshot valido no se elimina.`,
+        appStatus
+      );
+    } else {
+      persistRuntimeStatus();
+    }
+    return;
+  }
+
+  if (event === 'deleted') {
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: 'deleted',
+      snapshotAvailable: false,
+      lastSnapshotAt: null,
+      lastRestoreAt: null,
+      usedFallback: false,
+      lastError: null,
+    };
+    recordRuntimeEvent(
+      'remote_auth_snapshot_deleted',
+      'La invalidacion explicita elimino los snapshots remotos de autenticacion.',
+      appStatus
+    );
+    return;
+  }
+
+  if (event === 'disconnect_preserved') {
+    console.log('[remote auth] Desconexion transitoria: el ultimo snapshot valido se conserva.');
+  }
+}
+
 function renderStatusMetaHtml() {
   const health = whatsappHealth.snapshot();
   const reconnect = reconnectAudit.snapshot();
@@ -759,11 +918,18 @@ function renderStatusMetaHtml() {
     })
     .join('');
 
-  const storageLabel = !authPathPersistent
-    ? 'Temporal'
-    : authPersistenceEvidence.verifiedAcrossRestart
-      ? 'Persistencia verificada'
-      : 'Persistente; falta otro boot';
+  const storageLabel = whatsappAuthStrategyMode === 'remote'
+    ? remoteAuthStatus.snapshotAvailable
+      ? 'Snapshot verificado'
+      : 'Snapshot pendiente'
+    : !authPathPersistent
+      ? 'Temporal'
+      : authPersistenceEvidence.verifiedAcrossRestart
+        ? 'Persistencia verificada'
+        : 'Persistente; falta otro boot';
+  const storageDetail = whatsappAuthStrategyMode === 'remote'
+    ? `remote / ${remoteAuthStatus.snapshotState}`
+    : authPersistenceEvidence.status;
   const reconnectResult = reconnect.lastReconnectResult;
   const reconnectLabel = reconnect.pendingReconnectAttempt
     ? 'EN CURSO'
@@ -796,7 +962,7 @@ function renderStatusMetaHtml() {
       <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
         <span style="display:block;color:#9696a0;font-size:12px;">Sesion</span>
         <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${storageLabel}</strong>
-        <small style="display:block;color:#9696a0;">${escapeHtml(authPersistenceEvidence.status)}</small>
+        <small style="display:block;color:#9696a0;">${escapeHtml(storageDetail)}</small>
       </div>
       <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
         <span style="display:block;color:#9696a0;font-size:12px;">Reset manual</span>
@@ -1382,6 +1548,9 @@ http.createServer(async (req, res) => {
       connectionHealthReason: status.connectionHealthReason,
       lastFunctionalProofAt: status.lastFunctionalProofAt,
       lastFunctionalProofType: status.lastFunctionalProofType,
+      reconnectReady: status.reconnectReady,
+      remoteAuthSnapshotState: status.remoteAuthSnapshotState,
+      remoteAuthLastSnapshotAt: status.remoteAuthLastSnapshotAt,
       pendingReconnectAttempt: status.pendingReconnectAttempt,
       lastReconnectResult: status.lastReconnectResult,
     }, null, 2)}\n`);
@@ -1609,8 +1778,27 @@ http.createServer(async (req, res) => {
   recordRuntimeEvent('http_listening', `Panel HTTP activo en puerto ${PORT}.`, appStatus);
 });
 
+const remoteAuthStore = whatsappAuthStrategyMode === 'remote'
+  ? new VersionedFileRemoteAuthStore({
+      localDataPath: remoteAuthCachePath,
+      storePath: remoteAuthStorePath,
+      keepSnapshots: WHATSAPP_REMOTE_AUTH_KEEP_SNAPSHOTS,
+      onEvent: handleRemoteAuthEvent,
+    })
+  : null;
+const authStrategy = whatsappAuthStrategyMode === 'remote'
+  ? new ResilientRemoteAuth({
+      clientId: 'kingdoom-bot',
+      dataPath: remoteAuthCachePath,
+      store: remoteAuthStore,
+      backupSyncIntervalMs: WHATSAPP_REMOTE_AUTH_BACKUP_INTERVAL_MS,
+      rmMaxRetries: 10,
+      onEvent: handleRemoteAuthEvent,
+    })
+  : new LocalAuth({ dataPath: authDataPath, rmMaxRetries: 10 });
+
 const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: authDataPath, rmMaxRetries: 10 }),
+  authStrategy,
   authTimeoutMs: WHATSAPP_AUTH_TIMEOUT_MS,
   takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT,
   takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS,
@@ -1643,6 +1831,18 @@ client.on('qr', async (qr) => {
   markWhatsappProgress();
   whatsappClientReady = false;
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.WAITING_QR, 'waiting_for_qr', 'UNPAIRED');
+  if (whatsappAuthStrategyMode === 'remote' && remoteAuthStatus.snapshotAvailable) {
+    await authStrategy.purgeRemoteSession().catch((error) => {
+      handleRemoteAuthEvent('save_failed', { error: formatInitializeError(error) });
+    });
+  }
+  if (whatsappAuthStrategyMode === 'remote') {
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: 'awaiting_link',
+      snapshotAvailable: false,
+    };
+  }
   clearInboundHealthSignals();
   authenticatedEventSeen = false;
   appStatus = 'Esperando escaneo de codigo QR...';
@@ -1669,10 +1869,22 @@ client.on('qr', async (qr) => {
   }
 });
 
-client.on('code', (code) => {
+client.on('code', async (code) => {
   markWhatsappProgress();
   whatsappClientReady = false;
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.WAITING_QR, 'waiting_for_pairing_code', 'UNPAIRED');
+  if (whatsappAuthStrategyMode === 'remote' && remoteAuthStatus.snapshotAvailable) {
+    await authStrategy.purgeRemoteSession().catch((error) => {
+      handleRemoteAuthEvent('save_failed', { error: formatInitializeError(error) });
+    });
+  }
+  if (whatsappAuthStrategyMode === 'remote') {
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: 'awaiting_link',
+      snapshotAvailable: false,
+    };
+  }
   clearInboundHealthSignals();
   authenticatedEventSeen = false;
   latestQrDataUrl = '';
@@ -1762,6 +1974,12 @@ client.on('ready', async () => {
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
   whatsappHealth.markConnected('ready_event');
+  if (whatsappAuthStrategyMode === 'remote' && !remoteAuthStatus.snapshotAvailable) {
+    remoteAuthStatus = {
+      ...remoteAuthStatus,
+      snapshotState: 'awaiting_first_snapshot',
+    };
+  }
   applyWhatsappHealthStatus();
   recordRuntimeEvent(
     'ready',
@@ -1833,6 +2051,11 @@ client.on('ready', async () => {
   }
 });
 
+client.on('remote_session_saved', () => {
+  console.log('[remote auth] Snapshot inicial confirmado por whatsapp-web.js.');
+  persistRuntimeStatus();
+});
+
 client.on('auth_failure', (message) => {
   console.error('[whatsapp auth_failure]', sanitizeLogText(message));
   whatsappClientReady = false;
@@ -1854,7 +2077,7 @@ client.on('auth_failure', (message) => {
 
 client.on('disconnected', (reason) => {
   console.warn('[whatsapp disconnected]', sanitizeLogText(reason));
-  const shouldClearAuth = isLogoutDisconnectReason(reason);
+  const shouldClearAuth = isInvalidAuthDisconnectReason(reason);
   whatsappClientReady = false;
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, 'disconnected', String(reason ?? 'UNKNOWN'));
   clearInboundHealthSignals();
@@ -1873,7 +2096,7 @@ client.on('disconnected', (reason) => {
   latestPairingCodeUpdatedAt = null;
   lastLoadingPercent = null;
   if (shouldClearAuth) {
-    console.warn('[whatsapp disconnected] Motivo LOGOUT detectado; se descartara la sesion persistida antes de reinicializar.');
+    console.warn('[whatsapp disconnected] Invalidacion explicita detectada; se descartara la sesion persistida antes de reinicializar.');
   }
   requestProcessRestart(
     'disconnected_restart',
@@ -2438,7 +2661,10 @@ async function initializeClientWithRetry() {
   initializePromise = (async () => {
     for (let attempt = 1; attempt <= WHATSAPP_INIT_MAX_RETRIES; attempt += 1) {
       try {
-        const removedLocks = cleanupStaleChromiumLocks(authDataPath);
+        const removedLocks = cleanupStaleChromiumLocks(
+          chromiumAuthDataPath,
+          chromiumSessionDirName
+        );
         if (removedLocks.length > 0) {
           console.warn(`[whatsapp init] Locks huerfanos removidos: ${removedLocks.join(', ')}`);
           recordRuntimeEvent(
@@ -2554,6 +2780,37 @@ process.on('uncaughtException', (error) => {
   handleProcessRuntimeError('uncaughtException', 'uncaught_exception_restart', error, false);
 });
 
+async function backupRemoteAuthBeforeShutdown(reason) {
+  if (
+    whatsappAuthStrategyMode !== 'remote' ||
+    !readyBootstrapComplete ||
+    typeof authStrategy?.forceBackup !== 'function'
+  ) {
+    return false;
+  }
+
+  console.log(`[remote auth] Guardando snapshot antes de ${reason}.`);
+  try {
+    const saved = await Promise.race([
+      authStrategy.forceBackup(),
+      sleep(WHATSAPP_REMOTE_AUTH_BACKUP_TIMEOUT_MS).then(() => {
+        throw new Error(`Timeout guardando snapshot tras ${WHATSAPP_REMOTE_AUTH_BACKUP_TIMEOUT_MS}ms`);
+      }),
+    ]);
+    if (!saved && !remoteAuthStatus.snapshotAvailable) {
+      recordRuntimeEvent(
+        'remote_auth_snapshot_not_ready',
+        'El primer snapshot estable aun no estaba disponible; este proceso no se declara reconectable.',
+        appStatus
+      );
+    }
+    return saved;
+  } catch (error) {
+    handleRemoteAuthEvent('save_failed', { error: formatInitializeError(error) });
+    return false;
+  }
+}
+
 async function closeWhatsappBrowser() {
   if (!client?.pupBrowser) return;
 
@@ -2642,9 +2899,12 @@ function requestProcessRestart(event, detail, options = {}) {
         return;
       }
 
+      if (!restartClearAuthRequested) {
+        await backupRemoteAuthBeforeShutdown(event);
+      }
       await closeWhatsappBrowser();
       if (restartClearAuthRequested) {
-        clearAuthDataPath(restartClearAuthEvent || event);
+        await clearAuthDataPath(restartClearAuthEvent || event);
       }
       recordRuntimeEvent(
         'restart_worker_exit',
@@ -2676,6 +2936,7 @@ async function shutdownForSignal(signal) {
     `El contenedor recibio ${signal}; cerrando Chromium antes de salir.`,
     'Cerrando bot de forma segura...'
   );
+  await backupRemoteAuthBeforeShutdown(signal);
   await closeWhatsappBrowser();
   process.exit(0);
 }

@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -48,6 +49,18 @@ export function getAuthDataPath() {
   return path.join(getPersistentRootPath(), '.wwebjs_auth');
 }
 
+export function getRemoteAuthCachePath() {
+  const explicitPath = readEnv(process.env.WHATSAPP_REMOTE_AUTH_CACHE_PATH);
+  if (explicitPath) return path.resolve(explicitPath);
+  return path.join(os.tmpdir(), 'kingdoom-bot-wwebjs-auth');
+}
+
+export function getRemoteAuthStorePath() {
+  const explicitPath = readEnv(process.env.WHATSAPP_REMOTE_AUTH_STORE_PATH);
+  if (explicitPath) return path.resolve(explicitPath);
+  return path.join(getPersistentRootPath(), 'remote-auth');
+}
+
 export function getAuthFilePath(fileName) {
   return path.join(getAuthDataPath(), fileName);
 }
@@ -81,7 +94,7 @@ export function getPersistenceMode() {
   return 'local';
 }
 
-export function isAuthPathLikelyPersistent() {
+export function isAuthPathLikelyPersistent(authPath = getAuthDataPath()) {
   if (!isHuggingFaceRuntime()) {
     return true;
   }
@@ -90,7 +103,7 @@ export function isAuthPathLikelyPersistent() {
     return false;
   }
 
-  const normalizedPath = getAuthDataPath().replace(/\\/g, '/');
+  const normalizedPath = path.resolve(authPath).replace(/\\/g, '/');
   return normalizedPath === '/data' || normalizedPath.startsWith('/data/');
 }
 

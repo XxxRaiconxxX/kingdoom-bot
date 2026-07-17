@@ -22,6 +22,15 @@ const removed = cleanupStaleChromiumLocks(authPath);
 assert.deepEqual(removed.sort(), ['DevToolsActivePort', 'SingletonLock']);
 assert.equal(fs.existsSync(path.join(sessionPath, 'SingletonLock')), false);
 assert.equal(fs.existsSync(path.join(sessionPath, 'Preferences')), true);
+
+const remoteSessionPath = path.join(authPath, 'RemoteAuth-kingdoom-bot');
+fs.mkdirSync(remoteSessionPath, { recursive: true });
+fs.writeFileSync(path.join(remoteSessionPath, 'SingletonSocket'), 'stale');
+assert.deepEqual(
+  cleanupStaleChromiumLocks(authPath, 'RemoteAuth-kingdoom-bot'),
+  ['SingletonSocket']
+);
+assert.equal(fs.existsSync(path.join(remoteSessionPath, 'SingletonSocket')), false);
 assert.equal(calculateReconnectDelayMs(1, 5000, 60000), 5000);
 assert.equal(calculateReconnectDelayMs(4, 5000, 60000), 40000);
 assert.equal(calculateReconnectDelayMs(8, 5000, 60000), 60000);

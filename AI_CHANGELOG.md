@@ -5,6 +5,20 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `.env.example`, `README.md`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `src/index.js`, `src/remoteAuth.js`, `src/runtimePaths.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_remote_auth.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Sustituido el perfil `LocalAuth` mutable sobre el bucket de Hugging Face por snapshots `RemoteAuth` versionados y verificables, despues de que una prueba real demostrara que los archivos persistian pero la sesion volvia a QR.
+*   **Cambios Clave:**
+    *   **[Causa Confirmada]:** la sesion vinculada alcanzo `HEALTHY` y `/healthz=200`; tras el rebuild de `952279e`, el marcador de `/data` sobrevivio pero `LocalAuth` no restauro credenciales y emitio QR. Persistencia de archivos no equivalia a reconexion.
+    *   **[Separacion de Almacenamiento]:** Chromium usa cache efimero en `/tmp`; `/data/kingdoom-bot/remote-auth` recibe unicamente ZIP inmutables mediante la interfaz oficial de `RemoteAuth`.
+    *   **[Integridad y Fallback]:** cada snapshot se copia y verifica con SHA-256 antes de publicar un manifiesto atomico. Se conservan tres versiones y una restauracion descarta la ultima si su hash o tamano no coincide.
+    *   **[Semantica Segura]:** desconexiones transitorias conservan el store; `LOGOUT`, `UNPAIRED`, `UNPAIRED_IDLE`, `auth_failure`, QR posterior a restauracion y reset autorizado lo purgan. Los reinicios controlados actualizan un snapshot ya estable antes de cerrar Chromium.
+    *   **[Sin Falsos Positivos]:** el primer respaldo respeta el minuto de estabilizacion de `RemoteAuth`; un cierre prematuro no publica `reconnectReady=true`. Panel, `/status.json` y `/healthz` separan canal operativo de sesion reconectable.
+    *   **[Carrera de Extraccion]:** el wrapper espera el cierre real de `unzipper` antes de iniciar Chromium, evitando que la restauracion continue en segundo plano con un perfil incompleto.
+    *   **[Prueba de Regresion]:** `test_remote_auth.js` crea ZIP reales, bloquea el snapshot inicial prematuro, conserva la sesion en desconexion, corrompe la version nueva, restaura la anterior y verifica que solo logout elimine el store.
+    *   **[Validacion Local]:** pasaron `node --check` sobre los 31 archivos de `src`, los 14 scripts `test_*.js`, `git diff --check` y `npm run graphify:update`.
+*   **Notas/Advertencias:** No cambia economia, Supabase, dependencias ni `package-lock.json`. El despliegue requiere un ultimo escaneo porque `LocalAuth` no puede convertirse en un snapshot remoto. Despues se debe esperar `remoteAuthSnapshotAvailable=true` y probar un reinicio real sin QR. `cpu-basic` sigue sin ser una garantia 24/7 porque Hugging Face puede suspenderlo por inactividad.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `.env.example`, `README.md`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `src/index.js`, `src/whatsappHealth.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_whatsapp_health.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Auditada la efectividad real de las reconexiones de WhatsApp en Hugging Face y sustituida la salud visual por pruebas funcionales persistentes, con recuperacion compatible con los estados transitorios del cliente.
 *   **Cambios Clave:**

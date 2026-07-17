@@ -136,6 +136,9 @@ for (const [startMarker, endMarker] of [
 }
 
 const clientOptionsSource = sourceBetween('const client = new Client({', "client.on('qr'");
+assert.ok(source.includes('new ResilientRemoteAuth({'));
+assert.ok(source.includes('new VersionedFileRemoteAuthStore({'));
+assert.ok(source.includes("WHATSAPP_AUTH_STRATEGY ?? (isHuggingFaceSpace ? 'remote' : 'local')"));
 assert.ok(clientOptionsSource.includes('takeoverOnConflict: WHATSAPP_TAKEOVER_ON_CONFLICT'));
 assert.ok(clientOptionsSource.includes('takeoverTimeoutMs: WHATSAPP_TAKEOVER_TIMEOUT_MS'));
 
@@ -274,6 +277,12 @@ const shutdownForSignalSource = sourceBetween(
 );
 assert.ok(shutdownForSignalSource.includes("signal === 'SIGTERM'"));
 assert.ok(shutdownForSignalSource.includes("reconnectAudit.start('platform_sigterm_restart')"));
+assert.ok(
+  shutdownForSignalSource.indexOf('backupRemoteAuthBeforeShutdown(signal)') <
+    shutdownForSignalSource.indexOf('closeWhatsappBrowser()'),
+  'A platform restart must snapshot RemoteAuth before closing Chromium.'
+);
+assert.ok(source.includes("['LOGOUT', 'UNPAIRED', 'UNPAIRED_IDLE']"));
 const restartTimers = [];
 const restartEvents = [];
 const clearedAuthEvents = [];
