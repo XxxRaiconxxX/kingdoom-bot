@@ -268,6 +268,12 @@ const requestProcessRestartSource = sourceBetween(
   'function requestProcessRestart(',
   'async function shutdownForSignal('
 );
+const shutdownForSignalSource = sourceBetween(
+  'async function shutdownForSignal(',
+  "process.once('SIGTERM'"
+);
+assert.ok(shutdownForSignalSource.includes("signal === 'SIGTERM'"));
+assert.ok(shutdownForSignalSource.includes("reconnectAudit.start('platform_sigterm_restart')"));
 const restartTimers = [];
 const restartEvents = [];
 const clearedAuthEvents = [];

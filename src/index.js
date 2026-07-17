@@ -2667,6 +2667,9 @@ async function shutdownForSignal(signal) {
   if (shutdownRequested) return;
   shutdownRequested = true;
   whatsappClientReady = false;
+  if (signal === 'SIGTERM') {
+    reconnectAudit.start('platform_sigterm_restart');
+  }
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.STOPPED, signal);
   recordRuntimeEvent(
     'process_shutdown',
