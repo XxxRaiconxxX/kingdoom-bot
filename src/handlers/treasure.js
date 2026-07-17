@@ -108,6 +108,19 @@ function normalizeTreasureReply(value) {
     .replace(/\*/g, '');
 }
 
+export async function waitForTreasureAckBestEffort(client, message) {
+  try {
+    await waitForMessageServerAck(client, message);
+    return true;
+  } catch (error) {
+    console.warn(
+      '[Treasure] ACK no confirmado; el evento persistido seguira disponible:',
+      error?.message ?? error
+    );
+    return false;
+  }
+}
+
 export function buildTreasureClaimFeedback(status, details = {}) {
   const playerName = details.playerName || 'Aventurero';
 
@@ -228,18 +241,23 @@ export async function dropTreasure(client, isClientReady = () => Boolean(client?
       console.log('[Treasure] getChatById fallo; intentando envio directo.');
       message = await client.sendMessage(TARGET_GROUP, text);
     }
-    await waitForMessageServerAck(client, message);
-
+    const messageId = message?.id?._serialized || message?.id?.id;
+    if (!messageId) {
+      throw new Error('WhatsApp no devolvio el ID del mensaje de tesoro.');
+    }
     const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
     const event = await createTreasureEvent({
       chatId: TARGET_GROUP,
-      messageId: message.id._serialized,
+      messageId,
       maxWinners,
       expiresAt,
     });
 
     registerActiveTreasure(event, client, isClientReady);
-    console.log(`[Treasure] Drop persistido. Cupos: ${event.max_winners}`);
+    const ackConfirmed = await waitForTreasureAckBestEffort(client, message);
+    console.log(
+      `[Treasure] Drop persistido. Cupos: ${event.max_winners}. ACK: ${ackConfirmed ? 'confirmado' : 'pendiente'}.`
+    );
     return event;
   } catch (error) {
     console.error('[Treasure Drop Error] Detalle completo:', error.stack || error);

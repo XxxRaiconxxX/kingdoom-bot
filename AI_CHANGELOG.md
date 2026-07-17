@@ -4,6 +4,25 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/treasure.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Eliminado el Tesoro Errante visible pero imposible de reclamar cuando WhatsApp no confirma el ACK del mensaje a tiempo.
+*   **Cambios Clave:**
+    *   **[Persistencia Primero]:** el evento se crea en Supabase y se registra en memoria inmediatamente despues de obtener el ID del mensaje, antes de esperar el ACK del servidor.
+    *   **[ACK Best Effort]:** un rechazo o timeout del ACK queda registrado como advertencia, pero ya no descarta un tesoro que WhatsApp llego a mostrar en el grupo.
+    *   **[Prueba de Regresion]:** la prueba fija el orden persistencia -> ACK y confirma que un ACK rechazado no invalida el evento persistido.
+*   **Notas/Advertencias:** No cambia premios, cupos ni liquidaciones y no requiere migracion Supabase. Si el envio no devuelve ID, el evento no se crea porque no podria relacionarse de forma segura con una respuesta citada.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`; restauracion operativa directa en Supabase.
+*   **Resumen de Tareas:** Reactivado el perfil eliminado de Goran con UUID original `7797b31e-be4d-4101-bbdc-1cbd106d2e07` y el ultimo estado respaldado por registros sobrevivientes.
+*   **Cambios Clave:**
+    *   **[Identidad y Fichas]:** se recreo un unico perfil activo y se reasociaron las dos fichas no recicladas que conservaban su UUID y nombre de usuario.
+    *   **[Rango Recuperable]:** se reconstruyeron el premio historico de 55 puntos, el snapshot `siervo II` y la semilla vigente `siervo III` con 0 puntos.
+    *   **[Economia Segura]:** oro y oro semanal quedaron en 0; no se inventaron inventario, telefono, cuenta web ni actividad que no tuvieran evidencia persistente.
+    *   **[Auditoria]:** la operacion quedo registrada como `profile_restored` en `player_lifecycle_log` y se verifico desde las rutas publica y de servicio.
+*   **Notas/Advertencias:** El perfil ya es visible en la web y resoluble por nombre o prefijo de ID. Para reconocer mensajes entrantes, Goran aun debe vincular su telefono con `!verificar Goran` o mediante `!verificarnumero Goran` por staff. El proceso antiguo de purga destructiva sigue siendo un riesgo separado.
+
 ### [Fecha: 16/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/targetResolver.js`, `src/index.js`, `src/supabase.js`, `src/handlers/treasure.js`, `src/handlers/games.js`, `src/handlers/blackjack.js`, `test_quoted_details.js`, `test_treasure_feedback.js`, `test_economic_settlement_guards.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Corregida la ausencia de respuesta al reclamar el Tesoro Errante y auditadas las rutas equivalentes de Dados, Trampa, Cofre, Blackjack y recuperacion de apuestas.

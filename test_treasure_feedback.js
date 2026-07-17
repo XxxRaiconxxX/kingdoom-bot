@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import 'dotenv/config';
-import { buildTreasureClaimFeedback, handleTreasureReply } from './src/handlers/treasure.js';
+import {
+  buildTreasureClaimFeedback,
+  handleTreasureReply,
+  waitForTreasureAckBestEffort,
+} from './src/handlers/treasure.js';
 
 const statuses = ['ok', 'duplicate', 'credit_pending', 'expired', 'full', 'error', 'unexpected'];
 for (const status of statuses) {
@@ -37,5 +42,43 @@ const closedReply = await handleTreasureReply(
   {}
 );
 assert.match(closedReply, /Tesoro agotado/u);
+
+const treasureSource = fs.readFileSync(
+  new URL('./src/handlers/treasure.js', import.meta.url),
+  'utf8'
+);
+const persistEventIndex = treasureSource.indexOf('const event = await createTreasureEvent');
+const waitForAckIndex = treasureSource.indexOf(
+  'const ackConfirmed = await waitForTreasureAckBestEffort'
+);
+assert.ok(persistEventIndex >= 0, 'El drop debe persistir el evento de tesoro.');
+assert.ok(
+  waitForAckIndex > persistEventIndex,
+  'El tesoro debe persistirse antes de esperar el ACK de WhatsApp.'
+);
+
+const pendingAckMessage = {
+  ack: 0,
+  id: { _serialized: 'treasure-ack-test' },
+};
+const rejectedAckClient = {
+  on(event, handler) {
+    if (event === 'message_ack') {
+      queueMicrotask(() => handler(pendingAckMessage, -1));
+    }
+  },
+  off() {},
+};
+const originalWarn = console.warn;
+console.warn = () => {};
+try {
+  assert.equal(
+    await waitForTreasureAckBestEffort(rejectedAckClient, pendingAckMessage),
+    false,
+    'Un ACK perdido no debe invalidar un tesoro ya persistido.'
+  );
+} finally {
+  console.warn = originalWarn;
+}
 
 console.log('TREASURE_FEEDBACK_OK');
