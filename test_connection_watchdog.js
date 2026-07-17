@@ -69,6 +69,11 @@ assert.equal(
   false,
   'ready alone must not claim a healthy channel.'
 );
+assert.equal(
+  readyHandlerSource.includes('runtimeStatus.restartCount = 0'),
+  false,
+  'ready alone must not count a reconnection as successful.'
+);
 
 const messageHandlerSource = sourceBetween(
   "client.on('message'",
@@ -92,7 +97,13 @@ const watchdogSource = sourceBetween(
 assert.ok(watchdogSource.includes('probeWhatsappClient(client'));
 assert.ok(watchdogSource.includes('getStalePageInboundSignal()'));
 assert.ok(watchdogSource.includes('recoverFunctionalWhatsappHealth(probe)'));
-assert.ok(watchdogSource.includes('hasFreshQr'));
+assert.ok(watchdogSource.includes('hasPairingCredential'));
+assert.ok(watchdogSource.includes('WHATSAPP_TRANSIENT_STATE_GRACE_MS'));
+assert.equal(
+  watchdogSource.includes('Date.parse(latestQrUpdatedAt)'),
+  false,
+  'An active QR must remain stable instead of restarting when its timestamp ages.'
+);
 assert.ok(watchdogSource.includes("'connect_watchdog_restart'"));
 assert.equal(
   watchdogSource.includes("normalizedState === 'CONNECTED'"),
@@ -107,6 +118,7 @@ const operationalSource = sourceBetween(
 assert.ok(operationalSource.includes('whatsappHealth.isHealthy()'));
 assert.ok(source.includes('startScheduler(client, isWhatsappOperational)'));
 assert.ok(source.includes('startAuctionsRealtime(client, isWhatsappOperational)'));
+assert.ok(source.includes("url.pathname === '/healthz'"));
 assert.equal(source.includes("from 'qrcode-terminal'"), false, 'QR credentials must not be printed to logs.');
 assert.equal(
   source.includes('WHATSAPP_RESET_AUTH_ON_LAST_INIT_FAILURE'),
@@ -144,6 +156,22 @@ assert.equal(
   false,
   'Bridge repair must reattach the message listeners instead of repeating full injection.'
 );
+assert.equal(
+  recoverySource.includes("probe?.reason === 'linked_account_not_confirmed'"),
+  false,
+  'A failed network query alone must never erase a potentially valid auth profile.'
+);
+
+const clearAuthSource = sourceBetween(
+  'function clearAuthDataPath(',
+  'function markWhatsappProgress()'
+);
+assert.ok(clearAuthSource.includes('fs.rmSync(authSessionPath'));
+assert.equal(
+  clearAuthSource.includes('fs.rmSync(authDataPath'),
+  false,
+  'Auth reset must preserve unrelated persisted bot state.'
+);
 
 let now = 0;
 const health = createWhatsappHealthTracker({
@@ -157,9 +185,32 @@ assert.equal(health.markConnected().state, WHATSAPP_HEALTH_STATE.CONNECTED_UNVER
 assert.equal(health.isHealthy(), false);
 for (const at of [0, 30_000, 60_000]) {
   now = at;
-  health.recordProbe({ ok: true, socketState: 'CONNECTED', reason: 'probe_ok' });
+  health.recordProbe({
+    ok: true,
+    socketState: 'CONNECTED',
+    reason: 'probe_ok',
+    networkVerified: at === 0,
+  });
 }
 assert.equal(health.isHealthy(), true, 'A stable active-probe window must enable delivery.');
+assert.equal(health.snapshot().lastFunctionalProofType, 'active_network');
+
+const structuralOnlyHealth = createWhatsappHealthTracker({
+  now: () => now,
+  stabilityWindowMs: 60_000,
+  requiredProbeSuccesses: 3,
+  failureLimit: 3,
+});
+structuralOnlyHealth.markConnected();
+for (const at of [90_000, 120_000, 150_000]) {
+  now = at;
+  structuralOnlyHealth.recordProbe({ ok: true, socketState: 'CONNECTED', reason: 'structural_probe_ok' });
+}
+assert.equal(
+  structuralOnlyHealth.isHealthy(),
+  false,
+  'Structural probes without a network, inbound, or ACK proof must never claim HEALTHY.'
+);
 
 now = 90_000;
 assert.equal(
@@ -176,6 +227,11 @@ assert.equal(health.isHealthy(), false, 'One functional failure must pause autom
 now = 95_000;
 assert.equal(health.markInbound().state, WHATSAPP_HEALTH_STATE.HEALTHY);
 assert.equal(health.snapshot().confidence, 'real_traffic');
+
+const ackHealth = createWhatsappHealthTracker({ now: () => now });
+ackHealth.markConnected();
+assert.equal(ackHealth.markOutboundAck().state, WHATSAPP_HEALTH_STATE.HEALTHY);
+assert.equal(ackHealth.snapshot().lastFunctionalProofType, 'server_ack');
 
 for (let attempt = 0; attempt < 3; attempt += 1) {
   now += 1_000;
@@ -232,6 +288,7 @@ const restartContext = {
     markUnavailable() {},
     markConnected: (reason) => restartHealthReasons.push(reason),
   },
+  reconnectAudit: { start() {} },
   clearInboundHealthSignals() {},
   WHATSAPP_HEALTH_STATE,
   runtimeStatus: {

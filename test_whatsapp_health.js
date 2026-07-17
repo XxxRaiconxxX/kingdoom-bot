@@ -61,6 +61,7 @@ const healthyResult = await probeWhatsappClient(healthy.client, {
 });
 assert.equal(healthyResult.ok, true);
 assert.equal(healthyResult.reason, 'active_network_probe_ok');
+assert.equal(healthyResult.networkVerified, true);
 healthy.getBinding()('opaque-message-id');
 assert.deepEqual(signals, ['opaque-message-id']);
 
@@ -92,6 +93,7 @@ const optionalPresenceResult = await probeWhatsappClient(optionalPresence.client
   activeNetworkProbe: false,
 });
 assert.equal(optionalPresenceResult.ok, true);
+assert.equal(optionalPresenceResult.networkVerified, false);
 
 const addListeners = new Set();
 const messageCollection = {

@@ -5,6 +5,20 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `.env.example`, `README.md`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `src/index.js`, `src/whatsappHealth.js`, `src/whatsappRecovery.js`, `test_connection_watchdog.js`, `test_whatsapp_health.js`, `test_whatsapp_recovery.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Auditada la efectividad real de las reconexiones de WhatsApp en Hugging Face y sustituida la salud visual por pruebas funcionales persistentes, con recuperacion compatible con los estados transitorios del cliente.
+*   **Cambios Clave:**
+    *   **[Causa y Estado Real]:** el Space usa un bucket RW montado en `/data`, pero el telefono confirmo que no quedaba ningun dispositivo vinculado. El QR actual es una revinculacion obligatoria; no se reporta como reconexion.
+    *   **[Prueba Funcional Obligatoria]:** `ready`, socket, pagina y listeners solo alcanzan `CONNECTED_UNVERIFIED`. `HEALTHY` requiere `active_network`, `inbound_traffic` o `server_ack` de la conexion actual.
+    *   **[Auditoria de Reconexiones]:** cada reinicio automatico persiste inicio, causa, duracion y resultado. Solo una prueba real produce `reconnection_verified`; terminar en QR produce `reconnection_failed_pairing_required`.
+    *   **[Recuperacion sin Carreras]:** `OPENING`, `PAIRING` y `TIMEOUT` reciben 180 segundos de gracia; un QR activo deja de reiniciar por antiguedad y una consulta de red fallida aislada no borra credenciales.
+    *   **[Persistencia Demostrable]:** un marcador atomico diferencia una ruta configurada de almacenamiento leido en otro boot. El reset elimina solo el perfil `session` y conserva `state` y los demas datos del bot.
+    *   **[Observabilidad]:** `/healthz` devuelve HTTP 200 solo cuando el canal es operativo y 503 ante QR, conexion no verificada o degradacion. El panel y `/status.json` exponen prueba funcional, persistencia y ultimo resultado de reconexion.
+    *   **[Alternativas Evaluadas]:** se conserva `LocalAuth` porque el bucket ya cubre su requisito de filesystem persistente. `RemoteAuth` no se adopta durante el incidente por su ventana inicial de respaldo y el borrado remoto asociado a ciertos flujos de desconexion; VPS o hardware actualizado quedan como opciones de infraestructura.
+    *   **[Validacion]:** `node --check` paso sobre todo `src/`; pasaron los 13 scripts `test_*.js`, `git diff --check` y `npm run graphify:update`.
+*   **Notas/Advertencias:** No cambia economia, Supabase ni dependencias. El telefono no tiene un dispositivo vinculado, por lo que se requiere un unico escaneo del QR despues del despliegue antes de validar `/healthz=200`. El Space actual es `cpu-basic`; Hugging Face lo suspende tras 48 horas sin visitas. Ejecucion 24/7 oficial requiere hardware pago sin sleep o un VPS, decision no aplicada por su costo recurrente.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Corregida la carrera donde una recuperacion ya programada cerraba Chromium aunque el socket hubiera vuelto a `CONNECTED` antes de vencer la espera.
 *   **Cambios Clave:**

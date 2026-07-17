@@ -42,6 +42,10 @@ export function createWhatsappHealthTracker({
   let lastSuccessfulReplyAt = toTimestamp(initialTelemetry.lastSuccessfulReplyAt);
   let lastOutboundAt = toTimestamp(initialTelemetry.lastOutboundAt);
   let lastOutboundAckAt = toTimestamp(initialTelemetry.lastOutboundAckAt);
+  let lastNetworkProofAt = toTimestamp(initialTelemetry.lastNetworkProofAt);
+  let lastFunctionalProofAt = toTimestamp(initialTelemetry.lastFunctionalProofAt);
+  let lastFunctionalProofType = String(initialTelemetry.lastFunctionalProofType ?? '') || null;
+  let connectionProofAt = null;
   let consecutiveProbeSuccesses = 0;
   let consecutiveProbeFailures = 0;
 
@@ -59,6 +63,10 @@ export function createWhatsappHealthTracker({
       lastSuccessfulReplyAt: toIso(lastSuccessfulReplyAt),
       lastOutboundAt: toIso(lastOutboundAt),
       lastOutboundAckAt: toIso(lastOutboundAckAt),
+      lastNetworkProofAt: toIso(lastNetworkProofAt),
+      lastFunctionalProofAt: toIso(lastFunctionalProofAt),
+      lastFunctionalProofType,
+      connectionProofAt: toIso(connectionProofAt),
       consecutiveProbeSuccesses,
       consecutiveProbeFailures,
       requiredProbeSuccesses,
@@ -74,6 +82,7 @@ export function createWhatsappHealthTracker({
     socketState = nextSocketState;
     connectedAt = null;
     healthySince = null;
+    connectionProofAt = null;
     consecutiveProbeSuccesses = 0;
     consecutiveProbeFailures = 0;
     lastProbeError = '';
@@ -83,12 +92,11 @@ export function createWhatsappHealthTracker({
   function markConnected(nextReason = 'ready') {
     const at = now();
     socketState = 'CONNECTED';
-    connectedAt ??= at;
-    if (state !== WHATSAPP_HEALTH_STATE.HEALTHY) {
-      state = WHATSAPP_HEALTH_STATE.CONNECTED_UNVERIFIED;
-      healthySince = null;
-      confidence = 'socket';
-    }
+    connectedAt = at;
+    connectionProofAt = null;
+    state = WHATSAPP_HEALTH_STATE.CONNECTED_UNVERIFIED;
+    healthySince = null;
+    confidence = 'socket';
     reason = nextReason;
     consecutiveProbeSuccesses = 0;
     consecutiveProbeFailures = 0;
@@ -96,7 +104,13 @@ export function createWhatsappHealthTracker({
     return snapshot();
   }
 
-  function recordProbe({ ok, socketState: nextSocketState, reason: nextReason = '', error = '' }) {
+  function recordProbe({
+    ok,
+    socketState: nextSocketState,
+    reason: nextReason = '',
+    error = '',
+    networkVerified = false,
+  }) {
     const at = now();
     lastProbeAt = at;
     socketState = nextSocketState || socketState || 'UNKNOWN';
@@ -106,6 +120,7 @@ export function createWhatsappHealthTracker({
       reason = nextReason || 'functional_probe_failed';
       confidence = 'none';
       healthySince = null;
+      connectionProofAt = null;
       consecutiveProbeSuccesses = 0;
       consecutiveProbeFailures += 1;
       lastProbeError = String(error || nextReason || 'functional probe failed');
@@ -117,7 +132,16 @@ export function createWhatsappHealthTracker({
     consecutiveProbeSuccesses += 1;
     lastProbeError = '';
     reason = nextReason || 'functional_probe_ok';
-    confidence = 'active_probe';
+
+    if (networkVerified) {
+      lastNetworkProofAt = at;
+      lastFunctionalProofAt = at;
+      lastFunctionalProofType = 'active_network';
+      connectionProofAt = at;
+      confidence = 'active_network';
+    } else if (state !== WHATSAPP_HEALTH_STATE.HEALTHY) {
+      confidence = connectionProofAt ? lastFunctionalProofType : 'structural_only';
+    }
 
     if (state !== WHATSAPP_HEALTH_STATE.HEALTHY) {
       state = WHATSAPP_HEALTH_STATE.CONNECTED_UNVERIFIED;
@@ -125,7 +149,8 @@ export function createWhatsappHealthTracker({
 
     if (
       consecutiveProbeSuccesses >= requiredProbeSuccesses &&
-      at - connectedAt >= stabilityWindowMs
+      at - connectedAt >= stabilityWindowMs &&
+      Number.isFinite(connectionProofAt)
     ) {
       state = WHATSAPP_HEALTH_STATE.HEALTHY;
       healthySince ??= at;
@@ -137,6 +162,9 @@ export function createWhatsappHealthTracker({
   function markInbound() {
     const at = now();
     lastInboundAt = at;
+    lastFunctionalProofAt = at;
+    lastFunctionalProofType = 'inbound_traffic';
+    connectionProofAt = at;
     connectedAt ??= at;
     healthySince ??= at;
     state = WHATSAPP_HEALTH_STATE.HEALTHY;
@@ -159,10 +187,26 @@ export function createWhatsappHealthTracker({
     return snapshot();
   }
 
-  function markOutboundAck() {
+  function markOutboundAck({ certifyHealth = true } = {}) {
     const at = now();
     lastOutboundAckAt = at;
     lastSuccessfulReplyAt = at;
+
+    if (certifyHealth) {
+      lastFunctionalProofAt = at;
+      lastFunctionalProofType = 'server_ack';
+      connectionProofAt = at;
+      connectedAt ??= at;
+      healthySince ??= at;
+      state = WHATSAPP_HEALTH_STATE.HEALTHY;
+      reason = 'real_outbound_ack';
+      confidence = 'server_ack';
+      socketState = 'CONNECTED';
+      consecutiveProbeSuccesses = Math.max(consecutiveProbeSuccesses, requiredProbeSuccesses);
+      consecutiveProbeFailures = 0;
+      lastProbeError = '';
+    }
+
     return snapshot();
   }
 
@@ -171,6 +215,7 @@ export function createWhatsappHealthTracker({
     reason = nextReason || 'recovery_budget_exhausted';
     confidence = 'none';
     healthySince = null;
+    connectionProofAt = null;
     return snapshot();
   }
 
@@ -297,6 +342,7 @@ export async function probeWhatsappClient(client, {
       if (!client?.info || !client?.pupPage || client.pupPage.isClosed()) {
         return {
           ok: false,
+          networkVerified: false,
           socketState: 'UNAVAILABLE',
           reason: 'browser_or_client_unavailable',
           error: 'WhatsApp browser or client is unavailable',
@@ -315,6 +361,7 @@ export async function probeWhatsappClient(client, {
       if (socketState !== 'CONNECTED' || page.socketState !== 'CONNECTED' || !structureReady) {
         return {
           ok: false,
+          networkVerified: false,
           socketState,
           reason: !structureReady ? 'message_bridge_unavailable' : `socket_${socketState.toLowerCase()}`,
           error: !structureReady
@@ -336,6 +383,7 @@ export async function probeWhatsappClient(client, {
         if (!ownNumber) {
           return {
             ok: false,
+            networkVerified: false,
             socketState,
             reason: 'linked_account_identity_missing',
             error: 'WhatsApp client has no linked account identity',
@@ -345,6 +393,7 @@ export async function probeWhatsappClient(client, {
         if (!(await client.getNumberId(ownNumber))) {
           return {
             ok: false,
+            networkVerified: false,
             socketState,
             reason: 'linked_account_not_confirmed',
             error: 'WhatsApp active network query did not confirm the linked account',
@@ -355,6 +404,7 @@ export async function probeWhatsappClient(client, {
 
       return {
         ok: true,
+        networkVerified: activeNetworkProbe,
         socketState,
         reason: activeNetworkProbe
           ? 'active_network_probe_ok'
@@ -368,6 +418,7 @@ export async function probeWhatsappClient(client, {
   } catch (error) {
     return {
       ok: false,
+      networkVerified: false,
       socketState: 'CHECK_ERROR',
       reason: 'functional_probe_error',
       error: String(error?.message ?? error),
