@@ -5,6 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Verificacion final en produccion de la reconexion `RemoteAuth` completa entre contenedores de Hugging Face.
+*   **Cambios Clave:**
+    *   **[Restauracion Real]:** `aa2f34f` inicio un proceso nuevo a las `21:59:38Z`, extrajo `remote_auth_snapshot_restored` y no genero QR.
+    *   **[Auditoria Cerrada]:** `remote_auth_restore` termino como `reconnection_verified` mediante `server_ack` en 38 segundos, sin intervencion humana.
+    *   **[Canal Operativo]:** el proceso restaurado alcanzo `HEALTHY`, `reconnectReady=true`, cuatro sondas funcionales y `/healthz=200`.
+*   **Notas/Advertencias:** La persistencia y reconexion quedaron demostradas en vivo. El limite restante no es de sesion: `cpu-basic` puede suspender el proceso por politica de inactividad de Hugging Face, algo que solo resuelve hardware sin sleep o migracion a un host 24/7.
+
+### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Cerrado el ultimo hueco de auditoria detectado durante la primera restauracion real de `RemoteAuth` en Hugging Face.
 *   **Cambios Clave:**

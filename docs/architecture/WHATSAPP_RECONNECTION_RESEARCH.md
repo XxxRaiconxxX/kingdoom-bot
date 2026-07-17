@@ -125,5 +125,13 @@ Despues del unico escaneo necesario, el cierre exitoso requiere:
 
 Si aparece QR, la reconexion se registra como fallida y no se presenta como recuperacion exitosa.
 
+## Resultado de validacion en produccion
+
+El 17/07/2026, el despliegue `aa2f34f` restauro el snapshot creado tras el ultimo QR sin pedir
+una nueva vinculacion. El proceso nuevo registro `remote_auth_snapshot_restored`, creo el intento
+`remote_auth_restore` y lo completo como `reconnection_verified` mediante `server_ack` en 38
+segundos. El cierre mostro `connectionHealth=HEALTHY`, `reconnectReady=true`, cero QR y
+`/healthz` HTTP 200.
+
 La validacion anterior cubre reconexion del cliente dentro de un Space en ejecucion. No convierte
 el hardware gratuito en un servicio 24/7: para eso queda pendiente la decision de CPU Upgrade o VPS.
