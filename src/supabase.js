@@ -1805,8 +1805,8 @@ export async function getTreasureClaims(messageId) {
 }
 
 export async function claimTreasureReward(messageId, playerId, chatId) {
-  // Configurar la recompensa entre 1000 y 20000
-  const rewardGold = Math.floor(Math.random() * (20000 - 1000 + 1)) + 1000;
+  // Configurar la recompensa entre 10000 y 50000
+  const rewardGold = Math.floor(Math.random() * (50000 - 10000 + 1)) + 10000;
 
   // Primero verificar el evento y los ganadores actuales
   const { data: event, error: eventError } = await botStateSupabase

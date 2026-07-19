@@ -5,12 +5,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 19/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/handlers/player.js`, `src/handlers/treasure.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Corrección de la condición de carrera del drop de tesoros y bloqueo de falsas acreditaciones en el chatbot de IA.
+*   **Archivos Modificados:** `src/handlers/player.js`, `src/handlers/treasure.js`, `src/supabase.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Corrección de la condición de carrera del drop de tesoros, bloqueo de falsas acreditaciones en el chatbot de IA y aumento de recompensas.
 *   **Cambios Clave:**
     *   **[Condición de Carrera Resuelta]:** En `src/handlers/treasure.js`, se cambió el flujo para que `registerActiveTreasure` se invoque de manera síncrona inmediatamente después de obtener el `messageId` de WhatsApp, eliminando la ventana de retraso de la llamada asíncrona de base de datos (`createTreasureEvent`) en la cual las respuestas rápidas de los jugadores eran ignoradas.
     *   **[Soporte para Exclamación `!reclamar`]:** Se actualizó `normalizeTreasureReply` para limpiar prefijos de exclamación `!` y espacios de forma transparente, permitiendo que `!reclamar` y `! Reclamar` procesen correctamente la transacción real en la base de datos si citan al mensaje del tesoro.
     *   **[Bloqueo de Alucinaciones en IA]:** Se agregó un guard en `handlePlayerMessage` en `src/handlers/player.js` para que el comando `!reclamar` (cuando no es una réplica al mensaje del tesoro) retorne instrucciones amigables en lugar de caer en el fallback del Heraldo IA y causar alucinaciones de oro fantasmas.
+    *   **[Incremento de Recompensas]:** Se modificó la función `claimTreasureReward` en `src/supabase.js` para aumentar el rango aleatorio de oro otorgado al abrir cofres errantes, pasando de 1,000–20,000 a **10,000–50,000 oro**.
     *   **[Pruebas e Integración]:** Se añadieron pruebas unitarias en `test_treasure_feedback.js` verificando la normalización con y sin prefijos, y la suite pasó limpia.
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
