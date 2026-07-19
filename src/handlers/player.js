@@ -113,6 +113,10 @@ export async function handlePlayerMessage(msg) {
     ], { icon: '🏰' });
   }
 
+  if (command === 'reclamar') {
+    return `⚠️ *El Heraldo te instruye:* Para reclamar un Tesoro Errante, debes mantener presionado o deslizar el mensaje del tesoro, seleccionar *Responder* y escribir únicamente *reclamar* (sin prefijo ni signos).`;
+  }
+
   if (command === 'vinculo') {
     const link = await getLinkStatusByWhatsapp(sender);
     if (!link.linked || !link.player) {

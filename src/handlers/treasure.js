@@ -105,7 +105,9 @@ function normalizeTreasureReply(value) {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\*/g, '');
+    .replace(/\*/g, '')
+    .replace(/^!\s*/, '')
+    .trim();
 }
 
 export async function waitForTreasureAckBestEffort(client, message) {
@@ -246,6 +248,18 @@ export async function dropTreasure(client, isClientReady = () => Boolean(client?
       throw new Error('WhatsApp no devolvio el ID del mensaje de tesoro.');
     }
     const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
+
+    // Register active treasure in memory map immediately to avoid race conditions
+    const tempEvent = {
+      message_id: messageId,
+      chat_id: TARGET_GROUP,
+      max_winners: maxWinners,
+      status: 'open',
+      created_at: new Date().toISOString(),
+      expires_at: expiresAt,
+    };
+    registerActiveTreasure(tempEvent, client, isClientReady);
+
     const event = await createTreasureEvent({
       chatId: TARGET_GROUP,
       messageId,

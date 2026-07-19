@@ -43,6 +43,22 @@ const closedReply = await handleTreasureReply(
 );
 assert.match(closedReply, /Tesoro agotado/u);
 
+const prefixReply = await handleTreasureReply(
+  { from: '595971938097-1618930274@g.us', body: '!reclamar' },
+  { status: 'claimed' },
+  'message-id',
+  {}
+);
+assert.match(prefixReply, /Tesoro agotado/u);
+
+const spacePrefixReply = await handleTreasureReply(
+  { from: '595971938097-1618930274@g.us', body: '! Reclamar' },
+  { status: 'claimed' },
+  'message-id',
+  {}
+);
+assert.match(spacePrefixReply, /Tesoro agotado/u);
+
 const treasureSource = fs.readFileSync(
   new URL('./src/handlers/treasure.js', import.meta.url),
   'utf8'
