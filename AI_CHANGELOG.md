@@ -12,6 +12,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Soporte para Exclamación `!reclamar`]:** Se actualizó `normalizeTreasureReply` para limpiar prefijos de exclamación `!` y espacios de forma transparente, permitiendo que `!reclamar` y `! Reclamar` procesen correctamente la transacción real en la base de datos si citan al mensaje del tesoro.
     *   **[Bloqueo de Alucinaciones en IA]:** Se agregó un guard en `handlePlayerMessage` en `src/handlers/player.js` para que el comando `!reclamar` (cuando no es una réplica al mensaje del tesoro) retorne instrucciones amigables en lugar de caer en el fallback del Heraldo IA y causar alucinaciones de oro fantasmas.
     *   **[Incremento de Recompensas]:** Se modificó la función `claimTreasureReward` en `src/supabase.js` para aumentar el rango aleatorio de oro otorgado al abrir cofres errantes, pasando de 1,000–20,000 a **10,000–50,000 oro**.
+    *   **[Auto-recuperación de Anuncios de Tesoros]:** Modificado `closeTreasure` en `src/handlers/treasure.js` para reprogramar automáticamente el intento de cierre cada 1 minuto en memoria si WhatsApp no está disponible en el instante del timeout, sin alterar el estado en base de datos. Esto evita que los cierres (por expiración o agotamiento) queden "mudos" permanentemente cuando hay microcortes de conexión.
     *   **[Pruebas e Integración]:** Se añadieron pruebas unitarias en `test_treasure_feedback.js` verificando la normalización con y sin prefijos, y la suite pasó limpia.
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]

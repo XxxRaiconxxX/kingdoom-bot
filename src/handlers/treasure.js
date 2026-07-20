@@ -289,6 +289,19 @@ export async function closeTreasure(messageId, client, options = {}) {
   if (cached?.timeoutId) {
     clearTimeout(cached.timeoutId);
   }
+  // Si WhatsApp no esta operativo, reprogramamos el cierre para dentro de 1 minuto
+  // sin actualizar el estado en base de datos para no perder el aviso
+  if (!isClientReady()) {
+    console.log('[Treasure] Canal de WhatsApp no saludable. Re-programando cierre para en 1 minuto.');
+    const retryTimeoutId = setTimeout(() => {
+      void closeTreasure(messageId, client, options);
+    }, 60000);
+    if (cached) {
+      activeTreasures.set(messageId, { ...cached, timeoutId: retryTimeoutId });
+    }
+    return;
+  }
+
   if (reason === 'claimed' && cached) {
     activeTreasures.set(messageId, { ...cached, status: 'closing', timeoutId: null });
   }
@@ -300,11 +313,6 @@ export async function closeTreasure(messageId, client, options = {}) {
       } else if (reason === 'claimed') {
         await closeTreasureEvent(messageId);
       }
-    }
-
-    if (!isClientReady()) {
-      console.log('[Treasure] Canal de WhatsApp no saludable. Omitiendo mensaje de cierre.');
-      return;
     }
 
     const summary = await buildClaimsSummary(messageId);
