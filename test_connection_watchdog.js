@@ -43,6 +43,14 @@ for (const [startMarker, endMarker] of [
   );
 }
 
+const qrHandlerSource = sourceBetween("client.on('qr'", "client.on('code'");
+assert.ok(qrHandlerSource.includes('isFirstQrOfWaitingEpisode'));
+assert.ok(
+  qrHandlerSource.indexOf("recordRuntimeEvent('qr'") <
+    qrHandlerSource.indexOf('persistRuntimeStatus()'),
+  'Only the first QR in a waiting episode should occupy the runtime event history.'
+);
+
 const authenticatedHandlerSource = sourceBetween(
   "client.on('authenticated'",
   "client.on('loading_screen'"
@@ -134,6 +142,14 @@ for (const [startMarker, endMarker] of [
   assert.equal(handlerSource.includes('process.exit('), false);
   assert.equal(handlerSource.includes('requestProcessRestart('), true);
 }
+
+const disconnectedHandlerSource = sourceBetween(
+  "client.on('disconnected'",
+  "client.on('change_state'"
+);
+assert.ok(disconnectedHandlerSource.includes('runtimeStatus.lastDisconnectReason = disconnectReason'));
+assert.ok(disconnectedHandlerSource.includes('runtimeStatus.lastDisconnectAt = new Date().toISOString()'));
+assert.ok(source.includes('lastDisconnectReason: runtimeStatus.lastDisconnectReason'));
 
 const clientOptionsSource = sourceBetween('const client = new Client({', "client.on('qr'");
 assert.ok(source.includes('new ResilientRemoteAuth({'));

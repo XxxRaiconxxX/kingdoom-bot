@@ -312,6 +312,9 @@ export class ResilientRemoteAuth extends RemoteAuth {
 
   async purgeRemoteSession() {
     if (!this.sessionName) return;
+    clearInterval(this.backupSync);
+    this.backupSync = null;
+    if (this.backupInFlight) await this.backupInFlight;
     await this.store.delete({ session: this.sessionName });
   }
 

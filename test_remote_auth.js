@@ -83,7 +83,31 @@ assert.equal(
   'A corrupt latest snapshot must fall back to the previous verified version.'
 );
 
-await restoredAuth.logout();
+const originalSave = store.save.bind(store);
+let releaseSave;
+let reportSaveStarted;
+const saveGate = new Promise((resolve) => {
+  releaseSave = resolve;
+});
+const saveStarted = new Promise((resolve) => {
+  reportSaveStarted = resolve;
+});
+store.save = async (options) => {
+  reportSaveStarted();
+  await saveGate;
+  return originalSave(options);
+};
+
+fs.writeFileSync(
+  path.join(restoredAuth.userDataDir, 'Default', 'Local Storage', 'session-token.txt'),
+  'snapshot-during-logout'
+);
+const inFlightBackup = restoredAuth.safeStoreRemoteSession();
+await saveStarted;
+const logout = restoredAuth.logout();
+await new Promise((resolve) => setImmediate(resolve));
+releaseSave();
+await Promise.all([inFlightBackup, logout]);
 assert.equal(await store.sessionExists({ session: restoredAuth.sessionName }), false);
 assert.equal(fs.existsSync(restoredAuth.userDataDir), false);
 assert.equal(events.some(({ event }) => event === 'deleted'), true);

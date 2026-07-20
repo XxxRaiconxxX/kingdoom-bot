@@ -4,6 +4,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 20/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/remoteAuth.js`, `src/index.js`, `test_remote_auth.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Verificada la nueva solicitud de QR en produccion y corregida la carrera de respaldo detectada durante la invalidacion explicita de WhatsApp.
+*   **Cambios Clave:**
+    *   **[Causa Confirmada]:** Los logs vivos muestran seis reconexiones verificadas antes de que WhatsApp emitiera `LOGOUT` el 20/07. Este evento invalida la vinculacion del servidor; ningun snapshot ni reintento puede reutilizarla y se requiere un QR nuevo.
+    *   **[Carrera Eliminada]:** Un respaldo iniciado antes del `LOGOUT` podia terminar despues del borrado y volver a publicar un snapshot ya invalidado. La purga ahora espera cualquier respaldo en curso y elimina el store al final, garantizando que el borrado sea la ultima operacion.
+    *   **[Diagnostico Persistente]:** El panel y `/status.json` conservan `lastDisconnectReason` y `lastDisconnectAt`, por lo que un `LOGOUT` no desaparece aunque WhatsApp renueve el QR repetidamente.
+    *   **[Historial Util]:** Solo el primer QR de cada episodio ocupa el historial; las renovaciones actualizan la imagen y el estado sin desplazar la causa original.
+    *   **[Pruebas de Regresion]:** `test_remote_auth.js` reproduce un respaldo bloqueado durante logout y exige que no sobreviva ninguna sesion. `test_connection_watchdog.js` protege el diagnostico y la deduplicacion del QR.
+*   **Notas/Advertencias:** El fallo de una notificacion semanal ocurrio inmediatamente antes del `LOGOUT`, pero la cola aplica limites y la evidencia no demuestra causalidad. No se modifico el scheduler. Tras desplegar se necesita un escaneo para crear credenciales nuevas y luego repetir el reinicio controlado.
+
 ### [Fecha: 19/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `src/handlers/treasure.js`, `src/supabase.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Corrección de la condición de carrera del drop de tesoros, bloqueo de falsas acreditaciones en el chatbot de IA y aumento de recompensas.

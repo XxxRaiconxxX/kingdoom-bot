@@ -1,6 +1,6 @@
 # Investigacion de reconexion WhatsApp en Hugging Face
 
-Fecha: 2026-07-17
+Fecha inicial: 2026-07-17. Actualizado: 2026-07-20.
 
 ## Resultado ejecutivo
 
@@ -135,3 +135,31 @@ segundos. El cierre mostro `connectionHealth=HEALTHY`, `reconnectReady=true`, ce
 
 La validacion anterior cubre reconexion del cliente dentro de un Space en ejecucion. No convierte
 el hardware gratuito en un servicio 24/7: para eso queda pendiente la decision de CPU Upgrade o VPS.
+
+## Incidente del 20/07/2026
+
+La consulta de logs del proceso vivo confirmo que el mecanismo no quedo en una recuperacion
+visual: acumulo seis reconexiones verificadas y mantuvo la sesion por mas de dos dias. A las
+`12:01:08Z`, WhatsApp emitio `LOGOUT`; `whatsapp-web.js` transforma ese evento interno en una
+desconexion explicita y ejecuta el cierre de la estrategia de autenticacion. Una credencial
+revocada de este modo no se puede reconstruir desde un snapshot, por lo que el QR mostrado es
+una vinculacion real y necesaria.
+
+Durante esa secuencia aparecio una carrera separada: habia un respaldo en curso cuando se purgo
+el store y ese respaldo termino despues del primer borrado. Otro paso de limpieza alcanzo a
+eliminarlo en este incidente, pero un corte entre ambos podia conservar un snapshot invalido. La
+purga ahora espera `backupInFlight` y borra despues, de modo que una escritura anterior nunca
+pueda resucitar la sesion.
+
+Las renovaciones del mismo QR tambien desplazaban el evento `LOGOUT` del historial limitado. El
+panel conserva desde ahora `lastDisconnectReason` y `lastDisconnectAt`, y registra como evento
+solo el primer QR de cada espera sin dejar de refrescar la imagen.
+
+Una notificacion del scheduler devolvio `WhatsApp send returned no message id` segundos antes del
+`LOGOUT`. La cola habia encolado 30 destinatarios, pero su limitador despacha como maximo seis por
+hora y no hubo una rafaga de 30 envios. La proximidad temporal queda documentada como correlacion,
+no como causa; sin evidencia adicional, retirar ese servicio no corregiria una invalidacion que
+tambien puede originarse del lado de WhatsApp o del telefono.
+
+Fuente del comportamiento `LOGOUT` en la version instalada:
+https://github.com/wwebjs/whatsapp-web.js/blob/v1.34.7/src/Client.js

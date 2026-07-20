@@ -245,6 +245,7 @@ let latestQrUpdatedAt = null;
 let latestPairingCode = '';
 let latestPairingCodeUpdatedAt = null;
 let lastLoadingPercent = null;
+let qrWaitingEpisodeActive = false;
 let appStatus = 'Inicializando servidor...';
 let whatsappClientReady = false;
 let lastWhatsappProgressAt = Date.now();
@@ -698,6 +699,8 @@ let runtimeStatus = {
     Number.parseInt(String(persistedRuntimeStatus?.functionalRecoveryAttempts ?? 0), 10) || 0,
   functionalRecoveryWindowStartedAt:
     persistedRuntimeStatus?.functionalRecoveryWindowStartedAt ?? null,
+  lastDisconnectReason: sanitizeLogText(persistedRuntimeStatus?.lastDisconnectReason ?? ''),
+  lastDisconnectAt: persistedRuntimeStatus?.lastDisconnectAt ?? null,
 };
 
 function buildPublicStatus() {
@@ -717,6 +720,8 @@ function buildPublicStatus() {
     lastEvent: runtimeStatus.lastEvent,
     lastEventAt: runtimeStatus.lastEventAt,
     lastEventDetail: runtimeStatus.lastEventDetail,
+    lastDisconnectReason: runtimeStatus.lastDisconnectReason,
+    lastDisconnectAt: runtimeStatus.lastDisconnectAt,
     recentEvents: runtimeStatus.recentEvents.slice(0, 12),
     restartCount: runtimeStatus.restartCount,
     whatsappState: lastWhatsappState,
@@ -999,6 +1004,11 @@ function renderStatusMetaHtml() {
         <span style="display:block;color:#9696a0;font-size:12px;">Ultima reconexion</span>
         <strong style="display:block;color:${reconnectColor};margin:4px 0 2px;">${reconnectLabel}</strong>
         <small style="display:block;color:#9696a0;">${escapeHtml(reconnectResult?.proof || reconnect.pendingReconnectAttempt?.trigger || `${reconnect.reconnectVerifiedCount}/${reconnect.reconnectAttemptCount} verificadas`)}</small>
+      </div>
+      <div style="background:#161616;border:1px solid #2f2f2f;border-radius:12px;padding:14px;text-align:left;">
+        <span style="display:block;color:#9696a0;font-size:12px;">Ultima desconexion</span>
+        <strong style="display:block;color:#f5f5f7;margin:4px 0 2px;">${escapeHtml(runtimeStatus.lastDisconnectReason || 'Sin registro')}</strong>
+        <small style="display:block;color:#9696a0;">${formatStatusTimestamp(runtimeStatus.lastDisconnectAt)}</small>
       </div>
     </div>
     <div style="margin-top:18px;text-align:left;border-top:1px solid #2a2a2a;padding-top:14px;">
@@ -1829,6 +1839,8 @@ const client = new Client({
 });
 
 client.on('qr', async (qr) => {
+  const isFirstQrOfWaitingEpisode = !qrWaitingEpisodeActive;
+  qrWaitingEpisodeActive = true;
   markWhatsappProgress();
   whatsappClientReady = false;
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.WAITING_QR, 'waiting_for_qr', 'UNPAIRED');
@@ -1861,8 +1873,10 @@ client.on('qr', async (qr) => {
         `La recuperacion ${reconnectResult.trigger} no restauro la sesion y WhatsApp exigio una vinculacion nueva.`,
         appStatus
       );
-    } else {
+    } else if (isFirstQrOfWaitingEpisode) {
       recordRuntimeEvent('qr', 'WhatsApp solicito un nuevo codigo QR.', appStatus);
+    } else {
+      persistRuntimeStatus();
     }
   } catch (err) {
     console.error('Error generating QR DataURL:', err);
@@ -1906,6 +1920,7 @@ client.on('code', async (code) => {
 client.on('authenticated', () => {
   if (readyBootstrapComplete || authenticatedEventSeen) return;
 
+  qrWaitingEpisodeActive = false;
   authenticatedEventSeen = true;
   markWhatsappProgress();
   whatsappClientReady = false;
@@ -1965,6 +1980,7 @@ client.on('ready', async () => {
   }
 
   markWhatsappProgress();
+  qrWaitingEpisodeActive = false;
   whatsappClientReady = true;
   authenticatedEventSeen = true;
   whatsappStateFailureCount = 0;
@@ -2077,8 +2093,11 @@ client.on('auth_failure', (message) => {
 });
 
 client.on('disconnected', (reason) => {
-  console.warn('[whatsapp disconnected]', sanitizeLogText(reason));
+  const disconnectReason = sanitizeLogText(reason ?? 'UNKNOWN');
+  console.warn('[whatsapp disconnected]', disconnectReason);
   const shouldClearAuth = isInvalidAuthDisconnectReason(reason);
+  runtimeStatus.lastDisconnectReason = disconnectReason;
+  runtimeStatus.lastDisconnectAt = new Date().toISOString();
   whatsappClientReady = false;
   whatsappHealth.markUnavailable(WHATSAPP_HEALTH_STATE.CONNECTING, 'disconnected', String(reason ?? 'UNKNOWN'));
   clearInboundHealthSignals();
