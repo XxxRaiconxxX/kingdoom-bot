@@ -141,67 +141,61 @@ export async function handleGroupWelcome(notification, client, config = buildWel
 
   const firstMessage = `🏰 *REINO DE LAS SOMBRAS — KINGDOOM* 🏰
 
-> 📜 *Decreto del Heraldo*
-> 
-> El/La aventurero/a conocido/a como
->         ✦ ${welcomeMentions} ✦
-> ha cruzado oficialmente las puertas de la Taberna y es declarado/a ciudadano/a del Reino de las Sombras.
+▎📜 *Decreto del Heraldo* ▎ ▎El/La aventurero/a conocido/a como ▎ ✦ ✦ ${welcomeMentions} ✦ ▎ha cruzado oficialmente las puertas de la Taberna y es declarado/a ciudadano/a del Reino de las Sombras.
 
 🍺 *LA TABERNA — Tu hogar en el reino*
 
 La Taberna es el corazón del reino. Aquí los aventureros se reúnen, apuestan su oro, sellan tratos y forjan su leyenda.
 
-🎲 *Minijuegos de la Taberna:*
-• 💥 *TavernCrash* — Apuesta antes del crash
-• 🃏 *TavernCards* — Duelos de cartas
-• 🎰 *TavernSlots* — Las ranuras del destino
-• 🪄 *Torre del Mago* — Desafía la suerte
+🎲 *Minijuegos de la Taberna:* 
+• 💥 *TavernCrash* — Apuesta antes del crash 
+• 🃏 *TavernCards* — Duelos de cartas 
+• 🎰 *TavernSlots* — Las ranuras del destino 
+• 🪄 *Torre del Mago* — Desafía la suerte 
 • 🎟️ *Rasca y Gana* — Tu fortuna está oculta
 
 🪙 *EL MERCADO P2P*
 
 Compra, vende e intercambia con otros aventureros del reino en tiempo real. Cada trato sellado es parte de tu historia.
 
-• 🛒 Publica tus objetos
-• 💰 Negocia tu precio
+• 🛒 Publica tus objetos 
+• 💰 Negocia tu precio 
 • 🤝 Cierra el trato
 
 🗺️ *MISIONES Y EVENTOS*
 
 El reino nunca duerme. Cada semana trae nuevos desafíos, clasificaciones y recompensas épicas.
 
-• 🏆 Rankings semanales de oro
-• ⚔️ Eventos especiales del reino
-• 🎁 Recompensas y drops exclusivos
+• 🏆 Rankings semanales de oro 
+• ⚔️ Eventos especiales del reino 
+• 🎁 Recompensas y drops exclusivos 
 • 📯 Avisos importantes en tiempo real
 
 📜 *LAS REGLAS DEL REINO*
 
 Todo aventurero debe respetar el código:
 
-• 🤝 Respeto entre ciudadanos
-• 🚫 Nada de spam ni promociones ajenas
-• ⚖️ Los tratos se honran
-• 🔇 Los conflictos se resuelven en privado
+• 🤝 Respeto entre ciudadanos 
+• 🚫 Nada de spam ni promociones ajenas 
+• ⚖️ Los tratos se honran 
+• 🔇 Los conflictos se resuelven en privado 
 • 👑 La palabra de los Custodios es ley
 
-> ⚠️ *El incumplimiento de las normas puede resultar en destierro permanente.*
+▎⚠️ *El incumplimiento de las normas puede resultar en destierro permanente.*
 
 🔗 *TU PRIMER PASO*
 
+
 Antes de empezar tu aventura, consulta el canal oficial y nuestra web:
 
-📌 *Canal oficial del reino:*
-👉 https://whatsapp.com/channel/0029Vb85e337YSdBx5Swjg0R
+📌 *Canal oficial del reino:* 👉 https://whatsapp.com/channel/0029Vb85e337YSdBx5Swjg0R
 
-📖 *Biblioteca y Guia Web:*
-👉 https://kingdoom-library.vercel.app/
-_¡Entra para leer el lore y usar la guia de inicio oficial!_
+📖 *Biblioteca y Guia Web:* 👉 https://kingdoom-library.vercel.app/ ¡Entra para leer el lore y usar la guia de inicio oficial!
 
 Ahí encontrarás todo lo que necesitas para comenzar tu camino en las sombras.
 
-> 🏰 *¡Bienvenido/a al reino, aventurero/a!*
-> _Que el oro fluya y las sombras te sean favorables._
+
+▎🏰 *¡Bienvenido/a al reino, aventurero/a!* ▎Que el oro fluya y las sombras te sean favorables.
 
 — Los Custodios del Reino de las Sombras —`;
 
