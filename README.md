@@ -11,6 +11,7 @@ pinned: false
 # Kingdoom Bot
 
 Bot de WhatsApp automatizado para el Reino de Kingdoom, alojado en Hugging Face Spaces.
+<!-- Trigger Hugging Face Space Build: 2026-07-21 -->
 
 ## Estructura rapida
 
