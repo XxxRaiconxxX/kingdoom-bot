@@ -6,6 +6,13 @@ Use this file as local guidance for Jules, Codex, Antigravity, and other AI codi
 
 Kingdoom Bot is a WhatsApp bot designed for group gaming economy, minigames, and virtual auctions. It integrates with WhatsApp Web and uses a Supabase database for persistent state and audit logs.
 
+### Kingdoom Ecosystem Repositories:
+- `Kingdoom-sync` (in `Kingdoom` folder): Web portal/dashboard, tavern games, and GM admin sheet.
+- `kingdoom-bot`: WhatsApp bot logic and minigames (this repo).
+- `kingdoom-fichas`: Roleplay character sheets management app.
+- `kingdoom-library`: Codice digital (rules, lore, startup guide, APK distribution).
+- `kingdoom-graphify-ops`: Shared Graphify hooks, rules, templates, and script operations.
+
 ## Repository Architecture
 
 All source files are located in the `src/` directory:
