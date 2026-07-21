@@ -244,7 +244,7 @@ para comenzar tu camino en las sombras.
 
   try {
     await chat.sendMessage(firstMessage, {
-      mentions: joinedContacts,
+      mentions: joinedContacts.map((c) => c.id._serialized),
     });
     
     // Tiny delay of 1.5 seconds so both messages are received in order

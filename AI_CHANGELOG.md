@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 21/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/welcome.js`, `test_welcome.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Auditoría y verificación de la integridad del envío de mensajes de bienvenida.
+*   **Cambios Clave:**
+    *   **[Estabilidad de Mentions]:** Modificado `handleGroupWelcome` en `src/handlers/welcome.js` para pasar un mapeo de cadenas JID (`c.id._serialized`) en lugar de los objetos de contacto completos en la propiedad `mentions`. Esto previene fallos o excepciones en el cliente de `whatsapp-web.js` cuando se utilizan objetos de contacto simulados (mock/fallback) que carecen de la estructura y prototipos reales de la clase `Contact`.
+    *   **[Suite de Pruebas]:** Creado [`test_welcome.js`](file:///C:/Users/CRISMA01/.gemini/antigravity/scratch/kingdoom-bot/test_welcome.js) cubriendo las validaciones de configuración deshabilitada, descarte de grupos filtrados, formato de menciones correctas con JID, y soporte de contingencia si falla `getRecipients()`.
+
 ### [Fecha: 20/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/remoteAuth.js`, `src/index.js`, `test_remote_auth.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Verificada la nueva solicitud de QR en produccion y corregida la carrera de respaldo detectada durante la invalidacion explicita de WhatsApp.
