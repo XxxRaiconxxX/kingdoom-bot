@@ -1558,9 +1558,19 @@ export async function handleAdminCommand(msg, client) {
       targetMsg = msg;
     } else if (msg.hasQuotedMsg) {
       try {
-        const quoted = await msg.getQuotedMessage();
-        if (quoted && quoted.hasMedia) {
-          targetMsg = quoted;
+        const quotedDetails = await safeGetQuotedDetails(msg);
+        if (quotedDetails.id && client && typeof client.getMessageById === 'function') {
+          try {
+            targetMsg = await client.getMessageById(quotedDetails.id);
+          } catch {
+            // fallback
+          }
+        }
+        if (!targetMsg && typeof msg.getQuotedMessage === 'function') {
+          const quoted = await msg.getQuotedMessage();
+          if (quoted && quoted.hasMedia) {
+            targetMsg = quoted;
+          }
         }
       } catch (quotedErr) {
         console.warn('[admin !data] Error al resolver mensaje citado:', quotedErr?.message ?? quotedErr);
@@ -1573,15 +1583,40 @@ export async function handleAdminCommand(msg, client) {
 
     try {
       let media = null;
-      try {
-        media = await targetMsg.downloadMedia();
-      } catch (dlErr) {
-        console.error('[admin data upload downloadMedia]', dlErr);
-        return `❌ No se pudo descargar el archivo adjunto desde WhatsApp. Intenta enviarlo de nuevo.`;
+      let lastDlErr = null;
+      
+      // Intentar hasta 3 veces con pausa y re-fetch
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (typeof targetMsg.downloadMedia === 'function') {
+            media = await targetMsg.downloadMedia();
+            if (media && media.data) break;
+          }
+        } catch (err) {
+          lastDlErr = err;
+          console.warn(`[admin !data] Intento ${attempt} de descarga falló:`, err?.message || err);
+        }
+
+        if (attempt < 3 && client && targetMsg?.id) {
+          const rawId = typeof targetMsg.id === 'string' ? targetMsg.id : targetMsg.id._serialized;
+          if (rawId && typeof client.getMessageById === 'function') {
+            try {
+              const fetched = await client.getMessageById(rawId);
+              if (fetched) targetMsg = fetched;
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 600));
+        }
       }
 
       if (!media || !media.data) {
-        return `❌ El archivo adjunto no contiene datos validos.`;
+        console.error('[admin data upload downloadMedia]', lastDlErr);
+        return `❌ No se pudo descargar el archivo adjunto desde WhatsApp (${lastDlErr?.message || 'sin respuesta de media'}). Intenta enviarlo de nuevo.`;
       }
 
       const mime = String(media.mimetype || '').toLowerCase();
