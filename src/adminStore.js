@@ -16,8 +16,11 @@ export function formatJid(phone) {
 
 export function normalizePhone(phone) {
   let cleaned = String(phone || '')
+    .split(':')[0]
     .replace(/@c\.us$/, '')
     .replace(/@g\.us$/, '')
+    .replace(/@s\.whatsapp\.net$/, '')
+    .replace(/@lid$/, '')
     .replace(/\D/g, '')
     .trim();
 

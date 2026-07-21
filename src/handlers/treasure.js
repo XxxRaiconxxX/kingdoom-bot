@@ -315,13 +315,14 @@ export async function closeTreasure(messageId, client, options = {}) {
       }
     }
 
+    const targetChat = cached?.chatId || TARGET_GROUP;
     const summary = await buildClaimsSummary(messageId);
     let closeMessage = null;
     if (summary) {
-      closeMessage = await client.sendMessage(TARGET_GROUP, summary);
+      closeMessage = await client.sendMessage(targetChat, summary);
     } else if (reason === 'expired') {
       closeMessage = await client.sendMessage(
-        TARGET_GROUP,
+        targetChat,
         '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
       );
     }
@@ -344,7 +345,12 @@ export async function closeTreasure(messageId, client, options = {}) {
 }
 
 export async function handleTreasureReply(msg, treasure, quotedId, client) {
-  if (msg.from !== TARGET_GROUP || !treasure) {
+  if (!treasure) {
+    return null;
+  }
+
+  const targetGroup = treasure.chatId || TARGET_GROUP;
+  if (msg.from !== targetGroup && msg.from !== TARGET_GROUP) {
     return null;
   }
 
@@ -384,7 +390,7 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
   try {
     const result = await runTreasureClaimSerial(
       quotedId,
-      () => claimTreasureReward(quotedId, player.id, TARGET_GROUP)
+      () => claimTreasureReward(quotedId, player.id, targetGroup)
     );
     const status = result?.status ?? 'error';
 

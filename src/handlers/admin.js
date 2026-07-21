@@ -1553,13 +1553,43 @@ export async function handleAdminCommand(msg, client) {
 
   // 12. !data (Knowledge upload)
   if (cmd === '!data') {
-    if (!msg.hasMedia) {
-      return `❌ Debes adjuntar un archivo .txt con el comando *!data [titulo]* para cargarlo a la base de conocimiento.`;
+    let targetMsg = null;
+    if (msg.hasMedia) {
+      targetMsg = msg;
+    } else if (msg.hasQuotedMsg) {
+      try {
+        const quoted = await msg.getQuotedMessage();
+        if (quoted && quoted.hasMedia) {
+          targetMsg = quoted;
+        }
+      } catch (quotedErr) {
+        console.warn('[admin !data] Error al resolver mensaje citado:', quotedErr?.message ?? quotedErr);
+      }
+    }
+
+    if (!targetMsg) {
+      return `❌ Debes adjuntar un archivo .txt (o responder a uno) con el comando *!data [titulo]* para cargarlo a la base de conocimiento.`;
     }
 
     try {
-      const media = await msg.downloadMedia();
-      if (!media || !media.mimetype.includes('text/plain')) {
+      let media = null;
+      try {
+        media = await targetMsg.downloadMedia();
+      } catch (dlErr) {
+        console.error('[admin data upload downloadMedia]', dlErr);
+        return `❌ No se pudo descargar el archivo adjunto desde WhatsApp. Intenta enviarlo de nuevo.`;
+      }
+
+      if (!media || !media.data) {
+        return `❌ El archivo adjunto no contiene datos validos.`;
+      }
+
+      const mime = String(media.mimetype || '').toLowerCase();
+      const filename = String(media.filename || '').toLowerCase();
+      const isTextMime = mime.includes('text/') || mime.includes('octet-stream') || mime.includes('json');
+      const isTxtExt = filename.endsWith('.txt') || filename.endsWith('.log') || filename.endsWith('.json') || filename.endsWith('.md');
+
+      if (!isTextMime && !isTxtExt) {
         return `❌ Solo se permiten archivos de texto plano (.txt).`;
       }
 
@@ -1599,7 +1629,7 @@ export async function handleAdminCommand(msg, client) {
       }
     } catch (err) {
       console.error('[admin data upload]', err);
-      return `❌ Hubo un error al procesar el archivo adjunto.`;
+      return `❌ Hubo un error al procesar el archivo adjunto: ${err?.message || 'Error desconocido'}`;
     }
   }
 
