@@ -9,6 +9,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 *   **Resumen de Tareas:** Auditoría y verificación de la integridad del envío de mensajes de bienvenida.
 *   **Cambios Clave:**
     *   **[Estabilidad de Mentions]:** Modificado `handleGroupWelcome` en `src/handlers/welcome.js` para pasar un mapeo de cadenas JID (`c.id._serialized`) en lugar de los objetos de contacto completos en la propiedad `mentions`. Esto previene fallos o excepciones en el cliente de `whatsapp-web.js` cuando se utilizan objetos de contacto simulados (mock/fallback) que carecen de la estructura y prototipos reales de la clase `Contact`.
+    *   **[Enlace a Biblioteca Web]:** Agregado el enlace a la biblioteca digital oficial (`https://kingdoom-library.vercel.app/`) y un texto de invitación para usar la guía de inicio en el primer mensaje de bienvenida de la Taberna.
     *   **[Suite de Pruebas]:** Creado [`test_welcome.js`](file:///C:/Users/CRISMA01/.gemini/antigravity/scratch/kingdoom-bot/test_welcome.js) cubriendo las validaciones de configuración deshabilitada, descarte de grupos filtrados, formato de menciones correctas con JID, y soporte de contingencia si falla `getRecipients()`.
 
 ### [Fecha: 20/07/2026] - [Autor: Codex]

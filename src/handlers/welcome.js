@@ -212,10 +212,14 @@ destierro permanente del reino.
 ⚔️ ══════════════════════════════ ⚔️
 
 Antes de empezar tu aventura,
-consulta el canal oficial del reino:
+consulta el canal oficial y nuestra web:
 
-📌 Ficha, lore y guía de inicio:
+📌 Canal oficial del reino:
 👉 https://whatsapp.com/channel/0029Vb85e337YSdBx5Swjg0R
+
+📖 Biblioteca y Guia Web:
+👉 https://kingdoom-library.vercel.app/
+_¡Entra para leer el lore y usar la guia de inicio oficial!_
 
 Ahí encontrarás todo lo que necesitas
 para comenzar tu camino en las sombras.
