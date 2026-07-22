@@ -1661,6 +1661,34 @@ export async function handleAdminCommand(msg, client) {
                     filename: msgObj.filename || msgObj.mediaData.filename || 'documento.txt'
                   };
                 }
+
+                // Community patch fallback for WAWebDownloadManager method name variations
+                const dm = window.require('WAWebDownloadManager')?.downloadManager;
+                if (dm) {
+                  const fn = dm.downloadAndMaybeDecrypt || dm.downloadAndDecrypt || dm.downloadMedia;
+                  if (typeof fn === 'function') {
+                    const mockQpl = { addAnnotations: function() { return this; }, addPoint: function() { return this; } };
+                    const decrypted = await fn.call(dm, {
+                      directPath: msgObj.directPath,
+                      encFilehash: msgObj.encFilehash,
+                      filehash: msgObj.filehash,
+                      mediaKey: msgObj.mediaKey,
+                      mediaKeyTimestamp: msgObj.mediaKeyTimestamp,
+                      type: msgObj.type,
+                      mimetype: msgObj.mimetype,
+                      signal: new AbortController().signal,
+                      downloadQpl: mockQpl,
+                    });
+                    if (decrypted) {
+                      const data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
+                      return {
+                        data,
+                        mimetype: msgObj.mimetype || 'text/plain',
+                        filename: msgObj.filename || 'documento.txt'
+                      };
+                    }
+                  }
+                }
               } catch (e) {
                 return { error: String(e?.message || e) };
               }
