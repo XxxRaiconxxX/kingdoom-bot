@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/remoteAuth.js`, `test_remote_auth.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Verificacion postdespliegue de la segunda auditoria y endurecimiento del borrado RemoteAuth frente a una carrera transitoria de Windows.
+*   **Cambios Clave:**
+    *   **[Produccion]:** El Space alcanzo `RUNNING` sobre `d3122660d8a754c080543cebd02b671ca4db012d`; `/healthz` devolvio `ok=true`, `HEALTHY`, prueba activa de red y reconexion RemoteAuth verificada.
+    *   **[Entrega trazable]:** Los logs oficiales no mostraron excepciones no capturadas ni fallos fatales. Dos destinatarios sin LID quedaron cerrados con error explicito y un ACK ambiguo permanece pendiente con ID, intentos y error persistidos en el Supabase dedicado.
+    *   **[Causa raiz]:** La suite real expuso `ENOTEMPTY` dentro de `VersionedFileRemoteAuthStore.delete()` al retirar un snapshot despues de la integracion. El store y el teardown del test ahora usan los reintentos nativos de `fs.rm` para la condicion transitoria de Windows, sin relajar ninguna asercion funcional.
+*   **Validacion:** `REMOTE_AUTH_STRESS_OK=50`; `npm test` 21/21; `npm run test:real` 22/22 en el orden que antes reprodujo la carrera; `REAL_CLEANUP_OK` dejo en cero perfiles, subastas, tesoros, reclamos y premios sinteticos.
+*   **Notas/Advertencias:** Los `No LID` representan destinatarios invalidos y no se reintentan para no bloquear toda la cola. El ACK ambiguo no se marca enviado sin evidencia y queda sujeto a la ventana segura de reconciliacion.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** economia, routing admin, juegos, subastas, persistencia GM, entrega WhatsApp, scheduler, wrappers Supabase, cinco migraciones SQL, runner/pruebas y `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`.
 *   **Resumen de Tareas:** Segunda auditoria integral del bot con pruebas conductuales, integracion real en ambos Supabase, proveedor GM real y verificacion de produccion previa al release.
 *   **Cambios Clave:**

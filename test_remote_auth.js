@@ -112,5 +112,5 @@ assert.equal(await store.sessionExists({ session: restoredAuth.sessionName }), f
 assert.equal(fs.existsSync(restoredAuth.userDataDir), false);
 assert.equal(events.some(({ event }) => event === 'deleted'), true);
 
-fs.rmSync(rootPath, { recursive: true, force: true });
+fs.rmSync(rootPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 console.log('REMOTE_AUTH_OK');

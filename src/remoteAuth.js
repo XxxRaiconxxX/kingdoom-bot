@@ -213,7 +213,12 @@ export class VersionedFileRemoteAuthStore {
   async delete({ session }) {
     return this.runExclusive(async () => {
       const paths = this.getSessionPaths(session);
-      await fsPromises.rm(paths.root, { recursive: true, force: true });
+      await fsPromises.rm(paths.root, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
       this.onEvent('deleted', { session: paths.session });
     });
   }

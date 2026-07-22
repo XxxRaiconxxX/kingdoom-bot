@@ -214,3 +214,21 @@ por eso no se hizo una actualizacion parcial que dejaria build y manifiesto desi
   caida exacta en ese punto todavia puede dejar una entrega ambigua. La persistencia inmediata
   y la espera de 30 minutos reducen el riesgo, pero no pueden crear una transaccion distribuida
   con WhatsApp Web.
+
+## Verificacion postdespliegue
+
+- Hugging Face ejecuto exactamente `d3122660d8a754c080543cebd02b671ca4db012d` en estado
+  `RUNNING`.
+- `/healthz` confirmo `ok=true`, `connectionHealth=HEALTHY`, una prueba de red activa y una
+  restauracion RemoteAuth verificada.
+- Los logs de ejecucion obtenidos con el cliente oficial no contienen `uncaughtException`,
+  `unhandledRejection` ni errores fatales. Registran dos `No LID` y dos timeouts de ACK.
+- La cola dedicada confirma que los `No LID` quedaron cerrados con error y que el ACK ambiguo
+  permanece `sent=false`, con ID, contador de intentos y `WHATSAPP_ACK_TIMEOUT` persistidos.
+- La repeticion real encontro una carrera en el borrado del store: Windows devolvio `ENOTEMPTY`
+  dentro de `VersionedFileRemoteAuthStore.delete()` despues de pasar la integracion. El store
+  y el teardown del test ahora usan `maxRetries`/`retryDelay` nativos; no se cambio ninguna
+  asercion ni la persistencia normal de autenticacion.
+- El cierre corregido paso 50 ciclos RemoteAuth consecutivos, 21 pruebas locales y 22 pruebas
+  con integracion real. La comprobacion independiente termino con cero perfiles, subastas,
+  tesoros, reclamos y premios sinteticos.
