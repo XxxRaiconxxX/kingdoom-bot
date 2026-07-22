@@ -4,14 +4,27 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 22/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/index.js`, `src/handlers/admin.js`, `src/adminStore.js`, `src/handlers/treasure.js`, `test_data_and_treasure.js`, `test_community_patch_validation.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Resolución completa del comando `!data` para carga de documentos `.txt` en grupos con formato LID de WhatsApp Web. Investigación y aplicación de parches comunitarios para el bug global de `downloadMedia()`.
+*   **Cambios Clave:**
+    *   **[Fix de Captions en Documentos — `src/index.js` y `src/handlers/admin.js`]:** WhatsApp Web asigna el texto de comandos en archivos adjuntos a `msg.caption` en lugar de `msg.body`. Se actualizó la extracción global de texto para priorizar `msg.caption` cuando existe, permitiendo que `!data <titulo>` como pie de foto se parsee correctamente.
+    *   **[Pipeline de Descarga de 3 Métodos — `src/handlers/admin.js`]:** Rediseñado el motor de descarga de documentos con 3 estrategias independientes:
+        * **Método A:** Búsqueda por ID en `WAWebCollections.Msg` + polling de `mediaStage` hasta 12s + lectura de `_blob` via `FileReader`.
+        * **Método B (NUEVO):** Descarga directa usando `directPath` + `mediaKey` del `quotedMsg._data` via `WAWebDownloadManager`. Bypasea completamente la búsqueda por ID, resolviendo el problema de mensajes citados sin ID válido en grupos con formato `@lid`.
+        * **Método C:** Fallback al `targetMsg.downloadMedia()` nativo de `whatsapp-web.js`.
+    *   **[Helper `getSerializedId()` — `src/handlers/admin.js`]:** Creado para extraer IDs serializados del nuevo formato LID de WhatsApp Web (`id['$1']`), evitando que Puppeteer reciba un objeto en lugar de un string.
+    *   **[Resolución Sintética de Citas — `src/handlers/admin.js`]:** Cuando `client.getMessageById()` y `getQuotedMessage()` fallan con la excepción minificada `r`, se extraen los datos directamente de `msg._data.quotedMsg` para construir un `targetMsg` sintético con los metadatos de descarga.
+    *   **[Guard de Respuestas del Bot]:** Se agregó filtro para ignorar mensajes citados que sean respuestas de error del propio bot (`❌`, `🛡️`, etc.).
+    *   **[Investigación Comunitaria]:** Investigado el estado actual del bug global de `downloadMedia()` en `whatsapp-web.js` (excepción `r: r`, formato `@lid`, mutación de `WAWebDownloadManager`). Se confirmó que no existe solución oficial; se integró el parche comunitario de inspección dinámica de métodos (`downloadAndMaybeDecrypt || downloadAndDecrypt || downloadMedia`).
+
 ### [Fecha: 21/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/adminStore.js`, `src/handlers/treasure.js`, `src/handlers/admin.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Corrección de fallos en el reclamo de tesoros del Heraldo y mejora del comando !data para la carga de documentos de conocimiento.
+*   **Archivos Modificados:** `src/adminStore.js`, `src/handlers/treasure.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
+*   **Resumen de Tareas:** Corrección de fallos en el reclamo de tesoros del Heraldo y normalización de teléfonos multi-device.
 *   **Cambios Clave:**
     *   **[Normalización de Teléfonos Multi-Device]:** Corregido `normalizePhone` en `src/adminStore.js` para extraer la base JID antes de remover caracteres no numéricos (`.split(':')[0]`). Anteriormente, sufijos como `:12@c.us` generaban teléfonos corruptos (ej. `59598112345612`), provocando el rechazo o fallo en la resolución del jugador al reclamar tesoros o ejecutar comandos.
     *   **[Reclamo de Tesoros Dinámico]:** Actualizados los filtros y lógica de cierre en `src/handlers/treasure.js` para validar `treasure.chatId` en lugar de comparar contra un ID de grupo fijo, asegurando que las respuestas de reclamo y resúmenes de cierre se dirijan siempre al chat correspondiente.
-    *   **[Soporte !data Extendido, Extractor de ID Serializado de Formato LID & Fix de Captions]:** Añadido el helper `getSerializedId()` para extraer la clave de ID serializado en el nuevo formato `@lid` de WhatsApp Web (`id['$1']`). Esto corrigió que Puppeteer recibiera un objeto en lugar de una cadena string al buscar el modelo de mensaje en `WAWebCollections.Msg`. Pasó el 100% de la suite de pruebas unitarias.
-    *   **[Suite de Pruebas]:** Creado [`test_data_and_treasure.js`](file:///C:/Users/CRISMA01/.gemini/antigravity/scratch/kingdoom-bot/test_data_and_treasure.js) para validar unitariamente la normalización multi-device, la respuesta a tesoros y la asimilación de archivos `.txt` vía `!data`.
+    *   **[Suite de Pruebas]:** Creado `test_data_and_treasure.js` para validar unitariamente la normalización multi-device, la respuesta a tesoros y la asimilación de archivos `.txt` vía `!data`.
 
 ### [Fecha: 20/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/remoteAuth.js`, `src/index.js`, `test_remote_auth.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
