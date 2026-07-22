@@ -1585,47 +1585,18 @@ export async function handleAdminCommand(msg, client) {
       }
     }
 
-    // 2. Si el mensaje objetivo tiene media, intentar descarga con reintentos
+    // 2. Si el mensaje objetivo tiene media, descargar el archivo
     if (targetMsg && targetMsg.hasMedia) {
-      let lastDlErr = null;
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          if (typeof targetMsg.downloadMedia === 'function') {
-            media = await targetMsg.downloadMedia();
-            if (media && media.data) break;
-          }
-        } catch (err) {
-          lastDlErr = err;
-          console.warn(`[admin !data] Intento ${attempt} de descarga falló:`, err?.message || err);
-        }
-
-        if (attempt < 3 && client && targetMsg?.id) {
-          const rawId = typeof targetMsg.id === 'string' ? targetMsg.id : targetMsg.id._serialized;
-          if (rawId && typeof client.getMessageById === 'function') {
-            try {
-              const fetched = await client.getMessageById(rawId);
-              if (fetched) targetMsg = fetched;
-            } catch {
-              // ignore
-            }
-          }
-        }
-
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 600));
-        }
-      }
-
-      // Fallback secundario via Puppeteer _blob si downloadMedia() arrojó excepción de desencripción
-      if ((!media || !media.data) && client?.pupPage && targetMsg) {
+      // Método A: Intento directo vía Puppeteer context (evita el bug de FETCHING en whatsapp-web.js)
+      if (client?.pupPage) {
         try {
           const rawId = typeof targetMsg.id === 'string'
             ? targetMsg.id
             : (targetMsg.id?._serialized || targetMsg._data?.id?._serialized || targetMsg._originalMsg?.id?._serialized);
-            
+
           if (rawId) {
-            console.log('[admin !data] Intentando fallback con polling via Puppeteer _blob para ID:', rawId);
-            const puppeteerMedia = await client.pupPage.evaluate(async (msgId) => {
+            console.log('[admin !data] Descargando via Puppeteer con polling de mediaStage para ID:', rawId);
+            const pupResult = await client.pupPage.evaluate(async (msgId) => {
               try {
                 const MsgColl = window.require('WAWebCollections').Msg;
                 let msgObj = MsgColl.get(msgId);
@@ -1635,15 +1606,17 @@ export async function handleAdminCommand(msg, client) {
                 }
                 if (!msgObj) return null;
 
+                // Forzar inicio de descarga si no está resuelto
                 if (msgObj.mediaData?.mediaStage !== 'RESOLVED') {
                   if (typeof msgObj.downloadMedia === 'function') {
                     try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
                   }
+                  // Polling de hasta 12 segundos esperando que el blob cargue
                   const start = Date.now();
-                  while (Date.now() - start < 8000) {
+                  while (Date.now() - start < 12000) {
                     if (msgObj.mediaData?.mediaStage === 'RESOLVED' && msgObj.mediaData?._blob) break;
                     if (String(msgObj.mediaData?.mediaStage || '').includes('ERROR')) break;
-                    await new Promise(r => setTimeout(r, 250));
+                    await new Promise(r => setTimeout(r, 300));
                   }
                 }
 
@@ -1655,14 +1628,16 @@ export async function handleAdminCommand(msg, client) {
                     reader.readAsDataURL(msgObj.mediaData._blob);
                   });
                   const base64Data = String(dataUrl).split(',')[1] || '';
-                  return {
-                    data: base64Data,
-                    mimetype: msgObj.mimetype || msgObj.mediaData.mimetype || 'text/plain',
-                    filename: msgObj.filename || msgObj.mediaData.filename || 'documento.txt'
-                  };
+                  if (base64Data) {
+                    return {
+                      data: base64Data,
+                      mimetype: msgObj.mimetype || msgObj.mediaData.mimetype || 'text/plain',
+                      filename: msgObj.filename || msgObj.mediaData.filename || 'documento.txt'
+                    };
+                  }
                 }
 
-                // Community patch fallback for WAWebDownloadManager method name variations
+                // Fallback a WAWebDownloadManager
                 const dm = window.require('WAWebDownloadManager')?.downloadManager;
                 if (dm) {
                   const fn = dm.downloadAndMaybeDecrypt || dm.downloadAndDecrypt || dm.downloadMedia;
@@ -1695,13 +1670,28 @@ export async function handleAdminCommand(msg, client) {
               return null;
             }, rawId);
 
-            if (puppeteerMedia && puppeteerMedia.data) {
-              media = puppeteerMedia;
-              console.log('[admin !data] Fallback con polling via Puppeteer _blob exitoso!');
+            if (pupResult && pupResult.data) {
+              media = pupResult;
+              console.log('[admin !data] Descarga exitosa vía Puppeteer!');
             }
           }
         } catch (pupErr) {
-          console.warn('[admin !data] Fallback Puppeteer _blob falló:', pupErr?.message || pupErr);
+          console.warn('[admin !data] Error en descarga vía Puppeteer:', pupErr?.message || pupErr);
+        }
+      }
+
+      // Método B: Fallback a targetMsg.downloadMedia() si Puppeteer devolvió null
+      if (!media || !media.data) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            if (typeof targetMsg.downloadMedia === 'function') {
+              media = await targetMsg.downloadMedia();
+              if (media && media.data) break;
+            }
+          } catch (err) {
+            console.warn(`[admin !data] Fallback downloadMedia() intento ${attempt} falló:`, err?.message || err);
+          }
+          if (attempt < 2) await new Promise(r => setTimeout(r, 600));
         }
       }
     }
