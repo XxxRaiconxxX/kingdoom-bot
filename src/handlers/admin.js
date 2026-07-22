@@ -1561,6 +1561,19 @@ export async function handleAdminCommand(msg, client) {
     let media = null;
     let targetMsg = null;
 
+function getSerializedId(idObj) {
+  if (!idObj) return '';
+  if (typeof idObj === 'string') return idObj;
+  if (typeof idObj._serialized === 'string') return idObj._serialized;
+  if (typeof idObj['$1'] === 'string') return idObj['$1'];
+  if (typeof idObj.id === 'string' && typeof idObj.remote === 'string') {
+    const fromMe = Boolean(idObj.fromMe);
+    const participant = idObj.participant ? `_${idObj.participant}` : '';
+    return `${fromMe}_${idObj.remote}_${idObj.id}${participant}`;
+  }
+  return '';
+}
+
     // 1. Identificar mensaje objetivo (directo o citado)
     if (msg.hasMedia) {
       targetMsg = msg;
@@ -1586,7 +1599,7 @@ export async function handleAdminCommand(msg, client) {
         if (!targetMsg) {
           const qData = msg._data?.quotedMsg || msg._originalMsg?._data?.quotedMsg || msg._data?.quotedSticker;
           if (qData) {
-            const qId = typeof qData.id === 'string' ? qData.id : (qData.id?._serialized || qData.id);
+            const qId = getSerializedId(qData.id);
             targetMsg = {
               id: qId,
               hasMedia: Boolean(qData.isMedia || qData.type === 'document' || qData.type === 'image' || qData.directPath || qData.mimetype),
@@ -1611,9 +1624,7 @@ export async function handleAdminCommand(msg, client) {
       // Método A: Intento directo vía Puppeteer context (evita el bug de FETCHING en whatsapp-web.js)
       if (activePupPage) {
         try {
-          const rawId = typeof targetMsg.id === 'string'
-            ? targetMsg.id
-            : (targetMsg.id?._serialized || targetMsg._data?.id?._serialized || targetMsg._originalMsg?.id?._serialized || targetMsg._data?.id);
+          const rawId = getSerializedId(targetMsg.id) || getSerializedId(targetMsg._data?.id) || getSerializedId(targetMsg._originalMsg?.id);
 
           if (rawId) {
             console.log('[admin !data] Descargando via Puppeteer con polling de mediaStage para ID:', rawId);
