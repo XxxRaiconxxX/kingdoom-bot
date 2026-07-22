@@ -28,6 +28,9 @@ Autor: Codex
 - El codigo oficial espera `sendMsgResultPromise` solo con esa opcion y despues recupera el
   mensaje desde la coleccion por su ID generado:
   https://github.com/wwebjs/whatsapp-web.js/blob/v1.34.7/src/util/Injected/Utils.js
+- El evento publico `message_create` incluye tambien los mensajes propios y entrega un objeto
+  `Message`, aunque el retorno directo del envio no pueda reconstruirse:
+  https://docs.wwebjs.dev/Client.html#event:message_create
 - WhatsApp documenta su sintaxis propia de formato; no es Markdown completo:
   https://faq.whatsapp.com/539178204879377
 - El tracker oficial registra limites/rate limiting al resolver muchos LID, por lo que los
@@ -98,12 +101,20 @@ una escritura de tesoro que migrar o reparar en Supabase.
 Correccion:
 
 - Los envios que requieren identidad o ACK usan `waitUntilMsgSent: true` mediante un helper
-  compartido; el alcance cubre tesoros, cola de notificaciones y subastas en tiempo real.
+  compartido; si el retorno sigue sin ID, recuperan el mensaje propio desde `message_create`.
+  El alcance cubre tesoros, cola de notificaciones y subastas en tiempo real.
 - El ID se recupera tambien desde `_data.id`, `$1`, `key.id` y objetos anidados actuales.
 - Las citas comparan el stanza ID aunque WhatsApp entregue un objeto LID en vez de una cadena.
 - Si se cita un anuncio reconocible que ya no corresponde a un evento activo, el bot responde
   explicitamente y no anuncia ni acredita oro.
 - No se agregaron dependencias ni cambios de esquema para esta correccion.
+
+La primera validacion viva del commit `f075d2b` demostro que `waitUntilMsgSent` solo no era
+suficiente: a las 17:34 UTC el Space registro un mensaje saliente y su ACK tres segundos
+despues, mientras `sendMessage()` devolvio `undefined`. El fallback final abre el listener
+antes del envio, exige mensaje propio con cuerpo y tiempo coincidentes, serializa las ventanas
+por cliente y retira el listener al terminar. Asi reutiliza el ID del mensaje realmente enviado
+en vez de reenviar por una falsa ausencia de confirmacion.
 
 ### 4. Game Master
 

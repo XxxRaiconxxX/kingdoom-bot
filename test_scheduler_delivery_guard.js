@@ -30,19 +30,70 @@ assert.equal(
 );
 
 let sendOptions;
-const sendClient = {
-  async sendMessage(_chatId, _content, options) {
-    sendOptions = options;
-    return options.waitUntilMsgSent
-      ? { _data: { id: { _serialized: 'message-result' }, ack: 1 } }
-      : undefined;
-  },
+const sendClient = new EventEmitter();
+sendClient.sendMessage = async (_chatId, content, options) => {
+  sendOptions = options;
+  queueMicrotask(() => {
+    sendClient.emit('message_create', {
+      fromMe: true,
+      to: 'other-group@g.us',
+      body: content,
+      timestamp: Math.floor(Date.now() / 1000),
+      id: { _serialized: 'wrong-chat-message' },
+      ack: 1,
+    });
+    sendClient.emit('message_create', {
+      fromMe: true,
+      to: _chatId,
+      body: content,
+      timestamp: Math.floor(Date.now() / 1000),
+      _data: { id: { _serialized: 'message-result' }, ack: 1 },
+    });
+  });
+  return undefined;
 };
 const sentResult = await sendMessageWithResult(sendClient, 'group@g.us', 'test');
 assert.equal(sentResult.messageId, 'message-result');
+assert.equal(sentResult.source, 'message_create');
 assert.equal(sendOptions.waitUntilMsgSent, true);
+assert.equal(sendClient.listenerCount('message_create'), 0);
 const ackedMessage = await sendMessageWithServerAck(sendClient, 'group@g.us', 'test');
 assert.equal(getWhatsAppMessageId(ackedMessage), 'message-result');
+
+const directResult = await sendMessageWithResult(
+  {
+    async sendMessage() {
+      return { id: { _serialized: 'direct-result' }, ack: 1 };
+    },
+  },
+  'group@g.us',
+  'direct test'
+);
+assert.equal(directResult.messageId, 'direct-result');
+assert.equal(directResult.source, 'send_result');
+
+const ambiguousClient = new EventEmitter();
+ambiguousClient.sendMessage = async (chatId, content) => {
+  queueMicrotask(() => {
+    ambiguousClient.emit('message_create', {
+      fromMe: true,
+      to: chatId,
+      body: content,
+      timestamp: Math.floor(Date.now() / 1000),
+      id: { _serialized: 'ambiguous-result' },
+      ack: 1,
+    });
+  });
+  throw new Error('Evaluation context changed after send');
+};
+const ambiguousResult = await sendMessageWithResult(
+  ambiguousClient,
+  'group@g.us',
+  'ambiguous test'
+);
+assert.equal(ambiguousResult.messageId, 'ambiguous-result');
+assert.equal(ambiguousResult.source, 'message_create');
+assert.equal(ambiguousClient.listenerCount('message_create'), 0);
 
 const client = new EventEmitter();
 client.getMessageById = async () => ({ ack: 0 });

@@ -7,6 +7,8 @@ export const WHATSAPP_DELIVERY_ACK_TIMEOUT_MS = Math.max(
   5_000,
   Number.isFinite(configuredAckTimeoutMs) ? configuredAckTimeoutMs : 20_000
 );
+const MESSAGE_CREATE_RECOVERY_TIMEOUT_MS = 2_000;
+const outboundResultLocks = new WeakMap();
 
 export function getWhatsAppMessageId(value) {
   const seen = new Set();
@@ -44,6 +46,120 @@ export function getWhatsAppMessageId(value) {
 
 function isServerAcknowledged(ack) {
   return Number(ack) >= 1;
+}
+
+function normalizeMessageBody(value) {
+  return String(value ?? '').replace(/\r\n/g, '\n');
+}
+
+function normalizeChatId(value) {
+  const candidate = value?._serialized ?? value?.$1 ?? value?.id?._serialized ?? value?.id ?? value;
+  if (typeof candidate !== 'string' && typeof candidate !== 'number') return '';
+  return String(candidate).trim().replace(/@s\.whatsapp\.net$/i, '@c.us');
+}
+
+function isMatchingOutboundMessage(message, chatId, content, sentAfterSeconds) {
+  const fromMe = message?.fromMe ?? message?.id?.fromMe ?? message?._data?.id?.fromMe;
+  if (fromMe !== true || !getWhatsAppMessageId(message) || typeof content !== 'string') {
+    return false;
+  }
+
+  const expectedChatId = normalizeChatId(chatId);
+  const observedChatId = normalizeChatId(message?.to ?? message?._data?.to);
+  if (expectedChatId && observedChatId && expectedChatId !== observedChatId) {
+    const isGroupMismatch = expectedChatId.endsWith('@g.us') || observedChatId.endsWith('@g.us');
+    const isStableUserMismatch = !expectedChatId.endsWith('@lid') && !observedChatId.endsWith('@lid');
+    if (isGroupMismatch || isStableUserMismatch) return false;
+  }
+
+  const body = message?.body ?? message?._data?.body;
+  if (normalizeMessageBody(body) !== normalizeMessageBody(content)) {
+    return false;
+  }
+
+  const timestamp = Number(message?.timestamp ?? message?._data?.t);
+  return !Number.isFinite(timestamp) || timestamp >= sentAfterSeconds;
+}
+
+async function runWithOutboundResultLock(client, task) {
+  const previous = outboundResultLocks.get(client) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  outboundResultLocks.set(client, current);
+
+  return current.finally(() => {
+    if (outboundResultLocks.get(client) === current) {
+      outboundResultLocks.delete(client);
+    }
+  });
+}
+
+async function sendMessageWithResultUnlocked(client, chatId, content, options) {
+  const sentAfterSeconds = Math.floor(Date.now() / 1000) - 1;
+  let observedMessage = null;
+  let resolveObservedMessage;
+  const observedMessagePromise = new Promise((resolve) => {
+    resolveObservedMessage = resolve;
+  });
+  const onMessageCreate = (candidate) => {
+    if (
+      observedMessage
+      || !isMatchingOutboundMessage(candidate, chatId, content, sentAfterSeconds)
+    ) {
+      return;
+    }
+    observedMessage = candidate;
+    resolveObservedMessage(candidate);
+  };
+
+  client.on?.('message_create', onMessageCreate);
+  try {
+    let message = null;
+    let sendError = null;
+    try {
+      message = await client.sendMessage(chatId, content, {
+        ...options,
+        waitUntilMsgSent: true,
+      });
+    } catch (error) {
+      sendError = error;
+    }
+
+    let messageId = getWhatsAppMessageId(message);
+    if (messageId) {
+      return { message, messageId, source: 'send_result' };
+    }
+
+    if (!observedMessage && typeof client.on === 'function' && typeof content === 'string') {
+      let timeoutId;
+      try {
+        observedMessage = await Promise.race([
+          observedMessagePromise,
+          new Promise((resolve) => {
+            timeoutId = setTimeout(() => resolve(null), MESSAGE_CREATE_RECOVERY_TIMEOUT_MS);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    messageId = getWhatsAppMessageId(observedMessage);
+    if (messageId) {
+      console.warn(
+        `[delivery] ${sendError ? 'sendMessage fallo' : 'sendMessage no devolvio ID'}; `
+        + 'resultado recuperado mediante message_create.'
+      );
+      return { message: observedMessage, messageId, source: 'message_create' };
+    }
+
+    if (sendError) throw sendError;
+
+    const error = new Error('WhatsApp send completed without a recoverable message id');
+    error.code = 'WHATSAPP_MISSING_MESSAGE_ID';
+    throw error;
+  } finally {
+    client.off?.('message_create', onMessageCreate);
+  }
 }
 
 async function getStoredMessageWithTimeout(client, messageId, timeoutMs) {
@@ -118,18 +234,14 @@ export async function waitForMessageServerAck(
 }
 
 export async function sendMessageWithResult(client, chatId, content, options = {}) {
-  const message = await client.sendMessage(chatId, content, {
-    ...options,
-    waitUntilMsgSent: true,
-  });
-  const messageId = getWhatsAppMessageId(message);
-  if (!messageId) {
-    const error = new Error('WhatsApp send completed without a recoverable message id');
-    error.code = 'WHATSAPP_MISSING_MESSAGE_ID';
-    throw error;
+  if (!client || typeof client !== 'object' || typeof client.sendMessage !== 'function') {
+    throw new TypeError('A WhatsApp client with sendMessage is required');
   }
 
-  return { message, messageId };
+  return runWithOutboundResultLock(
+    client,
+    () => sendMessageWithResultUnlocked(client, chatId, content, options)
+  );
 }
 
 export async function sendMessageWithServerAck(

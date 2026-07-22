@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/whatsappDelivery.js`, `test_scheduler_delivery_guard.js`, `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Cerrada la brecha observada al validar en vivo el primer fix: WhatsApp emitia mensaje saliente y ACK, pero `sendMessage()` seguia retornando `undefined` aun con `waitUntilMsgSent`.
+*   **Cambios Clave:**
+    *   **[Evidencia viva]:** En el Space con `f075d2b`, una notificacion marco `lastOutboundAt=17:34:00Z` y `lastOutboundAckAt=17:34:03Z`, pero el scheduler recibio `WhatsApp send completed without a recoverable message id`.
+    *   **[Recuperacion publica]:** El helper escucha temporalmente `message_create`, evento oficial que incluye mensajes propios, y recupera de alli el objeto completo con ID cuando el retorno directo es nulo.
+    *   **[Correlacion segura]:** Solo acepta mensajes `fromMe` con cuerpo y tiempo coincidentes; las ventanas se serializan por cliente y el listener siempre se retira para impedir cruces o fugas.
+    *   **[Sin doble envio deliberado]:** Si el envio lanza una excepcion despues de crear el mensaje, se reutiliza el evento observado en vez de reenviar. El ACK mantiene la decision final de entrega.
+*   **Validacion:** 20/20 scripts `test_*.js` pasan; la regresion reproduce `sendMessage() => undefined`, emite `message_create`, exige recuperacion del ID y verifica limpieza del listener.
+*   **Notas/Advertencias:** `f075d2b` quedo desplegado pero incompleto; este follow-up requiere nuevo despliegue y observacion de la siguiente entrega real.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/whatsappDelivery.js`, `src/targetResolver.js`, `src/handlers/treasure.js`, `src/scheduler.js`, `src/handlers/auctionsRealtime.js`, `src/index.js`, pruebas y documentacion de auditoria.
 *   **Resumen de Tareas:** Corregido el tesoro visible pero no reclamable reportado a las 13:55 y endurecidos los envios que dependen de ID/ACK frente al contrato actual de WhatsApp Web.
 *   **Cambios Clave:**
