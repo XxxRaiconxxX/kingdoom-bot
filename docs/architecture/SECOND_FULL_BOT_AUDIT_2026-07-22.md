@@ -269,15 +269,19 @@ retiro el cierre preventivo `RECIPIENT_NOT_LINKED`: no correspondia a la causa r
 una entrega valida por una diferencia de formato o una carrera de sincronizacion.
 
 El scheduler enviaba siempre a `telefono@c.us`. La version instalada `whatsapp-web.js@1.34.7`
-expone [`Client#getNumberId`](https://docs.wwebjs.dev/Client.html#getNumberId), que consulta el
-ID registrado real y puede devolver un WID canonico distinto o `null`. La cola ahora ejecuta
-esa consulta despues de ganar el lease y antes de enviar:
+expone [`Client#getNumberId`](https://docs.wwebjs.dev/Client.html#getNumberId), que valida el
+numero registrado, y
+[`Client#getContactLidAndPhone`](https://docs.wwebjs.dev/Client.html#getContactLidAndPhone), que
+deriva el par PN/LID actual. El primer reintento vivo usando solo `getNumberId` creo otro ID
+saliente, pero tambien termino en
+`WHATSAPP_ACK_TIMEOUT`; la validacion de registro no sustituia la conversion a LID. La cola
+final ahora ejecuta ambas consultas despues de ganar el lease y antes de enviar:
 
-- usa exactamente el ID canonico devuelto, incluido un LID;
+- prefiere el LID actual; si no existe, usa el PN canonico devuelto;
 - si WhatsApp devuelve `null`, aplica el error permanente ya existente de numero no registrado;
 - si la consulta falla o la API no esta disponible, conserva la fila pendiente y pausa el ciclo;
 - un ID con ACK ambiguo sigue retenido 30 minutos para no duplicar un mensaje posiblemente enviado.
 
-No se agregaron dependencias ni migraciones. La prueba local cubre retorno LID, numero no
-registrado y API ausente; la consulta historica real y las suites completa/integrada permanecen
-como condiciones de cierre.
+No se agregaron dependencias ni migraciones. La prueba local cubre conversion PN a LID,
+fallback al PN, numero no registrado y API ausente; la consulta historica real y las suites
+completa/integrada permanecen como condiciones de cierre.

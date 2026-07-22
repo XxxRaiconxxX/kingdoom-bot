@@ -81,7 +81,14 @@ export async function resolveWhatsAppRecipientId(client, value) {
   }
 
   const registeredId = await withLookupTimeout(Promise.resolve(client.getNumberId(phone)));
-  return serializeWhatsAppId(registeredId);
+  const canonicalId = serializeWhatsAppId(registeredId);
+  if (!canonicalId || typeof client.getContactLidAndPhone !== 'function') return canonicalId;
+
+  const mappings = await withLookupTimeout(
+    Promise.resolve(client.getContactLidAndPhone([canonicalId]))
+  );
+  const mapping = Array.isArray(mappings) ? mappings[0] : mappings;
+  return serializeWhatsAppId(mapping?.lid) || serializeWhatsAppId(mapping?.pn) || canonicalId;
 }
 
 export async function resolveWhatsAppPhone(client, value) {

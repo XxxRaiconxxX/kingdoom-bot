@@ -23,16 +23,28 @@ assert.equal(formatJid('240797811245267@lid'), '240797811245267@lid');
 assert.equal(serializeWhatsAppId({ $1: '240797811245267@lid' }), '240797811245267@lid');
 
 let recipientLookupPhone = '';
+let recipientMappingInput = [];
 assert.equal(
   await resolveWhatsAppRecipientId({
     async getNumberId(number) {
       recipientLookupPhone = number;
-      return { _serialized: '240797811245267@lid' };
+      return { _serialized: '595981111222@c.us' };
+    },
+    async getContactLidAndPhone(ids) {
+      recipientMappingInput = ids;
+      return [{ lid: '240797811245267@lid', pn: '595981111222@c.us' }];
     },
   }, '595981111222'),
   '240797811245267@lid'
 );
 assert.equal(recipientLookupPhone, '595981111222');
+assert.deepEqual(recipientMappingInput, ['595981111222@c.us']);
+assert.equal(
+  await resolveWhatsAppRecipientId({
+    getNumberId: async () => ({ _serialized: '595981111222@c.us' }),
+  }, '595981111222'),
+  '595981111222@c.us'
+);
 assert.equal(
   await resolveWhatsAppRecipientId({ getNumberId: async () => null }, '595981111222'),
   ''
