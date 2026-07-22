@@ -94,7 +94,7 @@ assert.ok(
 );
 assert.ok(
   messageHandlerSource.indexOf('markWhatsappInbound(msg)') <
-    messageHandlerSource.indexOf('safeGetQuotedDetails(msg)'),
+    messageHandlerSource.indexOf('safeGetQuotedDetails(routedMsg)'),
   'Real inbound traffic must certify the channel before command processing.'
 );
 

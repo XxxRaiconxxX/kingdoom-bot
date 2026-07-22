@@ -1,5 +1,6 @@
 import { normalizePhone } from '../adminStore.js';
 import { safeGetQuotedDetails } from '../targetResolver.js';
+import { downloadMessageMedia, resolveMediaMessage } from '../whatsappMedia.js';
 import {
   clearMarketForgeSession,
   getMarketForgeSession,
@@ -35,9 +36,9 @@ async function extractQuotedReference(msg) {
   const quotedUrl = extractFirstUrl(quotedText);
 
   try {
-    const quoted = await msg.getQuotedMessage();
+    const quoted = await resolveMediaMessage(msg, msg.client);
     if (quoted && quoted.hasMedia) {
-      const media = await quoted.downloadMedia().catch(() => null);
+      const media = await downloadMessageMedia(quoted, msg.client);
       if (media && isImageMimeType(media.mimetype)) {
         return {
           url: quotedUrl,
@@ -58,7 +59,7 @@ async function extractReferenceFromMessage(msg) {
   const ownUrl = extractFirstUrl(rawText);
 
   if (msg.hasMedia) {
-    const media = await msg.downloadMedia().catch(() => null);
+    const media = await downloadMessageMedia(msg, msg.client);
     if (media && isImageMimeType(media.mimetype)) {
       return {
         url: ownUrl,

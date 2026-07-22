@@ -2,6 +2,7 @@ import { getPlayer, updateGold, getBlackjackUsage, incrementBlackjackUsage, plac
 import { decorateCommandReply, heraldCard, heraldStat } from '../formatting.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
+import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
 
 // Memory store for active blackjack sessions.
 // Key: botMsgId (quoted message ID)
@@ -403,18 +404,21 @@ export async function handleBlackjack(msg, client) {
 
   // Resolve JID mentions from WhatsApp
   const mentionedIds = msg.mentionedIds || [];
-  for (const jid of mentionedIds) {
-    const phone = normalizePhone(jid);
+  const mentionResolution = await resolveWhatsAppPhones(client, mentionedIds);
+  if (mentionResolution.unresolved.length > 0) {
+    return '❌ WhatsApp no permitió resolver uno de los jugadores mencionados. Vuelve a mencionarlo e intenta otra vez.';
+  }
+  for (const phone of mentionResolution.phones) {
     if (phone === normalizePhone(sender)) continue;
     if (participants.some(p => normalizePhone(p.phone) === phone)) continue;
     
-    const player = await getPlayer(jid);
+    const player = await getPlayer(phone);
     if (!player) {
       return `❌ El jugador con teléfono *${phone}* no está registrado en el reino.`;
     }
     participants.push({
       player,
-      phone: jid,
+      phone,
       isHost: false
     });
   }
@@ -579,7 +583,6 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
     return `✅ Decision registrada para *${playerInSession.username}*: *${action}*.`;
   } else {
     // --- SOLO MODE REPLY FLOW ---
-    const sender = msg.author || msg.from;
     const action = msg.body.trim().toLowerCase();
 
     if (action !== 'pedir' && action !== 'plantarse') {

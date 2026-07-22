@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
 import { getLatestApkUrl } from '../services/apkService.js';
+import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
 const { MessageMedia } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -130,14 +131,19 @@ export async function handleGroupWelcome(notification, client, config = buildWel
     return;
   }
 
-  const welcomeMentions = joinedContacts
-    .map((contact) => {
-      const fallbackName = contact.pushname || contact.name || contact.shortName;
-      if (contact.number) return `@${contact.number}`;
-      if (fallbackName) return fallbackName;
-      return `@aventurero`;
-    })
-    .join(' ');
+  const identityResolution = await resolveWhatsAppPhones(
+    client,
+    joinedContacts.map((contact) => contact.id._serialized)
+  );
+  const phoneById = new Map(identityResolution.resolved.map(({ id, phone }) => [id, phone]));
+  const welcomeLabels = joinedContacts.map((contact) => {
+    const phone = phoneById.get(contact.id._serialized);
+    const fallbackName = contact.pushname || contact.name || contact.shortName;
+    if (phone) return `@${phone}`;
+    if (fallbackName) return fallbackName;
+    return '@aventurero';
+  });
+  const welcomeMentions = welcomeLabels.join(' ');
 
   const firstMessage = `🏰 *REINO DE LAS SOMBRAS — KINGDOOM* 🏰
 

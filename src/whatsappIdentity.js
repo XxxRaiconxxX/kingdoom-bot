@@ -1,0 +1,247 @@
+import { normalizePhone } from './adminStore.js';
+
+const POSITIVE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const NEGATIVE_CACHE_TTL_MS = 60 * 1000;
+const LID_LOOKUP_TIMEOUT_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.WHATSAPP_LID_LOOKUP_TIMEOUT_MS ?? '6000', 10) || 6000
+);
+const LID_BATCH_SIZE = Math.max(
+  1,
+  Math.min(10, Number.parseInt(process.env.WHATSAPP_LID_BATCH_SIZE ?? '5', 10) || 5)
+);
+const phoneByWhatsappId = new Map();
+const pendingResolutions = new Map();
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withLookupTimeout(operation) {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('LID lookup timeout')), LID_LOOKUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export function serializeWhatsAppId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value._serialized === 'string') return value._serialized.trim();
+  if (typeof value.$1 === 'string') return value.$1.trim();
+  if (value.id && value.id !== value) {
+    const nested = serializeWhatsAppId(value.id);
+    if (nested) return nested;
+  }
+  if (typeof value.user === 'string' && typeof value.server === 'string') {
+    return `${value.user}@${value.server}`;
+  }
+  return '';
+}
+
+export function isLidWhatsAppId(value) {
+  return /@lid$/i.test(serializeWhatsAppId(value));
+}
+
+function readCachedPhone(id) {
+  const cached = phoneByWhatsappId.get(id);
+  if (!cached) return undefined;
+  if (cached.expiresAt <= Date.now()) {
+    phoneByWhatsappId.delete(id);
+    return undefined;
+  }
+  return cached.phone;
+}
+
+function cachePhone(id, phone) {
+  phoneByWhatsappId.set(id, {
+    phone,
+    expiresAt: Date.now() + (phone ? POSITIVE_CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS),
+  });
+}
+
+function normalizeResolvedPhone(value) {
+  const serialized = serializeWhatsAppId(value) || String(value ?? '').trim();
+  const phone = normalizePhone(serialized);
+  return /^\d{7,15}$/.test(phone) ? phone : '';
+}
+
+export async function resolveWhatsAppPhone(client, value) {
+  const id = serializeWhatsAppId(value) || String(value ?? '').trim();
+  if (!id) return '';
+
+  if (!isLidWhatsAppId(id)) {
+    return normalizeResolvedPhone(id);
+  }
+
+  const knownAlias = normalizePhone(id);
+  if (knownAlias) return knownAlias;
+
+  const cached = readCachedPhone(id);
+  if (cached !== undefined) return cached;
+
+  if (pendingResolutions.has(id)) {
+    return pendingResolutions.get(id);
+  }
+
+  const resolution = (async () => {
+    if (!client || typeof client.getContactLidAndPhone !== 'function') {
+      return '';
+    }
+
+    try {
+      const mappings = await withLookupTimeout(client.getContactLidAndPhone([id]));
+      const mapping = Array.isArray(mappings) ? mappings[0] : mappings;
+      const phone = normalizeResolvedPhone(mapping?.pn || mapping?.phone);
+      cachePhone(id, phone);
+      return phone;
+    } catch (error) {
+      console.warn(
+        '[whatsappIdentity] No se pudo resolver un LID; se evitara usarlo como telefono:',
+        error?.message ?? error
+      );
+      cachePhone(id, '');
+      return '';
+    }
+  })();
+
+  pendingResolutions.set(id, resolution);
+  try {
+    return await resolution;
+  } finally {
+    pendingResolutions.delete(id);
+  }
+}
+
+export async function resolveContactPhone(client, contact) {
+  const contactId = serializeWhatsAppId(contact?.id || contact);
+
+  if (contactId && !isLidWhatsAppId(contactId)) {
+    const phone = normalizeResolvedPhone(contact?.number || contactId);
+    if (phone) return phone;
+  }
+
+  const explicitPhone = serializeWhatsAppId(contact?.phoneNumber);
+  if (explicitPhone && !isLidWhatsAppId(explicitPhone)) {
+    const phone = normalizeResolvedPhone(explicitPhone);
+    if (phone) return phone;
+  }
+
+  return resolveWhatsAppPhone(client, contactId);
+}
+
+export async function resolveMessageSenderPhone(msg, client = msg?.client) {
+  const senderId = serializeWhatsAppId(msg?.author || msg?.from);
+  if (!senderId) return '';
+  if (!isLidWhatsAppId(senderId)) return normalizeResolvedPhone(senderId);
+
+  const cached = readCachedPhone(senderId);
+  if (cached !== undefined) return cached;
+
+  if (typeof msg?.getContact === 'function') {
+    try {
+      const contact = await msg.getContact();
+      const phone = await resolveContactPhone(client, contact);
+      if (phone) {
+        cachePhone(senderId, phone);
+        return phone;
+      }
+    } catch {
+      // Contact lookup is best effort; the official LID mapper remains the fallback.
+    }
+  }
+
+  return resolveWhatsAppPhone(client, senderId);
+}
+
+export async function resolveWhatsAppPhones(client, values) {
+  const phones = [];
+  const unresolved = [];
+  const resolved = [];
+  const pendingLids = [];
+  const ids = [...new Set((values ?? [])
+    .map((value) => serializeWhatsAppId(value) || String(value ?? '').trim())
+    .filter(Boolean))];
+
+  const record = (id, phone) => {
+    if (!phone) {
+      unresolved.push(id);
+      return;
+    }
+    resolved.push({ id, phone });
+    if (!phones.includes(phone)) phones.push(phone);
+  };
+
+  for (const id of ids) {
+    if (!isLidWhatsAppId(id)) {
+      record(id, normalizeResolvedPhone(id));
+      continue;
+    }
+
+    const knownAlias = normalizePhone(id);
+    if (knownAlias) {
+      record(id, knownAlias);
+      continue;
+    }
+
+    const cached = readCachedPhone(id);
+    if (cached !== undefined) {
+      record(id, cached);
+      continue;
+    }
+
+    if (pendingResolutions.has(id)) {
+      record(id, await pendingResolutions.get(id));
+      continue;
+    }
+
+    pendingLids.push(id);
+  }
+
+  for (let index = 0; index < pendingLids.length; index += LID_BATCH_SIZE) {
+    const batch = pendingLids.slice(index, index + LID_BATCH_SIZE);
+    if (!client || typeof client.getContactLidAndPhone !== 'function') {
+      batch.forEach((id) => record(id, ''));
+      continue;
+    }
+
+    try {
+      const result = await withLookupTimeout(client.getContactLidAndPhone(batch));
+      const mappings = Array.isArray(result) ? result : [];
+      batch.forEach((id, batchIndex) => {
+        const mapping = mappings.find((entry) => serializeWhatsAppId(entry?.lid) === id)
+          || mappings[batchIndex];
+        const phone = normalizeResolvedPhone(mapping?.pn || mapping?.phone);
+        cachePhone(id, phone);
+        record(id, phone);
+      });
+    } catch (error) {
+      console.warn(
+        '[whatsappIdentity] Fallo un lote de resolución LID; se omiten identidades no verificadas:',
+        error?.message ?? error
+      );
+      batch.forEach((id) => {
+        cachePhone(id, '');
+        record(id, '');
+      });
+    }
+
+    if (index + LID_BATCH_SIZE < pendingLids.length) {
+      await wait(150);
+    }
+  }
+
+  return { phones, unresolved, resolved };
+}
+
+export function clearWhatsAppIdentityCache() {
+  phoneByWhatsappId.clear();
+  pendingResolutions.clear();
+}

@@ -62,8 +62,22 @@ import {
 } from './whatsappHealth.js';
 import { ResilientRemoteAuth, VersionedFileRemoteAuthStore } from './remoteAuth.js';
 import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
+import { isLidWhatsAppId, resolveMessageSenderPhone } from './whatsappIdentity.js';
 
 const { Client, LocalAuth, Message } = pkg;
+
+function createMessageView(originalMsg, overrides = {}) {
+  const wrapped = Object.create(originalMsg);
+  for (const [key, value] of Object.entries(overrides)) {
+    Object.defineProperty(wrapped, key, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value,
+    });
+  }
+  return wrapped;
+}
 
 // monkey-patch reply to prevent silent failures with @lid senders or long text
 if (Message && Message.prototype) {
@@ -579,14 +593,19 @@ function buildPlainTextFallback(value) {
     .replace(/\n{3,}/g, '\n\n');
 }
 
-async function sendBotText(msg, text, { preferReply = true, context = 'message' } = {}) {
+async function sendBotText(msg, text, {
+  preferReply = true,
+  context = 'message',
+  mentions = [],
+} = {}) {
   const chunks = splitOutgoingText(text);
 
   for (const [index, chunk] of chunks.entries()) {
     const shouldReply = preferReply && index === 0;
+    const sendOptions = index === 0 && mentions.length > 0 ? { mentions } : {};
     if (shouldReply) {
       try {
-        await msg.reply(chunk);
+        await msg.reply(chunk, undefined, sendOptions);
         continue;
       } catch (replyError) {
         console.warn(`[delivery:${context}] msg.reply fallo; intentando envio directo.`, replyError?.message ?? replyError);
@@ -594,12 +613,12 @@ async function sendBotText(msg, text, { preferReply = true, context = 'message' 
     }
 
     try {
-      await client.sendMessage(msg.from, chunk);
+      await client.sendMessage(msg.from, chunk, sendOptions);
     } catch (directError) {
       const plainText = buildPlainTextFallback(chunk);
       if (plainText !== chunk) {
         console.warn(`[delivery:${context}] envio directo fallo; reintentando como texto plano.`, directError?.message ?? directError);
-        await client.sendMessage(msg.from, plainText);
+        await client.sendMessage(msg.from, plainText, sendOptions);
         continue;
       }
 
@@ -2228,12 +2247,15 @@ client.on('message', async (msg) => {
       ? msg.caption.trim()
       : (typeof msg.body === 'string' ? msg.body.trim() : '')
   );
-  const sender = msg.author || msg.from;
+  const rawSender = msg.author || msg.from;
+  const resolvedSenderPhone = await resolveMessageSenderPhone(msg, client);
+  const sender = resolvedSenderPhone || rawSender;
+  const routedMsg = createMessageView(msg, { author: sender });
 
   // Intercept replies (Blackjack, Tesoros, etc.)
   if (msg.hasQuotedMsg) {
     try {
-      const quotedDetails = await safeGetQuotedDetails(msg);
+      const quotedDetails = await safeGetQuotedDetails(routedMsg);
       if (quotedDetails.hasQuoted && quotedDetails.id) {
         const quotedId = quotedDetails.id;
 
@@ -2246,11 +2268,11 @@ client.on('message', async (msg) => {
           if (session.isMultiplayer) {
             isAllowed = session.players.some(p => p.playerPhone === normalizePhone(sender));
           } else {
-            isAllowed = sender === session.playerPhone;
+            isAllowed = normalizePhone(sender) === normalizePhone(session.playerPhone);
           }
 
           if (isAllowed) {
-            const replyText = await handleBlackjackReply(msg, session, blackjackSessionId, client);
+            const replyText = await handleBlackjackReply(routedMsg, session, blackjackSessionId, client);
             if (replyText) {
               await msg.reply(decorateCommandReply('21', replyText));
             }
@@ -2265,9 +2287,12 @@ client.on('message', async (msg) => {
         const treasureMessageId = findActiveQuotedMessageKey(activeTreasures, quotedId);
         if (treasureMessageId) {
           const treasure = activeTreasures.get(treasureMessageId);
-          const treasureReply = await handleTreasureReply(msg, treasure, treasureMessageId, client);
+          const treasureReply = await handleTreasureReply(routedMsg, treasure, treasureMessageId, client);
           if (treasureReply) {
-            await sendBotText(msg, treasureReply, { context: 'treasure_claim' });
+            await sendBotText(msg, treasureReply, {
+              context: 'treasure_claim',
+              mentions: resolvedSenderPhone ? [formatJid(resolvedSenderPhone)] : [],
+            });
           }
           return;
         }
@@ -2378,12 +2403,16 @@ client.on('message', async (msg) => {
       const resolution = registerGMResponse(trackerResult.instanceId, aiResponse);
       const visibleResponse = responseAssessment.visibleResponse || buildVisibleGMResponse(aiResponse);
       gmVisibleSendAttempted = true;
-      await client.sendMessage(msg.from, visibleResponse);
+      await sendBotText(msg, visibleResponse, {
+        preferReply: false,
+        context: 'gm_narrative',
+      });
 
       if (resolution.autoClosed && resolution.missionState) {
-        await client.sendMessage(
-          msg.from,
-          `*Resultado registrado:* la mision *${trackerResult.shortId}* queda marcada como *${resolution.missionState.resultado}*.`
+        await sendBotText(
+          msg,
+          `*Resultado registrado:* la mision *${trackerResult.shortId}* queda marcada como *${resolution.missionState.resultado}*.`,
+          { preferReply: false, context: 'gm_resolution' }
         );
       }
     } catch (err) {
@@ -2402,6 +2431,14 @@ client.on('message', async (msg) => {
   const commandLabel = hasPrefix && command ? `!${command}` : '(sin comando)';
   const chatScope = isDirectChat ? 'direct' : 'group';
   let slowMessageTimer = null;
+
+  if (hasPrefix && isLidWhatsAppId(rawSender) && !resolvedSenderPhone) {
+    await sendBotText(msg, heraldCard('Identidad no resuelta', [
+      'WhatsApp entregó un identificador privado que no se pudo vincular con tu teléfono.',
+      'Vuelve a enviar el comando o pide al staff que verifique tu vínculo antes de operar con oro o perfiles.',
+    ], { icon: '⚠️' }), { context: 'lid_resolution' });
+    return;
+  }
 
   if (shouldTraceMessageFlow) {
     console.log(
@@ -2498,14 +2535,10 @@ client.on('message', async (msg) => {
 
   let reply = '';
 
-  const wrapMsg = (originalMsg, newBody) => {
-    const wrapped = Object.create(originalMsg);
-    wrapped.body = newBody;
-    return wrapped;
-  };
+  const wrapMsg = (originalMsg, newBody) => createMessageView(originalMsg, { body: newBody });
 
   try {
-    const forgeReply = await handleMarketForgeConversation(msg, {
+    const forgeReply = await handleMarketForgeConversation(routedMsg, {
       sender,
       actorName: 'Staff',
       isAdmin,
@@ -2575,21 +2608,21 @@ client.on('message', async (msg) => {
         return;
       } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {
         reply = await handleAdminCommand(
-          wrapMsg(msg, ensurePrefixedBody(command, text, body)),
+          wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)),
           client
         );
       } else if (command === 'registrar') {
         reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
       } else if (command === 'dados') {
-        reply = await handleDados(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+        reply = await handleDados(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else if (command === 'cofre') {
-        reply = await handleCofre(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+        reply = await handleCofre(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else if (command === 'trampa') {
-        reply = await handleTrampa(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+        reply = await handleTrampa(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else if (command === 'oraculo') {
-        reply = await handleOraculo(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+        reply = await handleOraculo(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else if (command === '21') {
-        reply = await handleBlackjack(wrapMsg(msg, ensurePrefixedBody(command, text, body)), client);
+        reply = await handleBlackjack(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)), client);
       } else if (command === 'apk' || command === 'app') {
         try {
           await sendLatestApk({
@@ -2626,9 +2659,9 @@ client.on('message', async (msg) => {
           'retirarse',
         ].includes(command)
       ) {
-        reply = await handlePlayerMessage(wrapMsg(msg, ensurePrefixedBody(command, text, body)));
+        reply = await handlePlayerMessage(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else {
-        reply = await handlePlayerMessage(msg);
+        reply = await handlePlayerMessage(routedMsg);
       }
     }
 

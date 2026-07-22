@@ -14,7 +14,7 @@ ENV PORT=7860
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci --omit=dev
 COPY src/ ./src/
 
 # Crear carpeta de auth y dar permisos para compatibilidad con el usuario no-root de Hugging Face

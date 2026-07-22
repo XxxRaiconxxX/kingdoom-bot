@@ -1,5 +1,6 @@
 import { normalizePhone } from './adminStore.js';
 import { findPlayerByIdentifier } from './supabase.js';
+import { resolveWhatsAppPhone, serializeWhatsAppId } from './whatsappIdentity.js';
 
 const quotedDetailsCache = new WeakMap();
 
@@ -42,9 +43,11 @@ function extractRawMentionToken(msg, fallbackIdentifier = '') {
   return match ? cleanIdentifier(match[1]) : '';
 }
 
-export function getMentionedPhone(msg) {
+export async function getMentionedPhone(msg) {
   const mentioned = Array.isArray(msg?.mentionedIds) ? msg.mentionedIds[0] : '';
-  return mentioned ? normalizePhone(mentioned) : '';
+  return mentioned
+    ? resolveWhatsAppPhone(msg?.client || msg?._originalMsg?.client, mentioned)
+    : '';
 }
 
 export async function safeGetQuotedDetails(msg) {
@@ -102,13 +105,16 @@ export async function safeGetQuotedDetails(msg) {
 export async function extractTargetIdentifier(msg, fallbackIdentifier = '') {
   if (msg?.hasQuotedMsg) {
     const quotedDetails = await safeGetQuotedDetails(msg);
-    const quotedPhone = normalizePhone(quotedDetails.author);
+    const quotedPhone = await resolveWhatsAppPhone(
+      msg?.client || msg?._originalMsg?.client,
+      quotedDetails.author
+    );
     if (quotedPhone) {
       return { identifier: quotedPhone, source: 'quoted' };
     }
   }
 
-  const mentionedPhone = getMentionedPhone(msg);
+  const mentionedPhone = await getMentionedPhone(msg);
   if (mentionedPhone) {
     return { identifier: mentionedPhone, source: 'mentioned' };
   }
@@ -139,8 +145,9 @@ export async function resolvePlayerTarget(msg, fallbackIdentifier = '') {
     };
   }
 
-  const normalizedIdentifier = /^\d+$/.test(extractDigits(identifier))
-    ? normalizePhone(identifier)
+  const serializedIdentifier = serializeWhatsAppId(identifier) || identifier;
+  const normalizedIdentifier = /^\d+$/.test(extractDigits(serializedIdentifier))
+    ? normalizePhone(serializedIdentifier)
     : identifier;
 
   const result = await findPlayerByIdentifier(normalizedIdentifier);

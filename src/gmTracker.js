@@ -121,8 +121,101 @@ function parseMissionStateBlock(responseText) {
 
 function removeMissionStateBlock(responseText) {
   const raw = String(responseText ?? '');
-  const pattern = /\n*\[ESTADO_MISION\][\s\S]*?(?:\[\/ESTADO_MISION\]|$)/i;
-  return raw.replace(pattern, '').trim();
+  const fencedPattern = /\n*```(?:\w+)?[ \t]*\n\[ESTADO_MISION\][\s\S]*?\[\/ESTADO_MISION\][ \t]*\n```/i;
+  const plainPattern = /\n*\[ESTADO_MISION\][\s\S]*?(?:\[\/ESTADO_MISION\]|$)/i;
+  return raw.replace(fencedPattern, '').replace(plainPattern, '').trim();
+}
+
+function removeUnmatchedMarker(line, marker) {
+  const indexes = [];
+  let inInlineCode = false;
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] === '`') {
+      inInlineCode = !inInlineCode;
+      continue;
+    }
+    const isWordUnderscore = marker === '_'
+      && /[\p{L}\p{N}]/u.test(line[index - 1] || '')
+      && /[\p{L}\p{N}]/u.test(line[index + 1] || '');
+    if (!inInlineCode && !isWordUnderscore && line[index] === marker && line[index - 1] !== '\\') {
+      indexes.push(index);
+    }
+  }
+
+  if (indexes.length % 2 === 0) return line;
+  const unmatchedIndex = indexes[indexes.length - 1];
+  return `${line.slice(0, unmatchedIndex)}${line.slice(unmatchedIndex + 1)}`;
+}
+
+function normalizeVisibleLine(value) {
+  let line = String(value ?? '').trimEnd();
+  if (!line.trim()) return '';
+
+  const tableSeparator = /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*$/;
+  if (tableSeparator.test(line)) return '';
+
+  const tableCells = line
+    .replace(/^\s*\||\|\s*$/g, '')
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+  if (line.includes('|') && tableCells.length >= 2) {
+    line = tableCells.length === 2
+      ? `- *${tableCells[0].replace(/\*+/g, '')}:* ${tableCells[1]}`
+      : `- ${tableCells.join(' · ')}`;
+  }
+
+  line = line
+    .replace(/^\s*#{1,6}\s+(.+)$/, '*$1*')
+    .replace(/\*\*([^*\n]+)\*\*/g, '*$1*')
+    .replace(/__([^_\n]+)__/g, '_$1_')
+    .replace(/^\s*[•▪◦]\s+/, '- ');
+
+  if (/^\s*[-─━═—❖✦◆\s]{3,}\s*$/u.test(line)) return '';
+  if (/[─━═—]{3,}/u.test(line)) {
+    const label = line.replace(/[─━═—]{2,}|[❖✦◆]/gu, ' ').replace(/\s+/g, ' ').trim();
+    line = label ? `*${label.replace(/\*+/g, '')}*` : '';
+  }
+
+  line = removeUnmatchedMarker(line, '*');
+  line = removeUnmatchedMarker(line, '_');
+  const inlineTicks = (line.match(/(?<!`)`(?!`)/g) || []).length;
+  if (inlineTicks % 2 !== 0) {
+    const lastTick = line.lastIndexOf('`');
+    line = `${line.slice(0, lastTick)}${line.slice(lastTick + 1)}`;
+  }
+  return line;
+}
+
+export function formatGMResponseForWhatsApp(responseText) {
+  let visible = removeMissionStateBlock(responseText).replace(/\r/g, '').trim();
+  if (!visible) return '';
+
+  let lines = visible.split('\n');
+  if (
+    /^```(?:md|markdown)?\s*$/i.test(lines[0]?.trim())
+    && /^```\s*$/.test(lines[lines.length - 1]?.trim())
+    && lines.length > 4
+  ) {
+    lines = lines.slice(1, -1);
+  }
+
+  const formatted = [];
+  let inCodeFence = false;
+  for (const rawLine of lines) {
+    if (/^```/.test(rawLine.trim())) {
+      formatted.push('```');
+      inCodeFence = !inCodeFence;
+      continue;
+    }
+    formatted.push(inCodeFence ? rawLine.trimEnd() : normalizeVisibleLine(rawLine));
+  }
+  if (inCodeFence) formatted.push('```');
+
+  return formatted
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function looksLikeTruncatedVisibleResponse(visibleResponse) {
@@ -565,6 +658,12 @@ export async function startMissionTracker(shortId, participants) {
 
   const parsedMission = parseMissionConfig(mission.instructions);
   const normalizedShortId = shortId.toUpperCase();
+  const normalizedParticipants = [...new Set(
+    participants.map((participant) => normalizePhone(participant)).filter(Boolean)
+  )];
+  if (normalizedParticipants.length === 0) {
+    return { success: false, message: 'Error: no se pudo resolver a ningún participante de la misión.' };
+  }
   const instanceId = crypto.randomUUID();
   const state = {
     instanceId,
@@ -578,8 +677,8 @@ export async function startMissionTracker(shortId, participants) {
     gmRoundCount: 0,
     resolved: false,
     finalState: null,
-    maxParticipants: participants.length,
-    participants: participants.map(jid => normalizePhone(jid)),
+    maxParticipants: normalizedParticipants.length,
+    participants: normalizedParticipants,
     participantsCounted: new Set(),
     context: [],
   };
@@ -587,11 +686,18 @@ export async function startMissionTracker(shortId, participants) {
   activeMissions.set(instanceId, state);
   await saveActiveMissionState(state);
 
-  const playerMentions = participants.map(jid => `@${jid.split('@')[0]}`).join(', ');
+  const playerMentions = normalizedParticipants.map((phone) => `@${phone}`).join(', ');
 
   return {
     success: true,
-    message: `Mision *${mission.title}* [${normalizedShortId}] iniciada para ${playerMentions}.\nEl bot Game Master esperara el rol de *${participants.length}* participantes antes de intervenir.\n🤖 *Motor:* Gemini standard`,
+    message: [
+      '> _El Game Master abrió la mesa y quedó atento al primer pulso de rol._',
+      `*Misión:* ${mission.title}`,
+      `*Código:* \`${normalizedShortId}\``,
+      `*Participantes (${normalizedParticipants.length}):* ${playerMentions}`,
+      `*Cadencia:* interviene tras recibir el rol de ${normalizedParticipants.length} participante${normalizedParticipants.length === 1 ? '' : 's'}.`,
+      '*Motor:* Gemini standard',
+    ].join('\n'),
     mission,
   };
 }
@@ -638,61 +744,64 @@ Tu objetivo es **desafiar a los jugadores, mantener el equilibrio y no regalar v
 ## 3. AUDITORÍA ANTICHEAT (EVALUAR ANTES DE CADA TURNO)
 Antes de procesar la narrativa, evalúa el turno de cada jugador bajo estos cuatro criterios:
 
-| Tipo | Descripción |
-|------|-------------|
-| 🖤 **Mano Negra** (Godmoding/Auto-Hit) | El jugador decreta el éxito de sus ataques o manipula NPCs/elementos que no le pertenecen. |
-| 🤍 **Mano Blanca** (Powergaming) | El jugador inventa justificaciones improvisadas para tener defensa perfecta, inmunidad conveniente o counters absolutos. |
-| 🧠 **Metarol** (Metagaming) | El personaje usa información que el jugador conoce por el turno de otro, pero que su personaje físicamente no podría saber. |
-| ⭐ **Síndrome del Protagonista** | Búsqueda de autosuficiencia absoluta ignorando debilidades propias para no compartir escenario con aliados. |
+- 🖤 **Mano Negra (Godmoding/Auto-Hit):** el jugador decreta el éxito de sus ataques o manipula NPCs y elementos que no le pertenecen.
+- 🤍 **Mano Blanca (Powergaming):** el jugador inventa una defensa perfecta, inmunidad conveniente o counter absoluto.
+- 🧠 **Metarol (Metagaming):** el personaje usa información que físicamente no podría conocer.
+- ⭐ **Síndrome del Protagonista:** el jugador ignora debilidades y aliados para imponer autosuficiencia absoluta.
 
 Si se detecta una infracción, aplica un **nerf automático** en la resolución del turno (por ejemplo, fallas en la esquiva, daño recibido aumentado o interrupción de la habilidad) y márcalo explícitamente en el reporte anticheat.
 
 ---
 
 ## 4. ESTRUCTURA OBLIGATORIA DE RESPUESTA POR TURNO
-Tu respuesta debe ser orgánica, táctica y fluida. Evita introducciones genéricas de IA asistente (como "¡Hola!", "Entendido", etc.) y listas numeradas monótonas.
+Tu respuesta debe ser orgánica, táctica y fluida. Evita introducciones de asistente, listas numeradas monótonas y decoración que compita con la escena.
 
-Usa estrictamente las siguientes directrices de **Formato y Decoración para WhatsApp**:
-- **Ambientación / Cita Inicial:** La apertura sensorial DEBE comenzar con \`> \` al inicio de línea.
-- **Narración principal:** La prosa y narrativa de las acciones DEBE ir mayoritariamente en cursiva usando \`_texto_\`.
-- **Acciones y Consecuencias clave:** Destaca los eventos mecánicos decisivos en negrita con \`*texto*\`.
-- **Resoluciones Individuales:** Usa texto monoespaciado con \\\`texto\\\` para remarcar nombres, daño o habilidades específicas.
-- **RPG Métricas:** Usa bloques delimitados por tres acentos graves exclusivamente para daño, cooldowns, niveles, estadísticas y resoluciones tácticas estructuradas.
+La salida visible se envía directamente a WhatsApp, no a un visor Markdown. Cumple estas reglas sin excepción:
+- Usa negrita únicamente con un asterisco a cada lado: *texto*.
+- Usa cursiva únicamente con un guion bajo a cada lado: _texto_.
+- Usa monoespaciado con un acento grave a cada lado solo para nombres, daño, habilidades o códigos breves.
+- Reserva los bloques de tres acentos graves exclusivamente para métricas RPG compactas.
+- La apertura sensorial debe comenzar con > al inicio de línea.
+- Usa listas con guion y espacio.
+- No uses encabezados con #, dobles asteriscos, tablas Markdown, listas con el carácter • ni un bloque de código alrededor de toda la respuesta.
+- No uses separadores ornamentales repetidos. Un rótulo breve en negrita basta para cada frente.
+- Cierra cada marcador de estilo en la misma línea y no combines negrita y cursiva sobre la misma frase.
 
-### 4.1 ESTRUCTURA VISUAL DE TURNO:
-\`\`\`
-[HH:MM - Hora en el juego]
-[Tiempo límite del evento] | [Bonificaciones o eventos activos]
+### 4.1 ESTRUCTURA VISUAL DE TURNO
+> _[Apertura sensorial breve y concreta.]_
 
-─── ❖ ─── SECTOR/FLANCO 1: [Nombre del lugar] ─── ❖ ───
-[Narrativa inmersiva del sector en cursiva. Descripciones viscerales, consecuencias de las acciones de los jugadores resolviendo primero su acción final y desglosando ataques PvP/PvE de forma explícita.]
+*Hora y presión*
+[HH:MM en el juego] · [tiempo límite o evento activo]
 
-─── ❖ ─── SECTOR/FLANCO 2: [Nombre del lugar] ─── ❖ ───
-[Narrativa del otro frente si existe.]
+*Sector: [Nombre del lugar]*
+_[Narrativa inmersiva que integra todas las acciones y fija consecuencias.]_
 
-📊 ESTADO DE SALUD Y EFECTOS
-• [Personaje 1]: [Estable / Bajo / Crítico] | Cooldowns | Efectos activos
-• [Personaje 2]: [Estable / Bajo / Crítico] | Cooldowns | Efectos activos
-• [Enemigo/NPC clave]: [% de vida estimada o descripción visible]
+*Resoluciones*
+- [Personaje]: [resultado, daño, habilidad o efecto].
+- [Enemigo/NPC]: [reacción y cambio táctico].
 
-[Llamada a la acción tensa: nuevo peligro ambiental, táctica enemiga o decisión forzada.]
-\`\`\`
+*Estado táctico*
+- [Personaje]: [Estable / Bajo / Crítico] · [cooldowns] · [efectos].
+- [Amenaza]: [estado visible o fase].
 
-Al final de tu respuesta, debes incluir obligatoriamente el siguiente bloque de estado que es procesado por el sistema de forma automática. **No lo modifiques ni uses etiquetas distintas:**
+*Próxima presión*
+[Un peligro, dilema o decisión concreta que exige respuesta.]
 
-\`\`\`
+Al final de tu respuesta, debes incluir obligatoriamente el siguiente bloque de estado que es procesado por el sistema de forma automática. **No lo modifiques, no uses etiquetas distintas y no lo envuelvas con acentos graves:**
+
 [ESTADO_MISION]
 resultado: en_curso | victoria_jugadores | victoria_gm
 motivo: [Explicación breve del estado actual de la escena o la justificación del desenlace]
 siguiente_presion: [Amenaza o dilema inmediato que queda pendiente para el siguiente turno]
 [/ESTADO_MISION]
-\`\`\`
 *(Nota: Cambia el resultado a \`victoria_jugadores\` o \`victoria_gm\` solo cuando la propia consecuencia narrada ya vuelva obvio el desenlace).*
 
 ---
 
 ## 5. PLANTILLA DE MISIÓN (LLENAR AL INICIO)
 Antes de comenzar el Turno 1, pide al usuario estos datos o úsalos si ya fueron provistos:
+
+En el flujo automatizado de Kingdoom, los bloques DATOS_DE_MISION y ACCIONES_DE_JUGADORES ya son la entrada disponible. No interrumpas una ronda para pedir fichas o aclaraciones: trabaja con los datos canónicos presentes, describe como desconocido lo que falte y nunca inventes habilidades, hechizos ni objetivos para completar huecos.
 
 ### 5.1 — BRIEFING DE MISIÓN
 - **Nombre de la misión:**
@@ -731,24 +840,22 @@ Desglose por jugador evaluando su último turno:
 - ❌ Infracción detectada: tipo (Mano Negra/Blanca/Metarol), justificación lógica entre \`|| ||\` (para ocultar spoiler si es necesario), y nerf aplicado en la escena.
 
 ### OPCIÓN B — REPORTE DE BATALLA (FORMATO WHATSAPP)
-\`\`\`
 ⚔️ *REPORTE DE MISIÓN — [NOMBRE]*
 
 📍 *Estado General:* [quién va ganando y por qué]
 
 🗺️ *Sectores:*
-• Sector 1 — [resumen ejecutivo]
-• Sector 2 — [resumen ejecutivo]
+- Sector 1 — [resumen ejecutivo]
+- Sector 2 — [resumen ejecutivo]
 
 📊 *Logística:*
-• Objetivo principal: [% completado]
-• Bajas enemigas: [cantidad]
-• Recursos obtenidos: [lista]
-• ⏱ Tiempo restante: [XX min narrativos]
+- Objetivo principal: [% completado]
+- Bajas enemigas: [cantidad]
+- Recursos obtenidos: [lista]
+- ⏱ Tiempo restante: [XX min narrativos]
 
 💀 *Bajas del grupo:* [ninguna / lista]
 ⚠️ *Alertas activas:* [efectos negativos, amenazas pendientes]
-\`\`\`
 
 ---
 
@@ -765,9 +872,9 @@ Desglose por jugador evaluando su último turno:
 ---
 
 ## 8. INSTRUCCIONES DE INICIO
-Cuando el usuario indique *"Iniciar misión"* o similar:
+Cuando el usuario indique *"Iniciar misión"* o el bot entregue una ronda:
 1. Confirma que tienes las fichas de jugadores y enemigos (Sección 5).
-2. Si faltan datos, pídelos de forma concisa.
+2. En modo conversacional puedes pedir un dato crítico; en el flujo automatizado continúa con lo disponible sin inventar canon.
 3. Una vez completo, inicia el **Turno 1** con el formato de tiempo, descripción del escenario hostil, y la primera amenaza o dilema táctico visible. El primer turno siempre establece el tono: oscuro, urgente y sin red de seguridad.`;
 }
 
@@ -925,13 +1032,14 @@ export async function cancelActiveMission(instanceId) {
 }
 
 export function buildVisibleGMResponse(responseText) {
-  return removeMissionStateBlock(responseText);
+  return formatGMResponseForWhatsApp(responseText);
 }
 
 export function assessGMResponse(responseText) {
   const missionState = parseMissionStateBlock(responseText);
-  const visibleResponse = removeMissionStateBlock(responseText);
-  const visibleLooksTruncated = looksLikeTruncatedVisibleResponse(visibleResponse);
+  const rawVisibleResponse = removeMissionStateBlock(responseText);
+  const visibleResponse = formatGMResponseForWhatsApp(rawVisibleResponse);
+  const visibleLooksTruncated = looksLikeTruncatedVisibleResponse(rawVisibleResponse);
 
   return {
     missionState,

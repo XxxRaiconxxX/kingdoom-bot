@@ -84,6 +84,161 @@ create table if not exists public.bot_treasure_claims (
   unique (event_message_id, player_id)
 );
 
+alter table public.bot_treasure_claims
+  add column if not exists credit_status text,
+  add column if not exists credited_at timestamptz;
+
+update public.bot_treasure_claims
+set credit_status = 'credited',
+    credited_at = coalesce(credited_at, claimed_at)
+where credit_status is null;
+
+alter table public.bot_treasure_claims
+  alter column credit_status set default 'pending',
+  alter column credit_status set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'bot_treasure_claims_credit_status_check'
+      and conrelid = 'public.bot_treasure_claims'::regclass
+  ) then
+    alter table public.bot_treasure_claims
+      add constraint bot_treasure_claims_credit_status_check
+      check (credit_status in ('pending', 'credited'));
+  end if;
+end;
+$$;
+
+create or replace function public.reserve_treasure_claim(
+  p_message_id text,
+  p_player_id uuid,
+  p_chat_id text,
+  p_reward_gold integer
+)
+returns table (
+  status text,
+  claim_id uuid,
+  reward_gold integer,
+  winners_count bigint,
+  max_winners integer,
+  event_status text,
+  credit_status text
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event public.bot_treasure_events%rowtype;
+  v_claim public.bot_treasure_claims%rowtype;
+  v_winners_count bigint;
+begin
+  select event.*
+  into v_event
+  from public.bot_treasure_events as event
+  where event.message_id = p_message_id
+    and event.chat_id = p_chat_id
+  for update;
+
+  if not found then
+    return query select 'error', null::uuid, null::integer, 0::bigint, 0, 'missing', 'missing';
+    return;
+  end if;
+
+  select claim.*
+  into v_claim
+  from public.bot_treasure_claims as claim
+  where claim.event_message_id = p_message_id
+    and claim.player_id = p_player_id;
+
+  select count(*)
+  into v_winners_count
+  from public.bot_treasure_claims as claim
+  where claim.event_message_id = p_message_id;
+
+  if found and v_claim.id is not null then
+    return query select
+      case when v_claim.credit_status = 'credited' then 'duplicate' else 'reserved' end,
+      v_claim.id,
+      v_claim.reward_gold,
+      v_winners_count,
+      v_event.max_winners,
+      case when v_event.status = 'closed' then 'claimed' else v_event.status end,
+      v_claim.credit_status;
+    return;
+  end if;
+
+  if v_event.status <> 'open' or v_winners_count >= v_event.max_winners then
+    return query select 'full', null::uuid, null::integer, v_winners_count,
+      v_event.max_winners, 'claimed', 'missing';
+    return;
+  end if;
+
+  if v_event.expires_at <= timezone('utc', now()) then
+    update public.bot_treasure_events
+    set status = 'expired', closed_at = timezone('utc', now())
+    where id = v_event.id;
+    return query select 'expired', null::uuid, null::integer, v_winners_count,
+      v_event.max_winners, 'expired', 'missing';
+    return;
+  end if;
+
+  insert into public.bot_treasure_claims (
+    event_message_id,
+    player_id,
+    reward_gold,
+    credit_status
+  ) values (
+    p_message_id,
+    p_player_id,
+    greatest(p_reward_gold, 0),
+    'pending'
+  )
+  returning * into v_claim;
+
+  v_winners_count := v_winners_count + 1;
+  if v_winners_count >= v_event.max_winners then
+    update public.bot_treasure_events
+    set status = 'closed', closed_at = timezone('utc', now())
+    where id = v_event.id;
+  end if;
+
+  return query select
+    'reserved',
+    v_claim.id,
+    v_claim.reward_gold,
+    v_winners_count,
+    v_event.max_winners,
+    case when v_winners_count >= v_event.max_winners then 'claimed' else 'open' end,
+    v_claim.credit_status;
+end;
+$$;
+
+create or replace function public.mark_treasure_claim_credited(p_claim_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.bot_treasure_claims
+  set credit_status = 'credited',
+      credited_at = coalesce(credited_at, timezone('utc', now()))
+  where id = p_claim_id;
+  return found;
+end;
+$$;
+
+revoke all on function public.reserve_treasure_claim(text, uuid, text, integer) from public;
+revoke all on function public.mark_treasure_claim_credited(uuid) from public;
+revoke all on function public.reserve_treasure_claim(text, uuid, text, integer) from anon, authenticated;
+revoke all on function public.mark_treasure_claim_credited(uuid) from anon, authenticated;
+grant execute on function public.reserve_treasure_claim(text, uuid, text, integer) to service_role;
+grant execute on function public.mark_treasure_claim_credited(uuid) to service_role;
+
 create table if not exists public.bot_notifications_queue (
   id uuid primary key default gen_random_uuid(),
   player_phone text not null,

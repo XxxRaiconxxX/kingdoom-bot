@@ -18,6 +18,7 @@ import {
   extendRoleplayGraceForPlayer,
   forceRoleplayActivityForPlayer,
   getRoleplayLockWindowDays,
+  upsertKnowledgeDocument,
 } from '../supabase.js';
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
@@ -26,6 +27,20 @@ import { resolvePlayerTarget, safeGetQuotedDetails } from '../targetResolver.js'
 import { decorateCommandReply, heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
+import { resolveWhatsAppPhone, resolveWhatsAppPhones } from '../whatsappIdentity.js';
+import { resolveAndDownloadMedia } from '../whatsappMedia.js';
+
+const DATA_MAX_FILE_BYTES = 1024 * 1024;
+const DATA_MAX_CONTENT_CHARS = 500000;
+const DATA_MAX_TITLE_CHARS = 160;
+
+function normalizeKnowledgeTitle(value, fallback = 'Documento sin titulo') {
+  const title = String(value || fallback)
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (title || fallback).slice(0, DATA_MAX_TITLE_CHARS);
+}
 
 async function getGroupPendingMembers(chat, client) {
   const { players, sheets } = await getRealmCensus();
@@ -44,12 +59,22 @@ async function getGroupPendingMembers(chat, client) {
   const unregisteredMembers = [];
   const registeredWithoutPj = [];
   const mentions = [];
+  const botId = client.info.wid._serialized;
+  const candidateParticipants = groupParticipants.filter(
+    (participant) => participant.id._serialized !== botId
+  );
+  const identityResolution = await resolveWhatsAppPhones(
+    client,
+    candidateParticipants.map((participant) => participant.id._serialized)
+  );
+  const participantPhones = new Map(
+    identityResolution.resolved.map(({ id, phone }) => [id, phone])
+  );
 
-  for (const participant of groupParticipants) {
-    const phone = normalizePhone(participant.id.user);
+  for (const participant of candidateParticipants) {
     const jid = participant.id._serialized;
-
-    if (jid === client.info.wid._serialized) continue;
+    const phone = participantPhones.get(jid);
+    if (!phone) continue;
 
     if (!registeredPhones.has(phone)) {
       unregisteredMembers.push(participant);
@@ -79,10 +104,11 @@ async function getGroupPendingMembers(chat, client) {
     unregisteredMembers,
     registeredWithoutPj,
     mentions,
+    participantPhones,
     allPendingPhones: [
-      ...unregisteredMembers.map((member) => normalizePhone(member.id.user)),
-      ...registeredWithoutPj.map((member) => normalizePhone(member.participant.id.user)),
-    ],
+      ...unregisteredMembers.map((member) => participantPhones.get(member.id._serialized)),
+      ...registeredWithoutPj.map((member) => participantPhones.get(member.participant.id._serialized)),
+    ].filter(Boolean),
   };
 }
 
@@ -123,7 +149,7 @@ function formatRecycledSheetLine(sheet, index) {
 async function resolvePlayerFromAssignmentInput(msg, rawText) {
   const mentions = Array.isArray(msg?.mentionedIds) ? msg.mentionedIds : [];
   if (mentions.length > 0) {
-    const phone = normalizePhone(mentions[0]);
+    const phone = await resolveWhatsAppPhone(msg?.client, mentions[0]);
     const players = await getPlayersByPhone(phone);
     const sheetQuery = rawText.replace(/@\S+/g, '').trim();
 
@@ -189,9 +215,10 @@ async function getActorPrivileges(sender) {
 }
 
 async function resolveMissionCompletionTargets(msg) {
-  const uniquePhones = [...new Set((msg?.mentionedIds ?? []).map((entry) => normalizePhone(entry)).filter(Boolean))];
+  const mentionResolution = await resolveWhatsAppPhones(msg?.client, msg?.mentionedIds ?? []);
+  const uniquePhones = mentionResolution.phones;
   const resolvedTargets = [];
-  const unresolved = [];
+  const unresolved = [...mentionResolution.unresolved];
   const ambiguous = [];
 
   for (const phone of uniquePhones) {
@@ -678,7 +705,12 @@ export async function handleAdminCommand(msg, client) {
       return '❌ Uso: *!misionstart <ID (6 caracteres)> <@jugadores>*. Debes mencionar al menos a un jugador.';
     }
 
-    const result = await startMissionTracker(shortId, mentions);
+    const mentionResolution = await resolveWhatsAppPhones(client, mentions);
+    if (mentionResolution.unresolved.length > 0) {
+      return '❌ WhatsApp no permitió resolver uno de los jugadores mencionados. Vuelve a mencionarlo y repite el comando.';
+    }
+
+    const result = await startMissionTracker(shortId, mentionResolution.phones);
     if (result.success && client) {
       await client.sendMessage(msg.from, decorateCommandReply(cmd, result.message), { mentions });
       return '';
@@ -765,10 +797,13 @@ export async function handleAdminCommand(msg, client) {
 
     // Case 2: Player mentioned
     const targetJid = mentionedJids[0];
-    const normalizedTargetPhone = normalizePhone(targetJid);
+    const normalizedTargetPhone = await resolveWhatsAppPhone(client, targetJid);
+    if (!normalizedTargetPhone) {
+      return '❌ WhatsApp no permitió resolver al jugador mencionado. Vuelve a mencionarlo e intenta otra vez.';
+    }
     const match = instances.find(state => state.participants.includes(normalizedTargetPhone));
     if (!match) {
-      return `❌ No se encontró ninguna misión activa *${targetShortId}* para el jugador @${targetJid.split('@')[0]}.`;
+      return `❌ No se encontró ninguna misión activa *${targetShortId}* para el jugador @${normalizedTargetPhone}.`;
     }
 
     await cancelActiveMission(match.instanceId);
@@ -783,7 +818,7 @@ export async function handleAdminCommand(msg, client) {
     let identifier = '';
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
-      identifier = extractPhone(quotedDetails.author);
+      identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {
       identifier = parts.slice(2).join(' ').trim();
     }
@@ -825,7 +860,7 @@ export async function handleAdminCommand(msg, client) {
     let identifier = '';
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
-      identifier = extractPhone(quotedDetails.author);
+      identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {
       identifier = parts.slice(2).join(' ').trim();
     }
@@ -868,7 +903,7 @@ export async function handleAdminCommand(msg, client) {
     if (msg.hasQuotedMsg) {
       // Caso 1: Respondiendo a un mensaje -> !registrar <nombre> [oro]
       const quotedDetails = await safeGetQuotedDetails(msg);
-      targetPhone = quotedDetails.author;
+      targetPhone = await resolveWhatsAppPhone(client, quotedDetails.author);
       
       username = parts[1];
       if (parts[2]) {
@@ -939,7 +974,7 @@ export async function handleAdminCommand(msg, client) {
     
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
-      targetPhone = quotedDetails.author;
+      targetPhone = await resolveWhatsAppPhone(client, quotedDetails.author);
       identifier = parts.slice(1).join(' ').trim();
     } else {
       targetPhone = parts[1];
@@ -1038,7 +1073,7 @@ export async function handleAdminCommand(msg, client) {
 
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
-      identifier = extractPhone(quotedDetails.author);
+      identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
       amount = parseInt(String(parts[1] ?? '').replace(/\./g, ''));
     } else {
       amount = parseInt(String(parts[parts.length - 1] ?? '').replace(/\./g, ''));
@@ -1126,7 +1161,7 @@ export async function handleAdminCommand(msg, client) {
     let identifier = '';
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
-      identifier = extractPhone(quotedDetails.author);
+      identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {
       identifier = parts.slice(1).join(' ').trim();
     }
@@ -1309,6 +1344,7 @@ export async function handleAdminCommand(msg, client) {
         unregisteredMembers,
         registeredWithoutPj,
         mentions,
+        participantPhones,
         allPendingPhones,
       } = await getGroupPendingMembers(chat, client);
 
@@ -1322,7 +1358,7 @@ export async function handleAdminCommand(msg, client) {
       if (unregisteredMembers.length > 0) {
         response += `${heraldSection('Sin registro / nuevos')}\n`;
         unregisteredMembers.forEach(member => {
-          response += `- @${member.id.user}\n`;
+          response += `- @${participantPhones.get(member.id._serialized)}\n`;
         });
         response += `\n`;
       }
@@ -1330,7 +1366,7 @@ export async function handleAdminCommand(msg, client) {
       if (registeredWithoutPj.length > 0) {
         response += `${heraldSection('Con cuenta pero sin ficha')}\n`;
         registeredWithoutPj.forEach(item => {
-          response += `- @${item.participant.id.user} (User: *${item.player.username}*)\n`;
+          response += `- @${participantPhones.get(item.participant.id._serialized)} (User: *${item.player.username}*)\n`;
         });
         response += `\n`;
       }
@@ -1370,6 +1406,7 @@ export async function handleAdminCommand(msg, client) {
         groupParticipants,
         unregisteredMembers,
         registeredWithoutPj,
+        participantPhones,
         allPendingPhones,
       } = await getGroupPendingMembers(chat, client);
       const trackerData = await trackUnregisteredUsers(allPendingPhones);
@@ -1383,10 +1420,11 @@ export async function handleAdminCommand(msg, client) {
       const mentions = [];
 
       for (const participant of groupParticipants) {
-        const phone = normalizePhone(participant.id.user);
         const jid = participant.id._serialized;
+        const phone = participantPhones.get(jid);
         
         if (jid === client.info.wid._serialized) continue;
+        if (!phone) continue;
         
         if (allPendingPhones.includes(phone) && trackerData[phone]) {
           const timeElapsed = now - trackerData[phone];
@@ -1397,7 +1435,7 @@ export async function handleAdminCommand(msg, client) {
             const daysElapsed = Math.floor(timeElapsed / (24 * 60 * 60 * 1000));
             let daysLeft = 3 - daysElapsed;
             if (daysLeft < 1) daysLeft = 1;
-            toWarn.push({ jid, user: participant.id.user, daysLeft });
+            toWarn.push({ jid, user: phone, daysLeft });
             mentions.push(jid);
           }
         }
@@ -1556,273 +1594,89 @@ export async function handleAdminCommand(msg, client) {
 
   // 12. !data (Knowledge upload)
   if (cmd === '!data') {
+    let targetMsg;
+    let media;
+    try {
+      ({ targetMsg, media } = await resolveAndDownloadMedia(msg, client));
+    } catch (error) {
+      console.error('[admin data resolve]', error?.message ?? error);
+      return '❌ No se pudo leer el mensaje o archivo citado. Vuelve a adjuntarlo e intenta otra vez.';
+    }
+
+    const commandLine = rawText.split(/\r?\n/, 1)[0];
+    const requestedTitle = commandLine.replace(/^!data\b/i, '').trim();
     let title = '';
     let content = '';
-    let media = null;
-    let targetMsg = null;
 
-function getSerializedId(idObj) {
-  if (!idObj) return '';
-  if (typeof idObj === 'string') return idObj;
-  if (typeof idObj._serialized === 'string') return idObj._serialized;
-  if (typeof idObj['$1'] === 'string') return idObj['$1'];
-  if (typeof idObj.id === 'string' && typeof idObj.remote === 'string') {
-    const fromMe = Boolean(idObj.fromMe);
-    const participant = idObj.participant ? `_${idObj.participant}` : '';
-    return `${fromMe}_${idObj.remote}_${idObj.id}${participant}`;
-  }
-  return '';
-}
+    if (targetMsg?.hasMedia) {
+      if (!media?.data) {
+        return '❌ WhatsApp no entregó el archivo. Vuelve a adjuntarlo directamente con *!data [titulo]*; los archivos antiguos o reenviados pueden haber caducado.';
+      }
 
-    // 1. Identificar mensaje objetivo (directo o citado)
-    if (msg.hasMedia) {
-      targetMsg = msg;
-    } else if (msg.hasQuotedMsg) {
+      const mime = String(media.mimetype || targetMsg.mimetype || '').toLowerCase();
+      const filename = String(media.filename || targetMsg.filename || '').trim();
+      const lowerFilename = filename.toLowerCase();
+      const isTextMime = mime.startsWith('text/') || mime.includes('json');
+      const isTextExtension = ['.txt', '.md', '.log', '.json']
+        .some((extension) => lowerFilename.endsWith(extension));
+
+      if (!isTextMime && !isTextExtension) {
+        return '❌ Solo se permiten archivos de texto plano (.txt, .md, .log, .json).';
+      }
+
+      const approximateBytes = Math.floor(String(media.data).length * 3 / 4);
+      if (Number(media.filesize) > DATA_MAX_FILE_BYTES || approximateBytes > DATA_MAX_FILE_BYTES) {
+        return '❌ El archivo supera el límite de 1 MB permitido para *!data*.';
+      }
+
+      const fileBuffer = Buffer.from(media.data, 'base64');
+      if (fileBuffer.length > DATA_MAX_FILE_BYTES) {
+        return '❌ El archivo supera el límite de 1 MB permitido para *!data*.';
+      }
+
       try {
-        const quotedDetails = await safeGetQuotedDetails(msg);
-        if (quotedDetails.id && client && typeof client.getMessageById === 'function') {
-          try {
-            targetMsg = await client.getMessageById(quotedDetails.id);
-          } catch (e) {
-            // fallback
-          }
-        }
-        if (!targetMsg && typeof msg.getQuotedMessage === 'function') {
-          try {
-            const quoted = await msg.getQuotedMessage();
-            if (quoted) targetMsg = quoted;
-          } catch (e) {
-            // fallback
-          }
-        }
-        // Fallback sintético directo desde _data.quotedMsg si getMessageById falló con 'r'
-        if (!targetMsg) {
-          const qData = msg._data?.quotedMsg || msg._originalMsg?._data?.quotedMsg || msg._data?.quotedSticker;
-          if (qData) {
-            const qId = getSerializedId(qData.id);
-            targetMsg = {
-              id: qId,
-              hasMedia: Boolean(qData.isMedia || qData.type === 'document' || qData.type === 'image' || qData.directPath || qData.mimetype),
-              body: qData.body || qData.caption || '',
-              type: qData.type,
-              mimetype: qData.mimetype,
-              filename: qData.filename || 'documento.txt',
-              _data: qData
-            };
-            console.log('[admin !data] TargetMsg sintético resuelto desde msg._data.quotedMsg:', qId);
-          }
-        }
-      } catch (quotedErr) {
-        console.warn('[admin !data] Error al resolver mensaje citado:', quotedErr?.message ?? quotedErr);
+        content = new TextDecoder('utf-8', { fatal: true }).decode(fileBuffer).replace(/\0/g, '');
+      } catch {
+        return '❌ El archivo no contiene texto UTF-8 válido. Guárdalo como UTF-8 y vuelve a intentarlo.';
       }
-    }
-
-    // 2. Si el mensaje objetivo tiene media, descargar el archivo
-    if (targetMsg && targetMsg.hasMedia) {
-      const activePupPage = client?.pupPage || msg?.client?.pupPage || targetMsg?.client?.pupPage || msg?._originalMsg?.client?.pupPage;
-
-      // Método A: Puppeteer por ID serializado (funciona si el ID es válido)
-      if (activePupPage && !media?.data) {
-        const rawId = getSerializedId(targetMsg.id) || getSerializedId(targetMsg._data?.id) || getSerializedId(targetMsg._originalMsg?.id);
-
-        if (rawId) {
-          try {
-            console.log('[admin !data] Método A: Puppeteer lookup por ID:', rawId);
-            const pupResult = await activePupPage.evaluate(async (msgId) => {
-              try {
-                const MsgColl = window.require('WAWebCollections').Msg;
-                let msgObj = MsgColl.get(msgId);
-                if (!msgObj) {
-                  const fetchedArr = await MsgColl.getMessagesById([msgId]);
-                  msgObj = fetchedArr?.messages?.[0] || fetchedArr?.[0];
-                }
-                if (!msgObj) return null;
-
-                if (msgObj.mediaData?.mediaStage !== 'RESOLVED') {
-                  if (typeof msgObj.downloadMedia === 'function') {
-                    try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
-                  }
-                  const start = Date.now();
-                  while (Date.now() - start < 12000) {
-                    if (msgObj.mediaData?.mediaStage === 'RESOLVED' && msgObj.mediaData?._blob) break;
-                    if (String(msgObj.mediaData?.mediaStage || '').includes('ERROR')) break;
-                    await new Promise(r => setTimeout(r, 300));
-                  }
-                }
-
-                if (msgObj.mediaData && msgObj.mediaData._blob) {
-                  const dataUrl = await new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = (err) => reject(err);
-                    reader.readAsDataURL(msgObj.mediaData._blob);
-                  });
-                  const base64Data = String(dataUrl).split(',')[1] || '';
-                  if (base64Data) {
-                    return {
-                      data: base64Data,
-                      mimetype: msgObj.mimetype || msgObj.mediaData.mimetype || 'text/plain',
-                      filename: msgObj.filename || msgObj.mediaData.filename || 'documento.txt'
-                    };
-                  }
-                }
-              } catch (e) {
-                return { error: String(e?.message || e) };
-              }
-              return null;
-            }, rawId);
-
-            if (pupResult && pupResult.data) {
-              media = pupResult;
-              console.log('[admin !data] Método A exitoso!');
-            } else if (pupResult?.error) {
-              console.warn('[admin !data] Método A error interno:', pupResult.error);
-            }
-          } catch (pupErr) {
-            console.warn('[admin !data] Método A error:', pupErr?.message || pupErr);
-          }
-        }
+      title = normalizeKnowledgeTitle(requestedTitle, filename || 'Documento sin titulo');
+    } else if (targetMsg?.body) {
+      const quotedText = String(targetMsg.body).trim().replace(/\0/g, '');
+      const isBotReply = /^(?:❌|🛡️|⚠️|✅|!data)/u.test(quotedText);
+      if (isBotReply) {
+        return '❌ El mensaje citado es una respuesta del bot. Cita el contenido original o adjunta el archivo directamente.';
       }
-
-      // Método B: Puppeteer con metadatos de media crudos (para quotedMsg sin ID válido)
-      // ponytail: este método bypasea WAWebCollections completamente, usa directPath+mediaKey del _data
-      if (activePupPage && !media?.data && targetMsg._data) {
-        const md = targetMsg._data;
-        if (md.directPath && md.mediaKey) {
-          try {
-            console.log('[admin !data] Método B: Descarga directa por directPath+mediaKey');
-            const pupResult = await activePupPage.evaluate(async (mediaMeta) => {
-              try {
-                const dm = window.require('WAWebDownloadManager')?.downloadManager;
-                if (!dm) return { error: 'WAWebDownloadManager no disponible' };
-
-                const fn = dm.downloadAndMaybeDecrypt || dm.downloadAndDecrypt || dm.downloadMedia;
-                if (typeof fn !== 'function') return { error: 'No se encontró función de descarga en DownloadManager' };
-
-                const mockQpl = { addAnnotations: function() { return this; }, addPoint: function() { return this; } };
-                const decrypted = await fn.call(dm, {
-                  directPath: mediaMeta.directPath,
-                  encFilehash: mediaMeta.encFilehash,
-                  filehash: mediaMeta.filehash,
-                  mediaKey: mediaMeta.mediaKey,
-                  mediaKeyTimestamp: mediaMeta.mediaKeyTimestamp,
-                  type: mediaMeta.type || 'document',
-                  mimetype: mediaMeta.mimetype || 'text/plain',
-                  signal: new AbortController().signal,
-                  downloadQpl: mockQpl,
-                });
-
-                if (decrypted) {
-                  const data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
-                  return {
-                    data,
-                    mimetype: mediaMeta.mimetype || 'text/plain',
-                    filename: mediaMeta.filename || 'documento.txt'
-                  };
-                }
-              } catch (e) {
-                return { error: String(e?.message || e) };
-              }
-              return null;
-            }, {
-              directPath: md.directPath,
-              encFilehash: md.encFilehash,
-              filehash: md.filehash,
-              mediaKey: md.mediaKey,
-              mediaKeyTimestamp: md.mediaKeyTimestamp,
-              type: md.type,
-              mimetype: md.mimetype,
-              filename: md.filename
-            });
-
-            if (pupResult && pupResult.data) {
-              media = pupResult;
-              console.log('[admin !data] Método B exitoso!');
-            } else if (pupResult?.error) {
-              console.warn('[admin !data] Método B error interno:', pupResult.error);
-            }
-          } catch (pupErr) {
-            console.warn('[admin !data] Método B error:', pupErr?.message || pupErr);
-          }
-        }
-      }
-
-      // Método C: Fallback a targetMsg.downloadMedia() nativo
-      if (!media?.data && typeof targetMsg.downloadMedia === 'function') {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            media = await targetMsg.downloadMedia();
-            if (media && media.data) break;
-          } catch (err) {
-            console.warn(`[admin !data] Método C intento ${attempt} falló:`, err?.message || err);
-          }
-          if (attempt < 2) await new Promise(r => setTimeout(r, 600));
-        }
-      }
-    }
-
-    // 3. Extracción de contenido de texto según el tipo de origen
-    if (media && media.data) {
-      const mime = String(media.mimetype || '').toLowerCase();
-      const filename = String(media.filename || '').toLowerCase();
-      const isTextMime = mime.includes('text/') || mime.includes('json');
-      const isTxtExt = filename.endsWith('.txt') || filename.endsWith('.log') || filename.endsWith('.json') || filename.endsWith('.md');
-
-      if (!isTextMime && !isTxtExt) {
-        return `❌ Solo se permiten archivos de texto plano (.txt, .md, .log, .json).`;
-      }
-
-      content = Buffer.from(media.data, 'base64').toString('utf-8').replace(/\0/g, '');
-      const rawTitle = parts.slice(1).join(' ').trim();
-      title = rawTitle || media.filename || 'Documento sin titulo';
-    } else if (targetMsg && !targetMsg.hasMedia && targetMsg.body) {
-      // Fallback: mensaje citado de texto (ignorar respuestas del bot o comandos)
-      const textBody = targetMsg.body.trim().replace(/\0/g, '');
-      const isBotOrErrorMsg = textBody.startsWith('❌') || textBody.startsWith('🛡️') || textBody.startsWith('⚠️') || textBody.startsWith('✅') || textBody.startsWith('!data');
-      if (isBotOrErrorMsg) {
-        return `❌ El mensaje citado es una respuesta del bot. Debes adjuntar directamente el archivo .txt o citar el mensaje original con el contenido a guardar.`;
-      }
-      content = textBody;
-      const rawTitle = parts.slice(1).join(' ').trim();
-      title = rawTitle || 'Documento citado';
+      content = quotedText;
+      title = normalizeKnowledgeTitle(requestedTitle, 'Documento citado');
     } else {
-      // Fallback: contenido directo multilínea en el mensaje
-      const rawText = msg.body.trim();
-      const lines = rawText.split('\n');
-      const firstLineParts = lines[0].split(/\s+/);
-      let rawTitle = firstLineParts.slice(1).join(' ').trim();
-      let bodyLines = lines.slice(1).join('\n').trim();
+      const lines = String(msg.body || rawText).trim().split(/\r?\n/);
+      const inlineTitle = lines[0].replace(/^!data\b/i, '').trim();
+      const bodyLines = lines.slice(1).join('\n').trim();
 
-      if (!rawTitle && bodyLines) {
-        const bodyLineList = bodyLines.split('\n');
-        rawTitle = bodyLineList[0].trim();
-        bodyLines = bodyLineList.slice(1).join('\n').trim();
-      }
-
-      if (bodyLines && rawTitle) {
-        title = rawTitle;
+      if (inlineTitle && bodyLines) {
+        title = normalizeKnowledgeTitle(inlineTitle);
         content = bodyLines.replace(/\0/g, '');
       }
     }
 
-    if (!content || !content.trim()) {
-      return `❌ No se encontró contenido de texto para guardar. Puedes usar:\n` +
-             `1. Adjuntar un archivo .txt con *!data [titulo]*\n` +
-             `2. Responder a un archivo .txt o mensaje de texto con *!data [titulo]*\n` +
-             `3. Escribir el título y el texto en el mismo mensaje: *!data Titulo*\n*(contenido en las líneas siguientes)*`;
+    const trimmedContent = content.trim();
+    if (!trimmedContent) {
+      return [
+        '❌ No se encontró contenido de texto para guardar.',
+        '- Adjunta un archivo con *!data [titulo]*.',
+        '- Responde a un archivo o mensaje con *!data [titulo]*.',
+        '- O escribe *!data Titulo* y el contenido en las líneas siguientes.',
+      ].join('\n');
     }
 
-    if (content.length > 500000) {
-      return `❌ El documento es demasiado extenso (${content.length.toLocaleString('es-PY')} caracteres). El límite máximo permitido es de 500.000 caracteres.`;
+    if (trimmedContent.length > DATA_MAX_CONTENT_CHARS) {
+      return `❌ El documento tiene ${trimmedContent.length.toLocaleString('es-PY')} caracteres; el límite es 500.000.`;
     }
 
     try {
-      // Dinamicamente importar upsertKnowledgeDocument
-      const { upsertKnowledgeDocument } = await import('../supabase.js');
-
       const success = await upsertKnowledgeDocument({
         title,
-        content: content.trim(),
+        content: trimmedContent,
         type: 'lore',
         category: 'bot-upload',
         source: 'whatsapp',
@@ -1830,22 +1684,22 @@ function getSerializedId(idObj) {
         visible: true,
       });
 
-      if (success) {
-        recordAdminAction({
-          actorPhone,
-          actorName,
-          action: 'upload_data',
-          target: title,
-          detail: `Cargó documento de ${content.trim().length} caracteres.`,
-          chatId: msg.from,
-        });
-        return `✅ *Documento guardado:* "${title}" (${content.trim().length} caracteres) ha sido asimilado por el Archivista.`;
-      } else {
-        return `❌ Error al guardar el documento en la base de datos.`;
+      if (!success) {
+        return '❌ La base de datos no confirmó el guardado del documento.';
       }
-    } catch (err) {
-      console.error('[admin data upload]', err);
-      return `❌ Hubo un error al procesar el documento: ${err?.message || 'Error desconocido'}`;
+
+      recordAdminAction({
+        actorPhone,
+        actorName,
+        action: 'upload_data',
+        target: title,
+        detail: `Cargó documento de ${trimmedContent.length} caracteres.`,
+        chatId: msg.from,
+      });
+      return `✅ *Documento guardado:* "${title}" (${trimmedContent.length} caracteres) fue asimilado por el Archivista.`;
+    } catch (error) {
+      console.error('[admin data upload]', error);
+      return '❌ Hubo un error al guardar el documento. No se registró como completado.';
     }
   }
 

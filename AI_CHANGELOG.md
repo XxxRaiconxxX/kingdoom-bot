@@ -4,6 +4,30 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `supabase/supabase_bot_state_migration.sql`, `supabase/supabase_treasure_gold_awards.sql`, `test_treasure_atomicity.js`, `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Aplicadas y verificadas las migraciones atomicas del Tesoro Errante en los dos proyectos Supabase reales.
+*   **Cambios Clave:**
+    *   **[Estado del bot]:** Aplicado el SQL con SHA-256 `66DEA4FD3BE24F95D92A0EEA39405E868CA9447BF36A50C7B976980D8D0E280F` en `tnrocqdfbssscnszahut`. Se conservaron 47 eventos y 82 reclamos; los reclamos historicos quedaron acreditados y las RPC de reserva/marcado estan visibles en PostgREST.
+    *   **[Oro principal]:** Aplicado el SQL con SHA-256 `729DF21F924B96C30E8CE3FBD0C3917EF80B052D00763CAD1D8A4E2A9500814B` en `sibisgiwmgdrpfkzmkkw`. Los 32 jugadores y totales de oro quedaron sin cambios; la tabla de premios nacio vacia y con idempotencia unica.
+    *   **[Permisos endurecidos]:** La primera verificacion detecto privilegios `EXECUTE` heredados por defecto para `anon` y `authenticated`. Se corrigieron ambos SQL, se reaplico el del bot y se confirmo que solo `service_role` puede ejecutar las tres RPC. `bot_gold_awards` tambien tiene RLS activa y acceso directo anonimo revocado.
+    *   **[Prueba transaccional]:** Pasaron reserva inicial, repeticion pendiente, cupo lleno, marcado acreditado, duplicado acreditado y doble invocacion del premio. Todas las simulaciones terminaron con `ROLLBACK`; no dejaron filas ni cambiaron saldos.
+*   **Validacion:** Ambas aplicaciones devolvieron HTTP 201; PostgREST reconoce `reserve_treasure_claim` y `award_bot_gold_once`; `test_treasure_atomicity.js` y `git diff --check` pasan.
+*   **Notas/Advertencias:** Las migraciones se aplicaron antes del cierre Git y del despliegue del codigo consumidor. El `.env` local no define las variables del Supabase dedicado y mantiene el fallback al proyecto principal para ejecuciones locales.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `Dockerfile`, `src/adminStore.js`, `src/whatsappIdentity.js`, `src/whatsappMedia.js`, `src/index.js`, `src/targetResolver.js`, `src/supabase.js`, `src/scheduler.js`, `src/gmTracker.js`, handlers relacionados, migraciones SQL, pruebas y `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`.
+*   **Resumen de Tareas:** Auditoria web y correccion integral de compatibilidad LID/media, atribucion y atomicidad del Tesoro Errante, y formato del Game Master de `!misionstart`.
+*   **Cambios Clave:**
+    *   **[WhatsApp LID]:** Se sustituyo la heuristica que trataba IDs `@lid` como telefonos por resolucion oficial `getContactLidAndPhone`, con cache, timeout, lotes pequenos y fallo seguro. El telefono resuelto se comparte desde el router con comandos, tesoros, blackjack, GM, lifecycle, bienvenida y herramientas admin.
+    *   **[`!data`]:** Se elimino el pipeline duplicado basado en `_blob` y `WAWebCollections`. `downloadMedia()` + `reload()` es ahora el camino principal; el fallback `directPath/mediaKey` queda limitado a citas sinteticas antiguas. Se agregaron limites de 1 MB/500.000 caracteres, UTF-8 estricto y reutilizacion en la Forja.
+    *   **[Tesoro]:** Se prepararon reserva serializada, credito de oro idempotente y reconciliacion de pendientes. Las respuestas y resumen identifican al usuario por mencion, nombre, premio y saldo confirmado.
+    *   **[Game Master]:** Se retiro del prompt el Markdown incompatible con WhatsApp, se mejoro la tarjeta de inicio y se agrego un normalizador final que conserva narrativa/estado pero corrige encabezados, tablas, doble negrita, bullets, marcos y cercas vacias.
+    *   **[Build reproducible]:** Docker usa `npm ci --omit=dev`, fijando la version exacta del lock sin modificar `package-lock.json`.
+    *   **[Investigacion]:** La auditoria con fuentes oficiales y decisiones queda en `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`. Esta entrada sustituye la conclusion anterior del mismo dia que afirmaba que no existia una solucion oficial para el pipeline de medios: la version instalada `1.34.7` ya incorpora ese flujo en `Message.downloadMedia()`.
+*   **Validacion:** Todos los archivos JS de `src` pasan `node --check`; todos los `test_*.js` pasan; `npm ci --dry-run --ignore-scripts --omit=dev`, `npm run graphify:update` y `git diff --check` pasan.
+*   **Notas/Advertencias:** La sonda no destructiva devolvio `PGRST202` para `reserve_treasure_claim` y `award_bot_gold_once`: las dos migraciones estan preparadas pero no aplicadas. El fallback conserva el comportamiento actual hasta instalarlas. `src/whatsappHealth.js` mantiene `WAWebCollections` solo como observador estructural del watchdog; es una dependencia privada residual, separada de medios/LID, que falla cerrado si WhatsApp la retira. No se realizo commit, push ni despliegue. El remoto local de Hugging Face contiene una credencial embebida y debe rotarse sin exponerla.
+
 ### [Fecha: 22/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `src/handlers/admin.js`, `src/adminStore.js`, `src/handlers/treasure.js`, `test_data_and_treasure.js`, `test_community_patch_validation.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Resolución completa del comando `!data` para carga de documentos `.txt` en grupos con formato LID de WhatsApp Web. Investigación y aplicación de parches comunitarios para el bug global de `downloadMedia()`.

@@ -70,7 +70,7 @@ const mockClient = {
     },
     async getRecipients() {
       return [
-        { id: { _serialized: 'player1@c.us' }, number: 'player1', pushname: 'Raicon' },
+        { id: { _serialized: '595981111111@c.us' }, number: '595981111111', pushname: 'Raicon' },
         { id: { _serialized: 'bot_id@c.us' }, number: 'bot_id' } // Should filter out bot
       ];
     }
@@ -91,13 +91,13 @@ const mockClient = {
 
   assert.ok(sentMessages.length >= 1, 'Should send at least the first welcome message');
   assert.match(sentMessages[0].text, /REINO DE LAS SOMBRAS/);
-  assert.match(sentMessages[0].text, /@player1/);
+  assert.match(sentMessages[0].text, /@595981111111/);
   
   const mentions = sentMessages[0].options?.mentions;
   assert.ok(Array.isArray(mentions), 'Mentions options should be an array');
   assert.equal(mentions.length, 1);
   // We want to test that we pass JID strings
-  assert.equal(mentions[0], 'player1@c.us');
+  assert.equal(mentions[0], '595981111111@c.us');
 }
 
 // Test 4: Fallback recipients parsing when getRecipients fails

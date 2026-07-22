@@ -6,6 +6,7 @@ import {
   archiveExpiredGraceProfiles,
   processRoleplayAccessEnforcement,
   getRoleplayLockWindowDays,
+  reconcilePendingTreasureCredits,
 } from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
@@ -230,7 +231,25 @@ async function sendToAll(client, buildMessage) {
 
 export function startScheduler(client, isClientReady = () => Boolean(client?.info)) {
   void hydrateOpenTreasures(client, isClientReady);
+  void reconcilePendingTreasureCredits().then((result) => {
+    if (result.reconciled > 0) {
+      console.log(`[scheduler] ${result.reconciled} credito(s) de tesoro reconciliado(s) al iniciar.`);
+    }
+  }).catch((error) => console.error('[scheduler] Error reconciliando tesoros al iniciar:', error.message));
   scheduleDailyTreasures(client, isClientReady);
+
+  cron.schedule(
+    '*/1 * * * *',
+    async () => {
+      await runScheduledJob('treasureCreditReconciliationRunning', 'creditos de tesoro pendientes', async () => {
+        const result = await reconcilePendingTreasureCredits();
+        if (result.reconciled > 0) {
+          console.log(`[scheduler] ${result.reconciled} credito(s) de tesoro reconciliado(s).`);
+        }
+      });
+    },
+    TZ
+  );
 
   cron.schedule(
     '*/1 * * * *',

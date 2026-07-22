@@ -10,6 +10,7 @@ import {
 } from '../supabase.js';
 import { waitForMessageServerAck } from '../whatsappDelivery.js';
 import { heraldCard, heraldStat } from '../formatting.js';
+import { formatJid, normalizePhone } from '../adminStore.js';
 
 const TARGET_GROUP = '595971938097-1618930274@g.us';
 const TREASURE_DURATION_MS = 5 * 60 * 1000;
@@ -125,17 +126,20 @@ export async function waitForTreasureAckBestEffort(client, message) {
 
 export function buildTreasureClaimFeedback(status, details = {}) {
   const playerName = details.playerName || 'Aventurero';
+  const playerPhone = normalizePhone(details.playerPhone);
+  const playerLabel = playerPhone ? `@${playerPhone} (*${playerName}*)` : `*${playerName}*`;
+  const narrativePlayerLabel = playerPhone ? `@${playerPhone} (${playerName})` : playerName;
 
   if (status === 'duplicate') {
     return heraldCard('Reclamo ya registrado', [
-      `*${playerName}*, tu reclamo ya figura en este tesoro.`,
+      `${playerLabel}, tu reclamo ya figura en este tesoro.`,
       'No se procesara un segundo pago. Revisa tu saldo si la respuesta anterior quedo pendiente.',
     ], { icon: '⚠️' });
   }
 
   if (status === 'credit_pending') {
     return heraldCard('Tesoro · Acreditacion pendiente', [
-      `*${playerName}*, tu cupo quedo reservado sin duplicar el reclamo.`,
+      `${playerLabel}, tu cupo quedo reservado sin duplicar el reclamo.`,
       heraldStat('Recompensa reservada', `${formatGold(details.rewardGold)} oro`),
       'La base de datos no confirmo el abono. Revisa tu saldo y no vuelvas a reclamar este tesoro.',
     ], { icon: '⚠️' });
@@ -157,7 +161,7 @@ export function buildTreasureClaimFeedback(status, details = {}) {
 
   if (status === 'ok') {
     return heraldCard('Tesoro reclamado', [
-      `> _*${playerName}* abrio el cofre entre las sombras._`,
+      `> _${narrativePlayerLabel} abrio el cofre entre las sombras._`,
       heraldStat('Recompensa acreditada', `+${formatGold(details.rewardGold)} oro`),
       details.currentGold === null || details.currentGold === undefined
         ? ''
@@ -201,17 +205,20 @@ async function buildClaimsSummary(messageId) {
   }
 
   const winnerLines = claims.map(
-    (claim) => `- ${claim.playerName}: ${formatGold(claim.rewardGold)} oro`
+    (claim) => `- ${claim.playerPhone ? `@${claim.playerPhone} · ` : ''}*${claim.playerName}*: ${formatGold(claim.rewardGold)} oro`
   );
 
-  return [
-    '*Tesoro reclamado*',
-    '',
-    'Ganadores del Tesoro Errante:',
-    ...winnerLines,
-    '',
-    'El tesoro ha sido vaciado.',
-  ].join('\n');
+  return {
+    text: [
+      '*Tesoro reclamado*',
+      '',
+      'Ganadores del Tesoro Errante:',
+      ...winnerLines,
+      '',
+      'El tesoro ha sido vaciado.',
+    ].join('\n'),
+    mentions: claims.map((claim) => formatJid(claim.playerPhone)).filter(Boolean),
+  };
 }
 
 export async function dropTreasure(client, isClientReady = () => Boolean(client?.info)) {
@@ -319,7 +326,7 @@ export async function closeTreasure(messageId, client, options = {}) {
     const summary = await buildClaimsSummary(messageId);
     let closeMessage = null;
     if (summary) {
-      closeMessage = await client.sendMessage(targetChat, summary);
+      closeMessage = await client.sendMessage(targetChat, summary.text, { mentions: summary.mentions });
     } else if (reason === 'expired') {
       closeMessage = await client.sendMessage(
         targetChat,
@@ -370,9 +377,16 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
   }
 
   const sender = msg.author || msg.from;
+  const senderPhone = normalizePhone(sender);
+  if (!senderPhone) {
+    return heraldCard('Identidad no resuelta', [
+      'WhatsApp no permitió vincular este reclamo con un teléfono verificable.',
+      'No se reservó ni acreditó oro. Vuelve a intentarlo o pide al staff que revise tu vínculo.',
+    ], { icon: '⚠️' });
+  }
   let player;
   try {
-    player = await getPlayer(sender);
+    player = await getPlayer(senderPhone);
   } catch (playerError) {
     console.error('[Treasure] No se pudo resolver al jugador:', playerError);
     return heraldCard('Reclamo no confirmado', [
@@ -395,12 +409,16 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
     const status = result?.status ?? 'error';
 
     if (status === 'duplicate') {
-      return buildTreasureClaimFeedback(status, { playerName: player.username });
+      return buildTreasureClaimFeedback(status, {
+        playerName: player.username,
+        playerPhone: senderPhone,
+      });
     }
 
     if (status === 'credit_pending') {
       return buildTreasureClaimFeedback(status, {
         playerName: player.username,
+        playerPhone: senderPhone,
         rewardGold: result.reward_gold,
       });
     }
@@ -433,7 +451,7 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
     });
 
     const projectedGold = Number(player.gold) + Number(result.reward_gold);
-    const currentGold = Number.isFinite(projectedGold) ? projectedGold : null;
+    const currentGold = result.current_gold ?? (Number.isFinite(projectedGold) ? projectedGold : null);
 
     if (['claimed', 'close_pending'].includes(result.event_status) || result.winners_count >= result.max_winners) {
       void closeTreasure(quotedId, client, {
@@ -445,6 +463,7 @@ export async function handleTreasureReply(msg, treasure, quotedId, client) {
 
     return buildTreasureClaimFeedback('ok', {
       playerName: player.username,
+      playerPhone: senderPhone,
       rewardGold: result.reward_gold,
       currentGold,
     });

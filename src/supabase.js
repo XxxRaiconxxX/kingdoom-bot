@@ -1773,11 +1773,20 @@ export async function closeTreasureEvent(messageId) {
 }
 
 export async function getTreasureClaims(messageId) {
-  const { data: claims, error } = await botStateSupabase
+  let { data: claims, error } = await botStateSupabase
     .from('bot_treasure_claims')
-    .select('player_id, reward_gold, claimed_at')
+    .select('player_id, reward_gold, claimed_at, credit_status')
     .eq('event_message_id', messageId)
+    .eq('credit_status', 'credited')
     .order('claimed_at', { ascending: true });
+
+  if (error && ['42703', 'PGRST204'].includes(String(error.code))) {
+    ({ data: claims, error } = await botStateSupabase
+      .from('bot_treasure_claims')
+      .select('player_id, reward_gold, claimed_at')
+      .eq('event_message_id', messageId)
+      .order('claimed_at', { ascending: true }));
+  }
 
   if (error) {
     console.error('[getTreasureClaims]', error.message);
@@ -1789,26 +1798,39 @@ export async function getTreasureClaims(messageId) {
   const playerIds = claims.map((c) => c.player_id);
   const { data: players } = await supabase
     .from('players')
-    .select('id, username')
+    .select('id, username, phone')
     .in('id', playerIds);
 
   const playerMap = {};
   if (players) {
-    players.forEach((p) => { playerMap[p.id] = p.username; });
+    players.forEach((player) => { playerMap[player.id] = player; });
   }
 
   return claims.map((claim) => ({
-    playerName: playerMap[claim.player_id] || 'Jugador Desconocido',
+    playerName: playerMap[claim.player_id]?.username || 'Jugador Desconocido',
+    playerPhone: normalizePhone(playerMap[claim.player_id]?.phone),
     rewardGold: claim.reward_gold,
     claimedAt: claim.claimed_at,
   }));
 }
 
-export async function claimTreasureReward(messageId, playerId, chatId) {
-  // Configurar la recompensa entre 10000 y 50000
-  const rewardGold = Math.floor(Math.random() * (50000 - 10000 + 1)) + 10000;
+function isMissingTreasureRpc(error) {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '').toLowerCase();
+  return code === '42883'
+    || code === 'PGRST202'
+    || message.includes('could not find the function')
+    || message.includes('does not exist');
+}
 
-  // Primero verificar el evento y los ganadores actuales
+function getRpcRow(data) {
+  return Array.isArray(data) ? data[0] ?? null : data ?? null;
+}
+
+let warnedLegacyTreasurePath = false;
+
+async function claimTreasureRewardLegacy(messageId, playerId, chatId, rewardGold) {
+  // Compatibility path until both treasure migrations are applied.
   const { data: event, error: eventError } = await botStateSupabase
     .from('bot_treasure_events')
     .select('max_winners, status, expires_at')
@@ -1820,14 +1842,8 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     console.error('[claimTreasureReward.event]', eventError?.message || 'Evento no encontrado');
     return { status: 'error', reason: 'event_lookup_failed' };
   }
-
-  if (event.status !== 'open') {
-    return { status: 'full' };
-  }
-
-  if (new Date(event.expires_at).getTime() < Date.now()) {
-    return { status: 'expired' };
-  }
+  if (event.status !== 'open') return { status: 'full' };
+  if (new Date(event.expires_at).getTime() < Date.now()) return { status: 'expired' };
 
   const { count: currentCount, error: countError } = await botStateSupabase
     .from('bot_treasure_claims')
@@ -1838,10 +1854,7 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     console.error('[claimTreasureReward.count]', countError?.message || 'Conteo no disponible');
     return { status: 'error', reason: 'claim_count_failed' };
   }
-
-  if (currentCount >= event.max_winners) {
-    return { status: 'full' };
-  }
+  if (currentCount >= event.max_winners) return { status: 'full' };
 
   const { data: claim, error: claimError } = await botStateSupabase
     .from('bot_treasure_claims')
@@ -1870,27 +1883,169 @@ export async function claimTreasureReward(messageId, playerId, chatId) {
     };
   }
 
+  const { error: legacyMarkError } = await botStateSupabase
+    .from('bot_treasure_claims')
+    .update({ credit_status: 'credited', credited_at: new Date().toISOString() })
+    .eq('id', claim.id);
+  if (legacyMarkError && !['42703', 'PGRST204'].includes(String(legacyMarkError.code))) {
+    console.error('[claimTreasureReward.legacy_mark_credited]', legacyMarkError.message);
+  }
+
   const newCount = currentCount + 1;
   const isFull = newCount >= event.max_winners;
-
   let eventClosed = !isFull;
+
   if (isFull) {
     const { error: closeError } = await botStateSupabase
       .from('bot_treasure_events')
       .update({ status: 'closed', closed_at: new Date().toISOString() })
       .eq('message_id', messageId);
     eventClosed = !closeError;
-    if (closeError) {
-      console.error('[claimTreasureReward.close]', closeError.message);
-    }
+    if (closeError) console.error('[claimTreasureReward.close]', closeError.message);
   }
 
-  return { 
-    status: 'ok', 
+  return {
+    status: 'ok',
     reward_gold: rewardGold,
     winners_count: newCount,
     max_winners: event.max_winners,
-    event_status: isFull ? (eventClosed ? 'claimed' : 'close_pending') : 'open'
+    event_status: isFull ? (eventClosed ? 'claimed' : 'close_pending') : 'open',
+  };
+}
+
+export async function claimTreasureReward(messageId, playerId, chatId) {
+  const proposedReward = Math.floor(Math.random() * (50000 - 10000 + 1)) + 10000;
+  const { data: reservationData, error: reservationError } = await botStateSupabase.rpc(
+    'reserve_treasure_claim',
+    {
+      p_message_id: messageId,
+      p_player_id: playerId,
+      p_chat_id: chatId,
+      p_reward_gold: proposedReward,
+    }
+  );
+
+  if (reservationError) {
+    if (isMissingTreasureRpc(reservationError)) {
+      if (!warnedLegacyTreasurePath) {
+        warnedLegacyTreasurePath = true;
+        console.warn(
+          '[claimTreasureReward] RPC seguro no instalado; usando compatibilidad temporal. Aplica supabase_bot_state_migration.sql.'
+        );
+      }
+      return claimTreasureRewardLegacy(messageId, playerId, chatId, proposedReward);
+    }
+
+    console.error('[claimTreasureReward.reserve]', reservationError.message);
+    return { status: 'error', reason: 'claim_reservation_failed' };
+  }
+
+  const reservation = getRpcRow(reservationData);
+  if (!reservation) {
+    return { status: 'error', reason: 'empty_claim_reservation' };
+  }
+  if (reservation.status !== 'reserved') {
+    return reservation;
+  }
+
+  const { data: awardData, error: awardError } = await supabase.rpc('award_bot_gold_once', {
+    p_player_id: playerId,
+    p_reward_gold: reservation.reward_gold,
+    p_source: 'treasure',
+    p_external_ref: reservation.claim_id,
+  });
+
+  if (awardError) {
+    console.error('[claimTreasureReward.credit_pending]', awardError.message);
+    return {
+      ...reservation,
+      status: 'credit_pending',
+      reason: isMissingTreasureRpc(awardError)
+        ? 'gold_award_migration_required'
+        : 'gold_award_unconfirmed',
+    };
+  }
+
+  const award = getRpcRow(awardData);
+  if (!award) {
+    return {
+      ...reservation,
+      status: 'credit_pending',
+      reason: 'empty_gold_award',
+    };
+  }
+
+  const { error: markError } = await botStateSupabase.rpc('mark_treasure_claim_credited', {
+    p_claim_id: reservation.claim_id,
+  });
+  if (markError) {
+    console.error('[claimTreasureReward.mark_credited]', markError.message);
+  }
+
+  invalidatePlayerLookupCache(playerId);
+  const parsedGold = Number(award.current_gold);
+  return {
+    ...reservation,
+    status: 'ok',
+    current_gold: Number.isFinite(parsedGold) ? parsedGold : null,
+    credit_state_pending: Boolean(markError),
+  };
+}
+
+let warnedMissingTreasureAwardRpc = false;
+
+export async function reconcilePendingTreasureCredits(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(Number(limit)) || 20));
+  const { data: pendingClaims, error: pendingError } = await botStateSupabase
+    .from('bot_treasure_claims')
+    .select('id, player_id, reward_gold')
+    .eq('credit_status', 'pending')
+    .order('claimed_at', { ascending: true })
+    .limit(safeLimit);
+
+  if (pendingError) {
+    if (['42703', 'PGRST204'].includes(String(pendingError.code))) {
+      return { supported: false, reconciled: 0, pending: 0 };
+    }
+    throw new Error(`No se pudieron leer creditos de tesoro pendientes: ${pendingError.message}`);
+  }
+
+  let reconciled = 0;
+  for (const claim of pendingClaims ?? []) {
+    const { data: awardData, error: awardError } = await supabase.rpc('award_bot_gold_once', {
+      p_player_id: claim.player_id,
+      p_reward_gold: claim.reward_gold,
+      p_source: 'treasure',
+      p_external_ref: claim.id,
+    });
+
+    if (awardError) {
+      if (isMissingTreasureRpc(awardError) && !warnedMissingTreasureAwardRpc) {
+        warnedMissingTreasureAwardRpc = true;
+        console.warn(
+          '[reconcilePendingTreasureCredits] Aplica supabase_treasure_gold_awards.sql en el Supabase principal.'
+        );
+      }
+      continue;
+    }
+    if (!getRpcRow(awardData)) continue;
+
+    const { error: markError } = await botStateSupabase.rpc('mark_treasure_claim_credited', {
+      p_claim_id: claim.id,
+    });
+    if (markError) {
+      console.error('[reconcilePendingTreasureCredits.mark]', markError.message);
+      continue;
+    }
+
+    invalidatePlayerLookupCache(claim.player_id);
+    reconciled += 1;
+  }
+
+  return {
+    supported: true,
+    reconciled,
+    pending: pendingClaims?.length ?? 0,
   };
 }
 

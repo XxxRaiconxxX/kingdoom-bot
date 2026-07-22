@@ -1,4 +1,5 @@
 import { normalizePhone } from '../adminStore.js';
+import { resolveContactPhone } from '../whatsappIdentity.js';
 import {
   getPlayerLifecycleGraceDays,
   markPhoneProfilesLeftGrace,
@@ -136,11 +137,10 @@ export async function handleGroupLeave(notification, client, config = buildPlaye
   const lines = [];
 
   for (const contact of recipients) {
-    const rawId = contact?.id?._serialized || '';
-    const phone = normalizePhone(rawId || contact?.number || '');
+    const phone = await resolveContactPhone(client, contact);
     if (!phone) continue;
 
-    mentions.push(contact);
+    mentions.push(contact.id._serialized);
 
     try {
       const lifecycleResult = await markPhoneProfilesLeftGrace(phone, {
@@ -181,8 +181,7 @@ export async function handleGroupRejoin(notification, client, config = buildPlay
   const lines = [];
 
   for (const contact of recipients) {
-    const rawId = contact?.id?._serialized || '';
-    const phone = normalizePhone(rawId || contact?.number || '');
+    const phone = await resolveContactPhone(client, contact);
     if (!phone) continue;
 
     try {
@@ -192,7 +191,7 @@ export async function handleGroupRejoin(notification, client, config = buildPlay
       });
 
       if (lifecycleResult.updatedCount > 0) {
-        mentions.push(contact);
+        mentions.push(contact.id._serialized);
         const line = buildRejoinSummaryLine(phone, lifecycleResult);
         if (line) {
           lines.push(line);

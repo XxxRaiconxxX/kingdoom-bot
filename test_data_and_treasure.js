@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
-import { normalizePhone } from './src/adminStore.js';
-import { handleTreasureReply, activeTreasures, buildTreasureClaimFeedback } from './src/handlers/treasure.js';
-import { handleAdminCommand } from './src/handlers/admin.js';
+import fs from 'node:fs';
+
+process.env.SUPABASE_URL ||= 'https://example.supabase.co';
+process.env.SUPABASE_SERVICE_KEY ||= 'test-service-key';
+
+const { normalizePhone } = await import('./src/adminStore.js');
+const { handleTreasureReply, buildTreasureClaimFeedback } = await import('./src/handlers/treasure.js');
 
 console.log('=== RUNNING TESTS FOR DATA UPLOAD AND TREASURE CLAIM ===\n');
 
@@ -11,6 +15,7 @@ assert.equal(normalizePhone('595981123456@c.us'), '595981123456');
 assert.equal(normalizePhone('595981123456:12@c.us'), '595981123456');
 assert.equal(normalizePhone('595981123456:4@s.whatsapp.net'), '595981123456');
 assert.equal(normalizePhone('549341123456:9@c.us'), '549341123456');
+assert.equal(normalizePhone('240797811245267@lid'), '');
 console.log('✅ normalizePhone multi-device JID test passed!');
 
 // 2. Test Treasure claim feedback builder
@@ -19,6 +24,13 @@ const okFeedback = buildTreasureClaimFeedback('ok', { playerName: 'Raicon', rewa
 assert.ok(okFeedback.includes('Raicon'));
 assert.ok(okFeedback.includes('25.000'));
 assert.ok(okFeedback.includes('150.000'));
+
+const mentionedFeedback = buildTreasureClaimFeedback('ok', {
+  playerName: 'Raicon',
+  playerPhone: '595981123456',
+  rewardGold: 25000,
+});
+assert.ok(mentionedFeedback.includes('@595981123456'));
 
 const fullFeedback = buildTreasureClaimFeedback('full');
 assert.ok(fullFeedback.includes('Tesoro agotado'));
@@ -51,34 +63,13 @@ const nonReclamarResult = await handleTreasureReply(nonReclamarMsg, mockTreasure
 assert.equal(nonReclamarResult, null);
 console.log('✅ handleTreasureReply filters test passed!');
 
-// 4. Test !data command with document caption and inline text
-console.log('\n[Test 4] !data admin command handling...');
-const docCaptionMsg = {
-  from: '595971123456@c.us',
-  body: 'Lore_Darkthorne_Arcania.txt',
-  caption: '!data Lore Darkthorne',
-  hasMedia: true,
-  hasQuotedMsg: false,
-  async downloadMedia() {
-    return {
-      mimetype: 'text/plain',
-      filename: 'Lore_Darkthorne_Arcania.txt',
-      data: Buffer.from('Darkthorne fue un reino legendario fundado en la era antigua.', 'utf-8').toString('base64')
-    };
-  }
-};
-const docReply = await handleAdminCommand(docCaptionMsg, '595971123456', 'AdminUser');
-assert.ok(docReply.includes('Documento guardado') || docReply.includes('Error al guardar'));
-
-const inlineTxtMsg = {
-  from: '595971123456@c.us',
-  body: '!data Leyendas Antiguas\nEste es el contenido directo de las leyendas sin necesidad de adjuntar archivo.',
-  hasMedia: false,
-  hasQuotedMsg: false
-};
-const inlineReply = await handleAdminCommand(inlineTxtMsg, '595971123456', 'AdminUser');
-assert.ok(inlineReply.includes('Documento guardado') || inlineReply.includes('Error al guardar'));
-
-console.log('✅ !data command tests passed!');
+// 4. Guardas estructurales de !data sin tocar una base real.
+console.log('\n[Test 4] !data structural guards...');
+const adminSource = fs.readFileSync(new URL('./src/handlers/admin.js', import.meta.url), 'utf8');
+assert.match(adminSource, /resolveAndDownloadMedia\(msg, client\)/);
+assert.match(adminSource, /DATA_MAX_FILE_BYTES/);
+assert.match(adminSource, /TextDecoder\('utf-8', \{ fatal: true \}\)/);
+assert.doesNotMatch(adminSource, /mediaData\._blob|Método A|Método B/);
+console.log('✅ !data structural guards passed!');
 
 console.log('\n=== ALL TESTS PASSED SUCCESSFULLY! ===');
