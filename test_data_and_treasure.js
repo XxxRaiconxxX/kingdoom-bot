@@ -51,7 +51,25 @@ const nonReclamarResult = await handleTreasureReply(nonReclamarMsg, mockTreasure
 assert.equal(nonReclamarResult, null);
 console.log('✅ handleTreasureReply filters test passed!');
 
-// 4. Test !data command without media or quoted media
+// 4. Test !data command with document caption and inline text
+console.log('\n[Test 4] !data admin command handling...');
+const docCaptionMsg = {
+  from: '595971123456@c.us',
+  body: 'Lore_Darkthorne_Arcania.txt',
+  caption: '!data Lore Darkthorne',
+  hasMedia: true,
+  hasQuotedMsg: false,
+  async downloadMedia() {
+    return {
+      mimetype: 'text/plain',
+      filename: 'Lore_Darkthorne_Arcania.txt',
+      data: Buffer.from('Darkthorne fue un reino legendario fundado en la era antigua.', 'utf-8').toString('base64')
+    };
+  }
+};
+const docReply = await handleAdminCommand(docCaptionMsg, '595971123456', 'AdminUser');
+assert.ok(docReply.includes('Documento guardado') || docReply.includes('Error al guardar'));
+
 const inlineTxtMsg = {
   from: '595971123456@c.us',
   body: '!data Leyendas Antiguas\nEste es el contenido directo de las leyendas sin necesidad de adjuntar archivo.',

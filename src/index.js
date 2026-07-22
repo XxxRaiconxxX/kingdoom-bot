@@ -2223,7 +2223,11 @@ client.on('message', async (msg) => {
     }
   }
 
-  const text = typeof msg.body === 'string' ? msg.body.trim() : '';
+  const text = (
+    typeof msg.caption === 'string' && msg.caption.trim()
+      ? msg.caption.trim()
+      : (typeof msg.body === 'string' ? msg.body.trim() : '')
+  );
   const sender = msg.author || msg.from;
 
   // Intercept replies (Blackjack, Tesoros, etc.)

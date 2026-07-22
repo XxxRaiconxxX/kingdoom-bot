@@ -219,7 +219,10 @@ async function resolveMissionCompletionTargets(msg) {
 }
 
 export async function handleAdminCommand(msg, client) {
-  const text = msg.body.trim();
+  const rawText = (typeof msg.caption === 'string' && msg.caption.trim().startsWith('!'))
+    ? msg.caption.trim()
+    : String(msg.body || '').trim();
+  const text = rawText;
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
   const sender = msg.author || msg.from;
@@ -1690,8 +1693,13 @@ export async function handleAdminCommand(msg, client) {
       const rawTitle = parts.slice(1).join(' ').trim();
       title = rawTitle || media.filename || 'Documento sin titulo';
     } else if (targetMsg && !targetMsg.hasMedia && targetMsg.body) {
-      // Fallback: mensaje citado de texto
-      content = targetMsg.body.trim().replace(/\0/g, '');
+      // Fallback: mensaje citado de texto (ignorar respuestas del bot o comandos)
+      const textBody = targetMsg.body.trim().replace(/\0/g, '');
+      const isBotOrErrorMsg = textBody.startsWith('❌') || textBody.startsWith('🛡️') || textBody.startsWith('⚠️') || textBody.startsWith('✅') || textBody.startsWith('!data');
+      if (isBotOrErrorMsg) {
+        return `❌ El mensaje citado es una respuesta del bot. Debes adjuntar directamente el archivo .txt o citar el mensaje original con el contenido a guardar.`;
+      }
+      content = textBody;
       const rawTitle = parts.slice(1).join(' ').trim();
       title = rawTitle || 'Documento citado';
     } else {
