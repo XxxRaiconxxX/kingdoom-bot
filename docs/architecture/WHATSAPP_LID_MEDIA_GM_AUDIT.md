@@ -129,10 +129,23 @@ Verificacion posterior:
 - `npm run graphify:update`.
 - `git diff --check`.
 
+## Despliegue productivo
+
+El commit funcional `d27cf10032f19b5fce781df8e6cc0fd7ee5135dc` fue enviado a
+`origin/main` y `huggingface/main` el 2026-07-22. El Space
+`axel785/kingdoom-whatsapp` reconocio ese SHA, termino el build y alcanzo:
+
+- `/healthz` HTTP 200 y `operational=true`.
+- `connectionHealth=HEALTHY` con prueba `active_presence_probe_ok`.
+- `whatsappState=CONNECTED`, sin QR y sin error funcional.
+- `authStrategyMode=remote`, snapshot guardado y `reconnectReady=true`.
+- Restauracion remota verificada mediante `active_network` en 88,9 segundos.
+
 ## Riesgos abiertos
 
-- La validacion local no demuestra el comportamiento del Space de Hugging Face; requiere
-  despliegue y prueba viva posterior.
+- No se inyecto un comando real en los grupos de produccion durante el cierre. La salud del
+  canal, la visibilidad de RPC y las pruebas automatizadas estan verificadas; el smoke final de
+  `!data`, Tesoro y `!misionstart` requiere mensajes reales de un usuario autorizado.
 - El `.env` local no define `BOT_SUPABASE_URL` ni `BOT_SUPABASE_SERVICE_KEY`; una ejecucion
   local seguira usando el proyecto principal como fallback para estado hasta configurar esas
   variables. El proyecto dedicado fue identificado como el activo mas reciente.

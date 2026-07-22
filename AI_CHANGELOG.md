@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Cierre y verificacion productiva del release integral de compatibilidad WhatsApp, Tesoro y Game Master.
+*   **Cambios Clave:**
+    *   **[Commit funcional]:** `d27cf10032f19b5fce781df8e6cc0fd7ee5135dc` fue aceptado por `origin/main` y `huggingface/main` mediante fast-forward desde `c235b8e`.
+    *   **[Space correcto]:** La API de Hugging Face reconocio el SHA objetivo, paso de `RUNNING_BUILDING` a `RUNNING_APP_STARTING` y termino en `RUNNING`.
+    *   **[Canal operativo]:** `/healthz` respondio HTTP 200; el estado publico mostro `operational=true`, `HEALTHY`, `CONNECTED`, sin QR, sin error funcional y con `reconnectReady=true`.
+    *   **[Sesion restaurada]:** RemoteAuth restauro un snapshot guardado y completo `remote_auth_restore` como `verified` mediante `active_network` en 88.910 ms.
+*   **Validacion:** 33 archivos JS pasan `node --check`, 20/20 pruebas pasan, `npm ci --dry-run --ignore-scripts --omit=dev` y `git diff --check` pasan; ambas RPC de tesoro ya estan visibles en PostgREST.
+*   **Notas/Advertencias:** No se envio un comando real a grupos de produccion durante este cierre. El smoke funcional final de `!data`, un reclamo y `!misionstart` requiere interaccion de un usuario autorizado en WhatsApp.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `supabase/supabase_bot_state_migration.sql`, `supabase/supabase_treasure_gold_awards.sql`, `test_treasure_atomicity.js`, `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Aplicadas y verificadas las migraciones atomicas del Tesoro Errante en los dos proyectos Supabase reales.
 *   **Cambios Clave:**
