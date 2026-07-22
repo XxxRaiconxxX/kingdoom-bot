@@ -8,11 +8,11 @@ import {
   getRoleplayLockWindowDays,
   reconcilePendingGameRewards,
   reconcilePendingTreasureCredits,
-  getPlayersByPhoneStrict,
 } from './supabase.js';
-import { normalizePhone, formatJid } from './adminStore.js';
+import { normalizePhone } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
+import { resolveWhatsAppRecipientId } from './whatsappIdentity.js';
 import {
   decideTrackedDelivery,
   getWhatsAppMessageId,
@@ -132,19 +132,6 @@ export async function prepareTrackedNotificationRetry(item, inspectionState) {
     .eq('delivery_message_id', messageId)
     .select('id');
   return { prepared: Array.isArray(data) && data.length === 1, error };
-}
-
-export async function closeOrphanedNotification(item, now = Date.now()) {
-  const linkedPlayers = await getPlayersByPhoneStrict(item?.player_phone);
-  if (linkedPlayers.length > 0) return false;
-
-  const { error } = await updateNotificationState(item.id, {
-    sent: true,
-    sent_at: new Date(now).toISOString(),
-    delivery_error: 'RECIPIENT_NOT_LINKED',
-  });
-  if (error) throw error;
-  return true;
 }
 
 function isWhatsappClientReady(client, isClientReady) {
@@ -428,11 +415,6 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 return;
               }
 
-              if (await closeOrphanedNotification(item, now)) {
-                inMemoryNotificationDeliveries.delete(item.id);
-                continue;
-              }
-
               const trackedItem = {
                 ...item,
                 ...(inMemoryNotificationDeliveries.get(item.id) ?? {}),
@@ -489,9 +471,11 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
               if (!claimed) return;
 
               try {
+                const recipientId = await resolveWhatsAppRecipientId(client, item.player_phone);
+                if (!recipientId) throw new Error('Number is not registered on WhatsApp');
                 const { message, messageId } = await sendMessageWithResult(
                   client,
-                  formatJid(item.player_phone),
+                  recipientId,
                   item.message
                 );
                 const deliveryStartedAt = new Date().toISOString();

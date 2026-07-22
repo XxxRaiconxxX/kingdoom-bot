@@ -5,16 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
-*   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `src/supabase.js`, `test_scheduler_delivery_guard.js`, `test_phone_lookup_cache.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Cerradas la carrera de doble despacho entre workers y la repeticion indefinida de avisos dirigidos a jugadores eliminados.
+*   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_compat.js`, `test_phone_lookup_cache.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Cerrada la carrera de doble despacho entre workers y agregado routing canonico de destinatarios antes de enviar por WhatsApp.
 *   **Cambios Clave:**
-    *   **[Hallazgo vivo]:** Una notificacion con ACK ambiguo permanecia correctamente pendiente, pero alcanzo nueve intentos durante los reemplazos de contenedor. El flujo tenia tracking posterior al envio, pero no reclamaba la fila antes de llamar a WhatsApp.
+    *   **[Hallazgo vivo]:** Una notificacion con ACK ambiguo permanecia correctamente pendiente, pero alcanzo once intentos durante transiciones de workers. El flujo tenia tracking posterior al envio, pero no reclamaba la fila antes de llamar a WhatsApp.
     *   **[Lease atomico]:** Cada worker debe ganar una actualizacion condicional sobre la misma fila antes de enviar. Un claim reciente bloquea competidores y uno huerfano puede recuperarse tras cinco minutos usando las columnas ya migradas.
     *   **[Retry seguro]:** Retirar un ID trazado viejo tambien exige que ese ID siga siendo el actual; un worker atrasado ya no puede borrar el ID nuevo guardado por otro.
-    *   **[Destinatario huerfano]:** Antes del claim se confirma con una consulta estricta que el telefono siga vinculado a `players`. Si no existe, la fila se cierra con `RECIPIENT_NOT_LINKED`; si Supabase falla, el error se propaga y el mensaje permanece pendiente.
+    *   **[Hipotesis corregida]:** La primera consulta no encontro jugador porque el telefono estaba guardado en un formato historico. El filtro ahora consulta variantes conocidas y normaliza antes de exigir igualdad exacta; los dos casos reales resolvieron `2/2`. Se retiro el cierre por destinatario huerfano al comprobar que esta fila si tenia perfil.
+    *   **[Routing WhatsApp]:** La cola ya no construye siempre `telefono@c.us`. Antes de enviar usa `Client#getNumberId` de `whatsapp-web.js@1.34.7`; envia al ID canonico devuelto, cierra solo si WhatsApp confirma que el numero no esta registrado y conserva la fila si la consulta falla.
     *   **[Sin migracion adicional]:** Se reutilizan `delivery_message_id`, `delivery_started_at` y `delivery_error`; no se agregaron tablas, columnas ni dependencias.
-*   **Validacion:** La integracion real hizo competir dos workers por el reset y por el claim, y cerro un telefono inexistente sin enviarlo. `npm test` paso 21/21, `npm run test:real` paso 22/22 y `REAL_CLEANUP_OK` termino en cero para siete tipos de artefactos sinteticos. El test estricto fuerza HTTP 503, revalida caches vacias y la lectura real resolvio 2/2 formatos telefonicos historicos.
-*   **Notas/Advertencias:** El lease evita duplicar la misma fila; el rate limit horario sigue siendo memoria por proceso y no constituye un lock global entre replicas.
+*   **Validacion:** La integracion real hizo competir dos workers por el reset y por el claim. `npm test` paso 21/21, `npm run test:real` paso 22/22 y `REAL_CLEANUP_OK` termino en cero para siete categorias consultadas. La prueba de compatibilidad exige que el ID canonico pueda ser LID, que `null` no se envie y que la API ausente falle de forma explicita.
+*   **Notas/Advertencias:** El lease evita duplicar la misma fila; el rate limit horario sigue siendo memoria por proceso. El aviso vivo conserva un ID con `WHATSAPP_ACK_TIMEOUT` durante la ventana anti-duplicado de 30 minutos antes de permitir un reintento canonico.
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/remoteAuth.js`, `test_remote_auth.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.

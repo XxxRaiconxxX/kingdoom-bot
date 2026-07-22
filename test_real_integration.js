@@ -32,7 +32,6 @@ const { handleAdminCommand } = await import('./src/handlers/admin.js');
 const { cancelActiveMission, getActiveMissionsList } = await import('./src/gmTracker.js');
 const {
   claimPendingNotificationDelivery,
-  closeOrphanedNotification,
   prepareTrackedNotificationRetry,
 } = await import('./src/scheduler.js');
 
@@ -331,27 +330,6 @@ try {
   assert.equal(claimedNotification.delivery_error, 'DELIVERY_CLAIMED');
   assert.equal(await claimPendingNotificationDelivery(claimedNotification, claimNow + 1_000), false);
 
-  const { data: orphanedNotification, error: orphanedNotificationError } = await botStateSupabase
-    .from('bot_notifications_queue')
-    .insert({
-      player_phone: `000000${runId}`,
-      message: `[AUDIT] orphaned delivery ${runId}`,
-      sent: false,
-    })
-    .select('id, player_phone, message')
-    .single();
-  throwIfError(orphanedNotificationError, 'orphaned notification insert');
-  notificationQueueIds.push(orphanedNotification.id);
-  assert.equal(await closeOrphanedNotification(orphanedNotification, claimNow), true);
-  const { data: closedOrphan, error: closedOrphanError } = await botStateSupabase
-    .from('bot_notifications_queue')
-    .select('sent, delivery_error')
-    .eq('id', orphanedNotification.id)
-    .single();
-  throwIfError(closedOrphanError, 'orphaned notification check');
-  assert.equal(closedOrphan.sent, true);
-  assert.equal(closedOrphan.delivery_error, 'RECIPIENT_NOT_LINKED');
-
   const itemName = `Audit Auction ${runId}`;
   const { data: auction, error: auctionInsertError } = await supabase
     .from('market_auctions')
@@ -524,7 +502,6 @@ try {
     treasureConcurrency: true,
     notificationTracking: true,
     notificationLease: true,
-    orphanNotificationClosure: true,
     auctionLockRelease: true,
     anonRpcDenied: true,
     botAnonRpcDenied: true,

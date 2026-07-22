@@ -254,15 +254,30 @@ concurrentes y obtuvo exactamente un ganador en cada etapa. La fila se elimino a
 No fue necesaria otra migracion. El cierre completo paso 21 pruebas locales y 22 con
 integracion real; la comprobacion independiente dejo en cero siete tipos de artefactos.
 
-### Destinatario eliminado
+### Identidad historica y routing saliente
 
-La misma fila era un aviso masivo del 20 de julio y su telefono ya no tenia coincidencias en
-`players`. El scheduler ahora valida esa relacion antes del claim. Una fila sin jugador se
-cierra con `sent=true` y `delivery_error=RECIPIENT_NOT_LINKED`, evitando reintentos perpetuos.
+La primera lectura de la fila parecia no encontrar un jugador, pero esa hipotesis era falsa: el
+telefono del perfil estaba guardado en uno de los formatos historicos que `normalizePhone`
+acepta, mientras la consulta SQL solo buscaba la forma moderna. `getPlayersByPhone` ahora busca
+tambien las variantes inversas conocidas y mantiene un filtro exacto despues de normalizar. La
+lectura real encontro dos formatos historicos y ambos resolvieron su perfil (`2/2`).
 
-La consulta usa una variante estricta de `getPlayersByPhone`: conserva el filtro exacto y la
-cache positiva existente, pero revalida resultados vacios y propaga errores de Supabase. Una
-caida de base deja la notificacion pendiente en vez de cerrarla falsamente. La prueba local
-fuerza HTTP 503 y una cache vacia obsoleta; la integracion real crea/cierra una fila huerfana.
-Ademas, la lectura de produccion encontro dos formatos telefonicos historicos y ambos resolvieron
-el perfil exacto (`2/2`). Todas las filas sinteticas se eliminaron.
+La verificacion posterior al despliegue demostro que la fila si estaba vinculada. El worker creo
+un ID saliente, pero no recibio ACK de servidor y la dejo correctamente pendiente con
+`WHATSAPP_ACK_TIMEOUT`; el contador llego a once durante las transiciones. Por esta evidencia se
+retiro el cierre preventivo `RECIPIENT_NOT_LINKED`: no correspondia a la causa raiz y podia cerrar
+una entrega valida por una diferencia de formato o una carrera de sincronizacion.
+
+El scheduler enviaba siempre a `telefono@c.us`. La version instalada `whatsapp-web.js@1.34.7`
+expone [`Client#getNumberId`](https://docs.wwebjs.dev/Client.html#getNumberId), que consulta el
+ID registrado real y puede devolver un WID canonico distinto o `null`. La cola ahora ejecuta
+esa consulta despues de ganar el lease y antes de enviar:
+
+- usa exactamente el ID canonico devuelto, incluido un LID;
+- si WhatsApp devuelve `null`, aplica el error permanente ya existente de numero no registrado;
+- si la consulta falla o la API no esta disponible, conserva la fila pendiente y pausa el ciclo;
+- un ID con ACK ambiguo sigue retenido 30 minutos para no duplicar un mensaje posiblemente enviado.
+
+No se agregaron dependencias ni migraciones. La prueba local cubre retorno LID, numero no
+registrado y API ausente; la consulta historica real y las suites completa/integrada permanecen
+como condiciones de cierre.

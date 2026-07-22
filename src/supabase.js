@@ -304,28 +304,6 @@ function applyPhoneLookupFilter(query, phone) {
   return query.or(candidates.map((candidate) => `phone.ilike.%${candidate}%`).join(','));
 }
 
-export async function getPlayersByPhoneStrict(whatsappNumber) {
-  const phone = normalizePhone(whatsappNumber);
-  if (!phone) return [];
-
-  const cachedPlayers = readPhoneLookupCache(phone);
-  if (cachedPlayers?.length > 0) return cachedPlayers;
-
-  const lookupRevision = phoneLookupRevision;
-  let query = supabase
-    .from('players')
-    .select(PLAYER_SELECT_COLUMNS);
-  query = applyPhoneLookupFilter(query, phone);
-  const { data, error } = await query.order('created_at', { ascending: true });
-  if (error) throw error;
-
-  const matchedPlayers = filterPlayersByExactPhone(data, phone);
-  if (lookupRevision === phoneLookupRevision) {
-    writePhoneLookupCache(phone, matchedPlayers);
-  }
-  return matchedPlayers;
-}
-
 function isMissingLifecycleSchemaError(error) {
   const message = String(error?.message ?? '').toLowerCase();
   const code = String(error?.code ?? '');

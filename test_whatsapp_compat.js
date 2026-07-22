@@ -6,6 +6,7 @@ import {
   resolveMessageSenderPhone,
   resolveWhatsAppPhone,
   resolveWhatsAppPhones,
+  resolveWhatsAppRecipientId,
   serializeWhatsAppId,
 } from './src/whatsappIdentity.js';
 import {
@@ -20,6 +21,26 @@ assert.equal(normalizePhone('595971938097-1618930274@g.us'), '', 'Un grupo no pu
 assert.equal(formatJid('123456789012345'), '123456789012345@c.us', 'La longitud no convierte un teléfono en LID.');
 assert.equal(formatJid('240797811245267@lid'), '240797811245267@lid');
 assert.equal(serializeWhatsAppId({ $1: '240797811245267@lid' }), '240797811245267@lid');
+
+let recipientLookupPhone = '';
+assert.equal(
+  await resolveWhatsAppRecipientId({
+    async getNumberId(number) {
+      recipientLookupPhone = number;
+      return { _serialized: '240797811245267@lid' };
+    },
+  }, '595981111222'),
+  '240797811245267@lid'
+);
+assert.equal(recipientLookupPhone, '595981111222');
+assert.equal(
+  await resolveWhatsAppRecipientId({ getNumberId: async () => null }, '595981111222'),
+  ''
+);
+await assert.rejects(
+  resolveWhatsAppRecipientId({}, '595981111222'),
+  /does not support getNumberId/
+);
 
 clearWhatsAppIdentityCache();
 let mappingCalls = 0;

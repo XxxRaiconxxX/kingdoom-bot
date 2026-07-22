@@ -73,6 +73,17 @@ function normalizeResolvedPhone(value) {
   return /^\d{7,15}$/.test(phone) ? phone : '';
 }
 
+export async function resolveWhatsAppRecipientId(client, value) {
+  const phone = normalizeResolvedPhone(value);
+  if (!phone) return '';
+  if (!client || typeof client.getNumberId !== 'function') {
+    throw new TypeError('WhatsApp client does not support getNumberId');
+  }
+
+  const registeredId = await withLookupTimeout(Promise.resolve(client.getNumberId(phone)));
+  return serializeWhatsAppId(registeredId);
+}
+
 export async function resolveWhatsAppPhone(client, value) {
   const id = serializeWhatsAppId(value) || String(value ?? '').trim();
   if (!id) return '';
