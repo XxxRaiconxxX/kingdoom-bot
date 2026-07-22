@@ -1629,14 +1629,15 @@ export async function handleAdminCommand(msg, client) {
               }
 
               if (msgObj.mediaData && msgObj.mediaData._blob) {
-                const buffer = await msgObj.mediaData._blob.arrayBuffer();
-                const bytes = new Uint8Array(buffer);
-                let binary = '';
-                for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]);
-                }
+                const dataUrl = await new Promise((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(reader.result);
+                  reader.onerror = (err) => reject(err);
+                  reader.readAsDataURL(msgObj.mediaData._blob);
+                });
+                const base64Data = String(dataUrl).split(',')[1] || '';
                 return {
-                  data: btoa(binary),
+                  data: base64Data,
                   mimetype: msgObj.mimetype || 'text/plain',
                   filename: msgObj.filename || 'documento.txt'
                 };
@@ -1661,19 +1662,19 @@ export async function handleAdminCommand(msg, client) {
     if (media && media.data) {
       const mime = String(media.mimetype || '').toLowerCase();
       const filename = String(media.filename || '').toLowerCase();
-      const isTextMime = mime.includes('text/') || mime.includes('octet-stream') || mime.includes('json');
+      const isTextMime = mime.includes('text/') || mime.includes('json');
       const isTxtExt = filename.endsWith('.txt') || filename.endsWith('.log') || filename.endsWith('.json') || filename.endsWith('.md');
 
       if (!isTextMime && !isTxtExt) {
-        return `❌ Solo se permiten archivos de texto plano (.txt).`;
+        return `❌ Solo se permiten archivos de texto plano (.txt, .md, .log, .json).`;
       }
 
-      content = Buffer.from(media.data, 'base64').toString('utf-8');
+      content = Buffer.from(media.data, 'base64').toString('utf-8').replace(/\0/g, '');
       const rawTitle = parts.slice(1).join(' ').trim();
       title = rawTitle || media.filename || 'Documento sin titulo';
     } else if (targetMsg && !targetMsg.hasMedia && targetMsg.body) {
       // Fallback: mensaje citado de texto
-      content = targetMsg.body.trim();
+      content = targetMsg.body.trim().replace(/\0/g, '');
       const rawTitle = parts.slice(1).join(' ').trim();
       title = rawTitle || 'Documento citado';
     } else {
@@ -1681,12 +1682,18 @@ export async function handleAdminCommand(msg, client) {
       const rawText = msg.body.trim();
       const lines = rawText.split('\n');
       const firstLineParts = lines[0].split(/\s+/);
-      const rawTitle = firstLineParts.slice(1).join(' ').trim();
-      const bodyLines = lines.slice(1).join('\n').trim();
+      let rawTitle = firstLineParts.slice(1).join(' ').trim();
+      let bodyLines = lines.slice(1).join('\n').trim();
+
+      if (!rawTitle && bodyLines) {
+        const bodyLineList = bodyLines.split('\n');
+        rawTitle = bodyLineList[0].trim();
+        bodyLines = bodyLineList.slice(1).join('\n').trim();
+      }
 
       if (bodyLines && rawTitle) {
         title = rawTitle;
-        content = bodyLines;
+        content = bodyLines.replace(/\0/g, '');
       }
     }
 
@@ -1695,6 +1702,10 @@ export async function handleAdminCommand(msg, client) {
              `1. Adjuntar un archivo .txt con *!data [titulo]*\n` +
              `2. Responder a un archivo .txt o mensaje de texto con *!data [titulo]*\n` +
              `3. Escribir el título y el texto en el mismo mensaje: *!data Titulo*\n*(contenido en las líneas siguientes)*`;
+    }
+
+    if (content.length > 500000) {
+      return `❌ El documento es demasiado extenso (${content.length.toLocaleString('es-PY')} caracteres). El límite máximo permitido es de 500.000 caracteres.`;
     }
 
     try {
