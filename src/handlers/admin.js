@@ -1553,7 +1553,12 @@ export async function handleAdminCommand(msg, client) {
 
   // 12. !data (Knowledge upload)
   if (cmd === '!data') {
+    let title = '';
+    let content = '';
+    let media = null;
     let targetMsg = null;
+
+    // 1. Identificar mensaje objetivo (directo o citado)
     if (msg.hasMedia) {
       targetMsg = msg;
     } else if (msg.hasQuotedMsg) {
@@ -1568,7 +1573,7 @@ export async function handleAdminCommand(msg, client) {
         }
         if (!targetMsg && typeof msg.getQuotedMessage === 'function') {
           const quoted = await msg.getQuotedMessage();
-          if (quoted && quoted.hasMedia) {
+          if (quoted) {
             targetMsg = quoted;
           }
         }
@@ -1577,15 +1582,9 @@ export async function handleAdminCommand(msg, client) {
       }
     }
 
-    if (!targetMsg) {
-      return `❌ Debes adjuntar un archivo .txt (o responder a uno) con el comando *!data [titulo]* para cargarlo a la base de conocimiento.`;
-    }
-
-    try {
-      let media = null;
+    // 2. Si el mensaje objetivo tiene media, intentar descarga con reintentos
+    if (targetMsg && targetMsg.hasMedia) {
       let lastDlErr = null;
-      
-      // Intentar hasta 3 veces con pausa y re-fetch
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
           if (typeof targetMsg.downloadMedia === 'function') {
@@ -1610,15 +1609,56 @@ export async function handleAdminCommand(msg, client) {
         }
 
         if (attempt < 3) {
-          await new Promise(r => setTimeout(r, 600));
+          await new Promise((r) => setTimeout(r, 600));
         }
       }
 
-      if (!media || !media.data) {
-        console.error('[admin data upload downloadMedia]', lastDlErr);
-        return `❌ No se pudo descargar el archivo adjunto desde WhatsApp (${lastDlErr?.message || 'sin respuesta de media'}). Intenta enviarlo de nuevo.`;
-      }
+      // Fallback secundario via Puppeteer _blob si downloadMedia() arrojó excepción de desencripción
+      if ((!media || !media.data) && client?.pupPage && targetMsg?.id) {
+        try {
+          const rawId = typeof targetMsg.id === 'string' ? targetMsg.id : targetMsg.id._serialized;
+          console.log('[admin !data] Intentando fallback via Puppeteer _blob para ID:', rawId);
+          const puppeteerMedia = await client.pupPage.evaluate(async (msgId) => {
+            try {
+              const msgObj = window.require('WAWebCollections').Msg.get(msgId) ||
+                (await window.require('WAWebCollections').Msg.getMessagesById([msgId]))?.messages?.[0];
+              if (!msgObj) return null;
 
+              if (msgObj.downloadMedia && msgObj.mediaData?.mediaStage !== 'RESOLVED') {
+                try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
+              }
+
+              if (msgObj.mediaData && msgObj.mediaData._blob) {
+                const buffer = await msgObj.mediaData._blob.arrayBuffer();
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+                }
+                return {
+                  data: btoa(binary),
+                  mimetype: msgObj.mimetype || 'text/plain',
+                  filename: msgObj.filename || 'documento.txt'
+                };
+              }
+            } catch (e) {
+              return { error: String(e?.message || e) };
+            }
+            return null;
+          }, rawId);
+
+          if (puppeteerMedia && puppeteerMedia.data) {
+            media = puppeteerMedia;
+            console.log('[admin !data] Fallback via Puppeteer _blob exitoso!');
+          }
+        } catch (pupErr) {
+          console.warn('[admin !data] Fallback Puppeteer _blob falló:', pupErr?.message || pupErr);
+        }
+      }
+    }
+
+    // 3. Extracción de contenido de texto según el tipo de origen
+    if (media && media.data) {
       const mime = String(media.mimetype || '').toLowerCase();
       const filename = String(media.filename || '').toLowerCase();
       const isTextMime = mime.includes('text/') || mime.includes('octet-stream') || mime.includes('json');
@@ -1628,20 +1668,42 @@ export async function handleAdminCommand(msg, client) {
         return `❌ Solo se permiten archivos de texto plano (.txt).`;
       }
 
-      const content = Buffer.from(media.data, 'base64').toString('utf-8');
-      if (!content.trim()) {
-        return `❌ El archivo está vacío.`;
-      }
-
+      content = Buffer.from(media.data, 'base64').toString('utf-8');
       const rawTitle = parts.slice(1).join(' ').trim();
-      const title = rawTitle || media.filename || 'Documento sin titulo';
+      title = rawTitle || media.filename || 'Documento sin titulo';
+    } else if (targetMsg && !targetMsg.hasMedia && targetMsg.body) {
+      // Fallback: mensaje citado de texto
+      content = targetMsg.body.trim();
+      const rawTitle = parts.slice(1).join(' ').trim();
+      title = rawTitle || 'Documento citado';
+    } else {
+      // Fallback: contenido directo multilínea en el mensaje
+      const rawText = msg.body.trim();
+      const lines = rawText.split('\n');
+      const firstLineParts = lines[0].split(/\s+/);
+      const rawTitle = firstLineParts.slice(1).join(' ').trim();
+      const bodyLines = lines.slice(1).join('\n').trim();
 
+      if (bodyLines && rawTitle) {
+        title = rawTitle;
+        content = bodyLines;
+      }
+    }
+
+    if (!content || !content.trim()) {
+      return `❌ No se encontró contenido de texto para guardar. Puedes usar:\n` +
+             `1. Adjuntar un archivo .txt con *!data [titulo]*\n` +
+             `2. Responder a un archivo .txt o mensaje de texto con *!data [titulo]*\n` +
+             `3. Escribir el título y el texto en el mismo mensaje: *!data Titulo*\n*(contenido en las líneas siguientes)*`;
+    }
+
+    try {
       // Dinamicamente importar upsertKnowledgeDocument
       const { upsertKnowledgeDocument } = await import('../supabase.js');
 
       const success = await upsertKnowledgeDocument({
         title,
-        content,
+        content: content.trim(),
         type: 'lore',
         category: 'bot-upload',
         source: 'whatsapp',
@@ -1655,16 +1717,16 @@ export async function handleAdminCommand(msg, client) {
           actorName,
           action: 'upload_data',
           target: title,
-          detail: `Cargó documento TXT de ${content.length} caracteres.`,
+          detail: `Cargó documento de ${content.trim().length} caracteres.`,
           chatId: msg.from,
         });
-        return `✅ *Documento guardado:* "${title}" ha sido asimilado por el Archivista.`;
+        return `✅ *Documento guardado:* "${title}" (${content.trim().length} caracteres) ha sido asimilado por el Archivista.`;
       } else {
         return `❌ Error al guardar el documento en la base de datos.`;
       }
     } catch (err) {
       console.error('[admin data upload]', err);
-      return `❌ Hubo un error al procesar el archivo adjunto: ${err?.message || 'Error desconocido'}`;
+      return `❌ Hubo un error al procesar el documento: ${err?.message || 'Error desconocido'}`;
     }
   }
 

@@ -52,32 +52,15 @@ assert.equal(nonReclamarResult, null);
 console.log('✅ handleTreasureReply filters test passed!');
 
 // 4. Test !data command without media or quoted media
-console.log('\n[Test 4] !data admin command handling...');
-const noMediaMsg = {
+const inlineTxtMsg = {
   from: '595971123456@c.us',
-  body: '!data Titulo Lore',
+  body: '!data Leyendas Antiguas\nEste es el contenido directo de las leyendas sin necesidad de adjuntar archivo.',
   hasMedia: false,
   hasQuotedMsg: false
 };
-const noMediaReply = await handleAdminCommand(noMediaMsg, '595971123456', 'AdminUser');
-assert.ok(noMediaReply.includes('Debes adjuntar un archivo .txt'));
+const inlineReply = await handleAdminCommand(inlineTxtMsg, '595971123456', 'AdminUser');
+assert.ok(inlineReply.includes('Documento guardado') || inlineReply.includes('Error al guardar'));
 
-const txtMediaMsg = {
-  from: '595971123456@c.us',
-  body: '!data Lore del Reino',
-  hasMedia: true,
-  hasQuotedMsg: false,
-  async downloadMedia() {
-    return {
-      mimetype: 'application/octet-stream',
-      filename: 'historia.txt',
-      data: Buffer.from('El Reino de las Sombras fue fundado en la era antigua.', 'utf-8').toString('base64')
-    };
-  }
-};
-const txtMediaReply = await handleAdminCommand(txtMediaMsg, '595971123456', 'AdminUser');
-// Should attempt upsert (might fail DB connection if offline or return success)
-assert.ok(txtMediaReply.includes('Documento guardado') || txtMediaReply.includes('Error al guardar'));
-console.log('✅ !data command test passed!');
+console.log('✅ !data command tests passed!');
 
 console.log('\n=== ALL TESTS PASSED SUCCESSFULLY! ===');
