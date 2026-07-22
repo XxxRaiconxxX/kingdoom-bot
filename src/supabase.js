@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import ws from 'ws';
 import { normalizePhone, isAdminUser, isStaffUser, isOwner } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
+import { requireSafeGoldInteger } from './economy.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
 const SUPABASE_REQUEST_TIMEOUT_MS = Math.max(
@@ -45,7 +46,6 @@ async function getCachedOrFetch(key, ttlMs, fetchFn) {
   }
 }
 const BOT_STATE_SELECT_COLUMNS = 'id, claim_type, claim_date, reward_gold, created_at';
-let missionPrefixFilterSupported = true;
 const PLAYER_LIFECYCLE_GRACE_DAYS = Math.max(
   1,
   Number.parseInt(process.env.PLAYER_LIFECYCLE_GRACE_DAYS ?? '14', 10) || 14
@@ -1569,9 +1569,10 @@ export async function getEventDetails(query) {
 }
 
 export async function updateGold(playerId, amount) {
+  const safeAmount = requireSafeGoldInteger(amount, { allowNegative: true });
   const { data, error } = await supabase.rpc('increment_gold', {
     p_player_id: playerId,
-    p_amount: Math.trunc(amount),
+    p_amount: safeAmount,
   });
 
   if (error) {
@@ -1588,10 +1589,7 @@ export async function updateGold(playerId, amount) {
 }
 
 export async function transferGold(fromPlayerId, toPlayerId, amount) {
-  const safeAmount = Math.trunc(Number(amount));
-  if (!Number.isSafeInteger(safeAmount) || safeAmount <= 0) {
-    throw new Error('La cantidad de oro debe ser mayor a cero.');
-  }
+  const safeAmount = requireSafeGoldInteger(amount);
 
   const { data, error } = await supabase.rpc('transfer_player_gold', {
     p_from_player_id: fromPlayerId,
@@ -1617,10 +1615,16 @@ export async function transferGold(fromPlayerId, toPlayerId, amount) {
 }
 
 export async function placeBet(playerId, amount, gameType) {
+  const safeAmount = requireSafeGoldInteger(amount);
+  const safeGameType = String(gameType ?? '').trim();
+  if (!safeGameType || safeGameType.length > 64) {
+    throw new TypeError('El tipo de apuesta no es valido.');
+  }
+
   const { data, error } = await supabase.rpc('place_bet', {
     p_player_id: playerId,
-    p_amount: Math.trunc(amount),
-    p_game_type: gameType,
+    p_amount: safeAmount,
+    p_game_type: safeGameType,
   });
 
   if (error) {
@@ -1632,9 +1636,10 @@ export async function placeBet(playerId, amount, gameType) {
 }
 
 export async function resolveBet(betId, payout) {
+  const safePayout = requireSafeGoldInteger(payout, { allowZero: true });
   const { data, error } = await supabase.rpc('resolve_bet', {
     p_bet_id: betId,
-    p_payout: Math.trunc(payout),
+    p_payout: safePayout,
   });
 
   if (error) {
@@ -2132,6 +2137,116 @@ export async function incrementCofreUsage(playerId, amount = 1, maxAllowed = Num
   return incrementBotUsageCount(playerId, 'cofre_usage', getCofreUsage, 'incrementCofreUsage', amount, maxAllowed);
 }
 
+export async function reserveCofreReward({
+  messageId,
+  playerId,
+  usageCount,
+  maxUsage,
+  rewardGold,
+  resultSummary,
+}) {
+  const { data, error } = await botStateSupabase.rpc('reserve_cofre_reward', {
+    p_message_id: String(messageId ?? '').trim(),
+    p_player_id: playerId,
+    p_claim_date: formatAsuncionDateKey(),
+    p_usage_count: requireSafeGoldInteger(usageCount),
+    p_max_usage: requireSafeGoldInteger(maxUsage),
+    p_reward_gold: requireSafeGoldInteger(rewardGold, { allowZero: true }),
+    p_result_summary: String(resultSummary ?? '').trim(),
+  });
+
+  if (error) {
+    console.error('[reserveCofreReward]', error.message);
+    throw new Error('No se pudo reservar el resultado del cofre.');
+  }
+
+  const reservation = getRpcRow(data);
+  if (!reservation?.status) {
+    throw new Error('La reserva del cofre no devolvio un estado valido.');
+  }
+  return reservation;
+}
+
+export async function settleCofreReward(reservation, playerId) {
+  const reservationId = String(reservation?.reservation_id ?? '').trim();
+  const rewardGold = requireSafeGoldInteger(reservation?.reward_gold, { allowZero: true });
+  if (!reservationId) throw new TypeError('La reserva del cofre no tiene ID.');
+
+  let currentGold = null;
+  if (rewardGold > 0) {
+    const { data: awardData, error: awardError } = await supabase.rpc('award_bot_gold_once', {
+      p_player_id: playerId,
+      p_reward_gold: rewardGold,
+      p_source: 'cofre',
+      p_external_ref: reservationId,
+    });
+    if (awardError) {
+      console.error('[settleCofreReward.award]', awardError.message);
+      throw new Error('No se pudo confirmar el credito del cofre.');
+    }
+    const award = getRpcRow(awardData);
+    currentGold = Number.isFinite(Number(award?.current_gold)) ? Number(award.current_gold) : null;
+  }
+
+  const { error: markError } = await botStateSupabase.rpc('mark_game_reward_credited', {
+    p_reservation_id: reservationId,
+  });
+  if (markError) {
+    console.error('[settleCofreReward.mark]', markError.message);
+    throw new Error('El credito fue procesado pero su confirmacion quedo pendiente.');
+  }
+
+  invalidatePlayerLookupCache(playerId);
+  return { currentGold, rewardGold };
+}
+
+export async function reconcilePendingGameRewards(limit = 20) {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(Number(limit)) || 20));
+  const { data: pendingRewards, error: pendingError } = await botStateSupabase
+    .from('bot_game_rewards')
+    .select('id, player_id, reward_gold, game_type')
+    .eq('credit_status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(safeLimit);
+
+  if (pendingError) {
+    if (['42P01', 'PGRST205'].includes(String(pendingError.code))) {
+      return { supported: false, reconciled: 0, pending: 0 };
+    }
+    throw new Error(`No se pudieron leer premios pendientes: ${pendingError.message}`);
+  }
+
+  let reconciled = 0;
+  for (const reward of pendingRewards ?? []) {
+    try {
+      if (Number(reward.reward_gold) > 0) {
+        const { error: awardError } = await supabase.rpc('award_bot_gold_once', {
+          p_player_id: reward.player_id,
+          p_reward_gold: reward.reward_gold,
+          p_source: reward.game_type,
+          p_external_ref: reward.id,
+        });
+        if (awardError) throw awardError;
+      }
+
+      const { error: markError } = await botStateSupabase.rpc('mark_game_reward_credited', {
+        p_reservation_id: reward.id,
+      });
+      if (markError) throw markError;
+      invalidatePlayerLookupCache(reward.player_id);
+      reconciled += 1;
+    } catch (error) {
+      console.error(`[reconcilePendingGameRewards.${reward.id}]`, error.message);
+    }
+  }
+
+  return {
+    supported: true,
+    reconciled,
+    pending: (pendingRewards ?? []).length - reconciled,
+  };
+}
+
 export async function getTrampaUsage(playerId) {
   return getBotUsageCount(playerId, 'trampa_usage', 'getTrampaUsage');
 }
@@ -2322,6 +2437,13 @@ async function incrementBotUsageCount(
 
 export async function registerPlayer(whatsappNumber, username, initialGold = 2500) {
   const phone = normalizePhone(whatsappNumber);
+  let safeInitialGold;
+
+  try {
+    safeInitialGold = requireSafeGoldInteger(initialGold, { allowZero: true });
+  } catch {
+    return 'El oro inicial debe ser un entero no negativo valido.';
+  }
 
   if (!username || username.trim().length < 2) {
     return `❌ Indica un nombre valido.`;
@@ -2336,7 +2458,7 @@ export async function registerPlayer(whatsappNumber, username, initialGold = 250
     {
       phone,
       username: username.trim(),
-      gold: initialGold,
+      gold: safeInitialGold,
       weekly_gold: 0,
     },
   ]);
@@ -2664,23 +2786,6 @@ export async function getMissionByShortId(prefix) {
   if (!prefix) return null;
   const normalizedPrefix = prefix.toLowerCase();
 
-  if (missionPrefixFilterSupported) {
-    const { data: filteredData, error: filteredError } = await supabase
-      .from('realm_missions')
-      .select('id, title, instructions')
-      .ilike('id', `${normalizedPrefix}%`)
-      .limit(2);
-
-    if (!filteredError && filteredData) {
-      return filteredData.length === 1 ? filteredData[0] : null;
-    }
-
-    if (filteredError) {
-      missionPrefixFilterSupported = false;
-      console.warn('[getMissionByShortId] prefix filter fallback:', filteredError.message);
-    }
-  }
-
   const { data, error } = await supabase
     .from('realm_missions')
     .select('id, title, instructions');
@@ -2692,8 +2797,8 @@ export async function getMissionByShortId(prefix) {
 
   if (!data) return null;
 
-  const match = data.find(m => m.id.toLowerCase().startsWith(normalizedPrefix));
-  return match || null;
+  const matches = data.filter(m => m.id.toLowerCase().startsWith(normalizedPrefix));
+  return matches.length === 1 ? matches[0] : null;
 }
 
 // Las funciones getMissionsWithMissingNotebooks / updateMissionNotebookId se
@@ -2798,6 +2903,7 @@ export async function saveActiveMissionState(state) {
 
   if (error) {
     console.error('[saveActiveMissionState] Error saving mission state:', error.message);
+    throw new Error('No se pudo persistir el estado de la mision.');
   }
 }
 
@@ -2822,6 +2928,7 @@ export async function deleteResolvedMission(instanceId) {
 
   if (error) {
     console.error('[deleteResolvedMission] Error deleting resolved mission:', error.message);
+    throw new Error('No se pudo eliminar la mision resuelta.');
   }
 }
 

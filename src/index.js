@@ -25,7 +25,11 @@ import {
   resolveBet,
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
-import { isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
+import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
+import {
+  canRunAdminCommand,
+  isKnownAdminCommand,
+} from './adminCommands.js';
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
@@ -2530,11 +2534,9 @@ client.on('message', async (msg) => {
     }
   };
 
-  const ADMIN_COMMANDS = ['grant', 'quitar', 'stats', 'ban', 'registrar', 'verificarnumero', 'desvincular', 'add', 'remove', 'admin', 'censo', 'fichas', 'pendientes', 'pendiente', 'purga', 'actividad', 'inactivos', 'groupid', 'grupos', 'grupoactual', 'staff', 'bitacora', 'data', 'misionstart', 'misioneson', 'misionoff'];
-  const PRIVILEGED_COMMANDS = ['misioncompleta', 'faltasgrupo', 'fichasrecicladas', 'asignarficha', 'rolestado', 'rolbloquear', 'roldesbloquear', 'rolgracia', 'rolforzaractividad'];
   const isMarketSessionActive = !!getMarketForgeSession(msg.from, sender);
   const isMarketCommand = hasPrefix && (command === 'forjaritem' || (command === 'mercado' && body.toLowerCase().startsWith('crear')));
-  const isPossibleAdminCmd = hasPrefix && (ADMIN_COMMANDS.includes(command) || PRIVILEGED_COMMANDS.includes(command));
+  const isPossibleAdminCmd = hasPrefix && isKnownAdminCommand(command);
   const isRoleplayBlockedCommand = hasPrefix && ROLEPLAY_BLOCKED_COMMANDS.has(command);
   const isRestrictedMainGroupMinigame =
     hasPrefix &&
@@ -2544,6 +2546,7 @@ client.on('message', async (msg) => {
   let isAdmin = false;
   let isStaff = false;
   let isPrivileged = false;
+  const isSenderOwner = isOwner(sender);
 
   if (isMarketSessionActive || isMarketCommand || isPossibleAdminCmd || isRestrictedMainGroupMinigame || isRoleplayBlockedCommand) {
     isAdmin = await checkIsAdmin(sender);
@@ -2624,7 +2627,7 @@ client.on('message', async (msg) => {
         });
       } else if (!hasPrefix) {
         return;
-      } else if ((isAdmin && ADMIN_COMMANDS.includes(command)) || (isPrivileged && PRIVILEGED_COMMANDS.includes(command))) {
+      } else if (canRunAdminCommand(command, { isOwner: isSenderOwner, isAdmin, isStaff })) {
         reply = await handleAdminCommand(
           wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)),
           client

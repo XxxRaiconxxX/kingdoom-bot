@@ -1,5 +1,6 @@
 import { supabase } from '../supabase.js';
 import { heraldCard, heraldCommand, heraldSection, heraldStat } from '../formatting.js';
+import { parseGoldAmount } from '../economy.js';
 
 function formatTimeRemaining(expiresAt) {
   const diffMs = new Date(expiresAt) - new Date();
@@ -70,8 +71,8 @@ export async function handlePujar(msg, player, body) {
   }
 
   const amountStr = parts[parts.length - 1];
-  const amount = parseInt(amountStr.replace(/\./g, ''), 10);
-  if (isNaN(amount) || amount <= 0) {
+  const amount = parseGoldAmount(amountStr);
+  if (amount === null) {
     return `❌ El monto de oro "${amountStr}" no es valido.`;
   }
 
@@ -120,7 +121,7 @@ export async function handlePujar(msg, player, body) {
   }
 
   // Check funds locally first to avoid unnecessary database lock
-  if (player.gold < targetAmount) {
+  if (targetAuction.highest_bidder_id !== player.id && player.gold < targetAmount) {
     return `❌ No tienes suficiente oro. Tienes *🪙 ${player.gold.toLocaleString('es-PY')} oro* y quieres pujar un total acumulado de *🪙 ${targetAmount.toLocaleString('es-PY')}*.`;
   }
 

@@ -1,6 +1,8 @@
-﻿import { getPlayer, updateGold, getDadosUsage, incrementDadosUsage, getCofreUsage, incrementCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet } from '../supabase.js';
+﻿import { getPlayer, getDadosUsage, incrementDadosUsage, getCofreUsage, getTrampaUsage, incrementTrampaUsage, getKnowledgeDocuments, pickKnowledgeContext, getPlayerSheet, getPlayerInventory, getActiveMissions, getActiveEvents, placeBet, resolveBet, reserveCofreReward, settleCofreReward } from '../supabase.js';
 import { askKingdoomAI, describeAIError } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
+import { parseGoldAmount } from '../economy.js';
+import { getWhatsAppMessageId } from '../whatsappDelivery.js';
 
 const DAILY_MAX_COFRE = 4;
 const DAILY_MAX_TRAMPA = 4;
@@ -95,7 +97,7 @@ function resolveWeightedResult(table) {
 }
 
 function parseGoldToken(value) {
-  return parseInt(String(value ?? '').replace(/\./g, ''), 10);
+  return parseGoldAmount(value);
 }
 
 function parseDadosBetConfig(body) {
@@ -113,22 +115,6 @@ function parseDadosBetConfig(body) {
     amount: parseGoldToken(amountToken),
   };
 }
-
-async function applyGoldAndUsage(playerId, delta, consumeUsage) {
-  await consumeUsage(playerId);
-  if (delta === 0) return true;
-
-  try {
-    await updateGold(playerId, delta);
-    return true;
-  } catch (error) {
-    console.error('[applyGoldAndUsage.credit]', error);
-    const creditError = new Error('No se pudo confirmar el credito del cofre.');
-    creditError.code = 'GOLD_CREDIT_UNCONFIRMED';
-    throw creditError;
-  }
-}
-
 
 export async function handleDados(msg) {
   const { amount: apuesta, x4 } = parseDadosBetConfig(msg.body);
@@ -226,7 +212,7 @@ export async function handleDados(msg) {
 }
 
 export async function handleCofre(msg) {
-  const parts = msg.body.toLowerCase().split(' ');
+  const parts = String(msg.body ?? '').toLowerCase().trim().split(/\s+/);
   const multiplierMatch = parts.find(p => p.match(/^x?[1-9]\d*$/));
   const requestedMultiplier = multiplierMatch ? parseInt(multiplierMatch.replace('x', ''), 10) : 1;
 
@@ -234,6 +220,13 @@ export async function handleCofre(msg) {
   const player = await getPlayer(sender);
 
   if (!player) return `No estas registrado. Escribi *!registrar TuNombre*`;
+  const messageId = getWhatsAppMessageId(msg);
+  if (!messageId) {
+    return heraldCard('Cofre no confirmado', [
+      'WhatsApp no entrego un ID estable para esta jugada.',
+      'No se consumio ningun uso ni se calculo un premio.',
+    ], { icon: '🎁' });
+  }
 
   const currentUsos = await getCofreUsage(player.id);
   if (currentUsos >= DAILY_MAX_COFRE) {
@@ -251,27 +244,49 @@ export async function handleCofre(msg) {
     results.push(result.label);
   }
 
-  const nextUsos = currentUsos + runs;
-
+  let reservation;
   try {
-    await applyGoldAndUsage(player.id, totalGold, (targetPlayerId) =>
-      incrementCofreUsage(targetPlayerId, runs, DAILY_MAX_COFRE)
-    );
+    reservation = await reserveCofreReward({
+      messageId,
+      playerId: player.id,
+      usageCount: runs,
+      maxUsage: DAILY_MAX_COFRE,
+      rewardGold: totalGold,
+      resultSummary: results.join('\n'),
+    });
   } catch (error) {
-    console.error('[handleCofre] applyGoldAndUsage error:', error);
-    if (error?.code === 'GOLD_CREDIT_UNCONFIRMED') {
-      return heraldCard('Cofre · Acreditacion pendiente', [
-        'El uso quedo reservado, pero la base de datos no confirmo el abono de oro.',
-        'Revisa tu saldo antes de abrir otro cofre; esta jugada no se repetira automaticamente.',
-      ], { icon: '🎁' });
-    }
+    console.error('[handleCofre] reserve error:', error);
     return heraldCard('Cofre no confirmado', [
-      'La base de datos no confirmo el resultado completo de la apertura.',
-      'Revisa tu saldo antes de abrir otro cofre para evitar una operacion duplicada.',
+      'La base de datos no pudo reservar el uso y el resultado en una sola operacion.',
+      'No se acreditara un premio sin una reserva confirmada.',
     ], { icon: '🎁' });
   }
 
-  const nuevoTotal = await getGoldWithFallback(sender, player.gold + totalGold, 'handleCofre');
+  if (reservation.status === 'limit') {
+    return `Alcanzaste el limite diario de cofres (${DAILY_MAX_COFRE}/${DAILY_MAX_COFRE}). Vuelve manana para abrir otro.`;
+  }
+
+  totalGold = Number(reservation.reward_gold);
+  const reservedResults = String(reservation.result_summary ?? '').split('\n').filter(Boolean);
+  results.splice(0, results.length, ...reservedResults);
+  const nextUsos = Number(reservation.usage_after);
+
+  let settlement;
+  try {
+    settlement = await settleCofreReward(reservation, player.id);
+  } catch (error) {
+    console.error('[handleCofre] settle error:', error);
+    return heraldCard('Cofre · Acreditacion pendiente', [
+      'El uso y el premio quedaron reservados con un identificador unico.',
+      'El reconciliador reintentara el abono sin duplicarlo.',
+    ], { icon: '🎁' });
+  }
+
+  const nuevoTotal = settlement.currentGold ?? await getGoldWithFallback(
+    sender,
+    player.gold + totalGold,
+    'handleCofre'
+  );
 
   const header = runs === 1
     ? `${player.username} abrio un cofre antiguo...`
@@ -287,15 +302,15 @@ export async function handleCofre(msg) {
 }
 
 export async function handleTrampa(msg) {
-  const parts = msg.body.toLowerCase().split(' ');
-  const apuesta = parseInt((parts[1] ?? '').replace(/\./g, ''), 10);
+  const parts = String(msg.body ?? '').toLowerCase().trim().split(/\s+/);
+  const apuesta = parseGoldAmount(parts[1]);
   const multiplierMatch = parts.slice(2).find(p => p.match(/^x?[1-9]\d*$/));
   const requestedMultiplier = multiplierMatch ? parseInt(multiplierMatch.replace('x', ''), 10) : 1;
   const sender = msg.author || msg.from;
   const player = await getPlayer(sender);
 
   if (!player) return `No estas registrado. Escribi *!registrar TuNombre*`;
-  if (!apuesta || isNaN(apuesta) || apuesta < 10) return `Usa: *!trampa 100* (minimo 10 oro)`;
+  if (apuesta === null || apuesta < 10) return `Usa: *!trampa 100* (minimo 10 oro)`;
 
   const weekend = isWeekendDay();
   const maxApuesta = weekend ? 500000 : 100000;

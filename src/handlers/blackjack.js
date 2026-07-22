@@ -3,6 +3,7 @@ import { decorateCommandReply, heraldCard, heraldStat } from '../formatting.js';
 import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
 import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
+import { parseGoldAmount, requireSafeGoldInteger } from '../economy.js';
 
 // Memory store for active blackjack sessions.
 // Key: botMsgId (quoted message ID)
@@ -72,6 +73,32 @@ export function calculateHand(hand) {
     aces -= 1;
   }
   return value;
+}
+
+export function calculateMultiplayerSettlement(players, bet) {
+  if (!Array.isArray(players) || players.length === 0) {
+    throw new TypeError('La partida PvP requiere al menos un jugador.');
+  }
+
+  const safeBet = requireSafeGoldInteger(bet);
+  const pot = requireSafeGoldInteger(safeBet * players.length);
+  const scoredPlayers = players.map((player) => ({ player, score: calculateHand(player.cards) }));
+  const eligiblePlayers = scoredPlayers.filter(({ score }) => score <= 21);
+  const maxScore = eligiblePlayers.length
+    ? Math.max(...eligiblePlayers.map(({ score }) => score))
+    : 0;
+  const winners = eligiblePlayers.filter(({ score }) => score === maxScore);
+  const baseShare = winners.length ? Math.floor(pot / winners.length) : 0;
+  const remainder = winners.length ? pot % winners.length : 0;
+
+  return {
+    pot,
+    maxScore,
+    winners: winners.map((entry, index) => ({
+      ...entry,
+      payout: baseShare + (index < remainder ? 1 : 0),
+    })),
+  };
 }
 
 // Helper to format a card
@@ -233,8 +260,8 @@ async function handleSoloBlackjackTimeout(client, sessionId) {
 
 // Handle starting a game with `!21 <apuesta>` (Supports solo or multiplayer)
 export async function handleBlackjack(msg, client) {
-  const parts = msg.body.split(' ');
-  const apuesta = parseInt(parts[1], 10);
+  const parts = String(msg.body ?? '').trim().split(/\s+/);
+  const apuesta = parseGoldAmount(parts[1]);
   const sender = msg.author || msg.from;
 
   // Extract all @username text tags
@@ -946,15 +973,8 @@ async function handleMultiplayerTimeout(client, sessionId) {
 
 // Process payouts and send final results for a multiplayer session
 async function finishMultiplayerGame(client, session, groupChatId) {
-  const nonBusted = session.players.filter(p => calculateHand(p.cards) <= 21);
-
-  let winners = [];
-  let maxScore = 0;
-
-  if (nonBusted.length > 0) {
-    maxScore = Math.max(...nonBusted.map(p => calculateHand(p.cards)));
-    winners = nonBusted.filter(p => calculateHand(p.cards) === maxScore);
-  }
+  const settlement = calculateMultiplayerSettlement(session.players, session.bet);
+  const winners = settlement.winners.map(({ player }) => player);
 
   const lines = [
     `Apuesta: *${session.bet.toLocaleString('es-PY')} oro* por jugador`,
@@ -978,20 +998,9 @@ async function finishMultiplayerGame(client, session, groupChatId) {
   lines.push(`---`);
 
   if (winners.length > 0) {
-    const pot = session.bet * session.players.length;
-    const baseShare = Math.floor(pot / winners.length);
     const results = [];
 
-    for (const w of winners) {
-      const score = calculateHand(w.cards);
-      let payout = baseShare;
-
-      // Minimum payout guarantee (2.5x for 21 blackjack, 2x for regular win)
-      if (score === 21) {
-        payout = Math.max(payout, Math.floor(session.bet * 2.5));
-      } else {
-        payout = Math.max(payout, Math.floor(session.bet * 2.0));
-      }
+    for (const { player: w, payout } of settlement.winners) {
 
       let settled = true;
       try {

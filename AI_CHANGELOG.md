@@ -5,6 +5,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** economia, routing admin, juegos, subastas, persistencia GM, entrega WhatsApp, scheduler, wrappers Supabase, cinco migraciones SQL, runner/pruebas y `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`.
+*   **Resumen de Tareas:** Segunda auditoria integral del bot con pruebas conductuales, integracion real en ambos Supabase, proveedor GM real y verificacion de produccion previa al release.
+*   **Cambios Clave:**
+    *   **[Seguridad P0]:** Se revocaron RPC privilegiadas para `anon`, se exigio `service_role` en apuestas/premios/cuotas/fichas y se comprobo que un usuario autenticado no vinculado tampoco puede operar sobre otro jugador. Las siete tablas del Supabase dedicado quedaron con RLS y CRUD exclusivo de servicio de forma reproducible.
+    *   **[Economia]:** Subastas alineadas a comision unica del 25% + lock-and-release; cofre con reserva/idempotencia/reconciliacion entre bases; blackjack PvP conserva exactamente el pozo; montos limitados al entero real de PostgreSQL.
+    *   **[WhatsApp]:** La cola persiste ID/intento antes del ACK, reconcilia ACK tardio tras reinicio y retiene 30 minutos una entrega ambigua antes de reintentar. No se marca enviado sin evidencia.
+    *   **[Comandos y GM]:** Registro unico de permisos vuelve alcanzables `!eliminar`/`!kick`, separa owner/admin/staff y protege tambien el handler directo. `!misionstart` revierte memoria si falla Supabase, cancelar elimina antes de confirmar y la busqueda UUID ya no genera un error `ilike`.
+    *   **[Base real]:** Aplicadas `supabase_primary_rpc_hardening.sql` y `supabase_auction_lock_release.sql` en el proyecto principal; `supabase_notification_delivery_tracking.sql`, `supabase_bot_game_rewards.sql` y `supabase_bot_state_rls_hardening.sql` en el dedicado. La ultima preservo 222 usos, 3 misiones, 47 tesoros, 82 reclamos, 749 notificaciones y 838 logs.
+*   **Validacion:** 39 chequeos `node --check`; `npm test` 21/21; `npm run test:real` 22/22 con transferencia, escrow, concurrencia, dados, trampa, cofre, blackjack, `!misionstart`, tesoro, notificaciones, subasta y permisos; `REAL_CLEANUP_OK` en cero; `npm ci --dry-run`, Graphify y `git diff --check` pasan. La prueba GM real uso NVIDIA `meta/llama-3.1-70b-instruct` y devolvio estado/formato validos.
+*   **Notas/Advertencias:** Riesgo critico heredado: `increment_gold` sigue disponible para el jugador web autenticado/vinculado porque nueve minijuegos de Kingdoom Sync calculan settlement en cliente; cerrarlo exige migrarlos primero para no romper produccion. `npm audit --omit=dev` mantiene 2 altas y 2 moderadas; el lockfile no se modifico por guardrail. No se genero un mensaje entrante desde una cuenta humana de WhatsApp en esta auditoria.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/whatsappDelivery.js`, `test_scheduler_delivery_guard.js`, `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Cerrada la brecha observada al validar en vivo el primer fix: WhatsApp emitia mensaje saliente y ACK, pero `sendMessage()` seguia retornando `undefined` aun con `waitUntilMsgSent`.
 *   **Cambios Clave:**

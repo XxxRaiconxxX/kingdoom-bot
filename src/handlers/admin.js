@@ -29,6 +29,8 @@ import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
 import { resolveWhatsAppPhone, resolveWhatsAppPhones } from '../whatsappIdentity.js';
 import { resolveAndDownloadMedia } from '../whatsappMedia.js';
+import { canRunAdminCommand, isKnownAdminCommand } from '../adminCommands.js';
+import { parseGoldAmount } from '../economy.js';
 
 const DATA_MAX_FILE_BYTES = 1024 * 1024;
 const DATA_MAX_CONTENT_CHARS = 500000;
@@ -261,6 +263,13 @@ export async function handleAdminCommand(msg, client) {
     isStaff,
   } = await getActorPrivileges(sender);
   const isPrivileged = isAdmin || isStaff;
+
+  if (
+    isKnownAdminCommand(cmd)
+    && !canRunAdminCommand(cmd, { isOwner: isSenderOwner, isAdmin, isStaff })
+  ) {
+    return 'Solo el rango autorizado puede ejecutar este comando administrativo.';
+  }
 
   // Helper function to extract number from input (remove @c.us if present, only digits)
   const extractPhone = (input) => {
@@ -907,8 +916,9 @@ export async function handleAdminCommand(msg, client) {
       
       username = parts[1];
       if (parts[2]) {
-        const parsedGold = parseInt(parts[2].replace(/\./g, ''));
-        if (!isNaN(parsedGold)) goldAmount = parsedGold;
+        const parsedGold = parseGoldAmount(parts[2], { allowZero: true });
+        if (parsedGold === null) return 'El oro inicial debe ser un entero no negativo valido.';
+        goldAmount = parsedGold;
       }
     } else {
       // Caso 2: Sin responder -> !registrar <celular> <nombre> [oro]
@@ -926,8 +936,9 @@ export async function handleAdminCommand(msg, client) {
       targetPhone = parts[1];
       username = parts[2];
       if (parts[3]) {
-        const parsedGold = parseInt(parts[3].replace(/\./g, ''));
-        if (!isNaN(parsedGold)) goldAmount = parsedGold;
+        const parsedGold = parseGoldAmount(parts[3], { allowZero: true });
+        if (parsedGold === null) return 'El oro inicial debe ser un entero no negativo valido.';
+        goldAmount = parsedGold;
       }
     }
 
@@ -1074,24 +1085,19 @@ export async function handleAdminCommand(msg, client) {
     if (msg.hasQuotedMsg) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
-      amount = parseInt(String(parts[1] ?? '').replace(/\./g, ''));
+      amount = parseGoldAmount(parts[1]);
     } else {
-      amount = parseInt(String(parts[parts.length - 1] ?? '').replace(/\./g, ''));
+      amount = parseGoldAmount(parts[parts.length - 1]);
       identifier = parts.slice(1, -1).join(' ').trim();
     }
 
-    if (!identifier || isNaN(amount) || amount === 0) {
+    if (!identifier || amount === null) {
       return `❌ *Uso correcto:*\n` +
              `*Respondiendo:* \`${cmd} <monto>\`\n` +
              `*Directo:* \`${cmd} <ID/nombre/celular> <monto>\``;
     }
 
-    let finalAmount = Math.abs(amount);
-    if (cmd === '!quitar') {
-      finalAmount = -finalAmount;
-    } else if (cmd === '!grant' && amount < 0) {
-      finalAmount = amount; // Permite !grant -100 por si acaso
-    }
+    const finalAmount = cmd === '!quitar' ? -amount : amount;
 
     const resolved = await resolvePlayerTarget(msg, identifier);
     if (!resolved.ok) return describeResolutionError(identifier, resolved);

@@ -6,16 +6,21 @@ import {
   archiveExpiredGraceProfiles,
   processRoleplayAccessEnforcement,
   getRoleplayLockWindowDays,
+  reconcilePendingGameRewards,
   reconcilePendingTreasureCredits,
 } from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { hydrateOpenTreasures, scheduleDailyTreasures } from './handlers/treasure.js';
 import {
+  decideTrackedDelivery,
+  getWhatsAppMessageId,
+  inspectMessageServerAck,
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   NOTIFICATION_CONTEXT_RETRY_DELAY_MS,
-  sendMessageWithServerAck,
+  sendMessageWithResult,
+  waitForMessageServerAck,
 } from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
@@ -43,6 +48,47 @@ const notificationRateWindow = {
   sentCount: 0,
   bulkSentCount: 0,
 };
+const inMemoryNotificationDeliveries = new Map();
+let notificationDeliveryColumnsSupported = true;
+
+function isMissingNotificationDeliveryColumn(error) {
+  return ['42703', 'PGRST204'].includes(String(error?.code ?? ''))
+    || /delivery_(?:message_id|started_at|attempts|error)/i.test(String(error?.message ?? ''));
+}
+
+async function fetchPendingNotifications() {
+  const columns = notificationDeliveryColumnsSupported
+    ? 'id, player_phone, message, delivery_message_id, delivery_started_at, delivery_attempts, delivery_error'
+    : 'id, player_phone, message';
+  let result = await botStateSupabase
+    .from('bot_notifications_queue')
+    .select(columns)
+    .eq('sent', false)
+    .order('created_at', { ascending: true })
+    .limit(NOTIFICATION_QUEUE_FETCH_LIMIT);
+
+  if (result.error && notificationDeliveryColumnsSupported && isMissingNotificationDeliveryColumn(result.error)) {
+    notificationDeliveryColumnsSupported = false;
+    console.warn('[scheduler] Migracion de trazabilidad de entregas pendiente; se usara reconciliacion en memoria.');
+    result = await botStateSupabase
+      .from('bot_notifications_queue')
+      .select('id, player_phone, message')
+      .eq('sent', false)
+      .order('created_at', { ascending: true })
+      .limit(NOTIFICATION_QUEUE_FETCH_LIMIT);
+  }
+
+  return result;
+}
+
+async function updateNotificationState(itemId, values) {
+  const safeValues = notificationDeliveryColumnsSupported
+    ? values
+    : Object.fromEntries(
+        Object.entries(values).filter(([key]) => !key.startsWith('delivery_'))
+      );
+  return botStateSupabase.from('bot_notifications_queue').update(safeValues).eq('id', itemId);
+}
 
 function isWhatsappClientReady(client, isClientReady) {
   try {
@@ -236,6 +282,11 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
       console.log(`[scheduler] ${result.reconciled} credito(s) de tesoro reconciliado(s) al iniciar.`);
     }
   }).catch((error) => console.error('[scheduler] Error reconciliando tesoros al iniciar:', error.message));
+  void reconcilePendingGameRewards().then((result) => {
+    if (result.reconciled > 0) {
+      console.log(`[scheduler] ${result.reconciled} premio(s) de juego reconciliado(s) al iniciar.`);
+    }
+  }).catch((error) => console.error('[scheduler] Error reconciliando premios al iniciar:', error.message));
   scheduleDailyTreasures(client, isClientReady);
 
   cron.schedule(
@@ -245,6 +296,10 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
         const result = await reconcilePendingTreasureCredits();
         if (result.reconciled > 0) {
           console.log(`[scheduler] ${result.reconciled} credito(s) de tesoro reconciliado(s).`);
+        }
+        const gameResult = await reconcilePendingGameRewards();
+        if (gameResult.reconciled > 0) {
+          console.log(`[scheduler] ${gameResult.reconciled} premio(s) de juego reconciliado(s).`);
         }
       });
     },
@@ -298,12 +353,7 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
         if (!isWhatsappClientReady(client, isClientReady)) return;
 
         try {
-          const { data: pending, error } = await botStateSupabase
-            .from('bot_notifications_queue')
-            .select('id, player_phone, message')
-            .eq('sent', false)
-            .order('created_at', { ascending: true })
-            .limit(NOTIFICATION_QUEUE_FETCH_LIMIT);
+          const { data: pending, error } = await fetchPendingNotifications();
 
           if (error) {
             console.error('[scheduler] Error leyendo cola:', error.message);
@@ -321,23 +371,81 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 return;
               }
 
+              const trackedItem = {
+                ...item,
+                ...(inMemoryNotificationDeliveries.get(item.id) ?? {}),
+              };
+              if (getWhatsAppMessageId(trackedItem.delivery_message_id)) {
+                const inspection = await inspectMessageServerAck(
+                  client,
+                  trackedItem.delivery_message_id
+                );
+                const decision = decideTrackedDelivery(trackedItem, inspection, now);
+
+                if (decision === 'mark_sent') {
+                  const { error: reconciledError } = await updateNotificationState(item.id, {
+                    sent: true,
+                    sent_at: new Date().toISOString(),
+                    delivery_error: null,
+                  });
+                  if (reconciledError) {
+                    console.error('[scheduler] Error reconciliando entrega confirmada:', reconciledError.message);
+                    return;
+                  }
+                  inMemoryNotificationDeliveries.delete(item.id);
+                  continue;
+                }
+
+                if (decision === 'hold') {
+                  continue;
+                }
+
+                inMemoryNotificationDeliveries.delete(item.id);
+                const { error: resetError } = await updateNotificationState(item.id, {
+                  delivery_message_id: null,
+                  delivery_started_at: null,
+                  delivery_error: `retry_after_${inspection.state}`,
+                });
+                if (resetError) {
+                  console.error('[scheduler] Error preparando reintento trazable:', resetError.message);
+                  return;
+                }
+              }
+
               if (!canDispatchNotification(now, priority)) {
                 return;
               }
 
               try {
-                await sendMessageWithServerAck(
+                const { message, messageId } = await sendMessageWithResult(
                   client,
                   formatJid(item.player_phone),
                   item.message
                 );
-                const { error: sentStateError } = await botStateSupabase
-                  .from('bot_notifications_queue')
-                  .update({ sent: true, sent_at: new Date().toISOString() })
-                  .eq('id', item.id);
+                const deliveryStartedAt = new Date().toISOString();
+                const deliveryState = {
+                  delivery_message_id: messageId,
+                  delivery_started_at: deliveryStartedAt,
+                  delivery_attempts: Number(item.delivery_attempts ?? 0) + 1,
+                  delivery_error: null,
+                };
+                inMemoryNotificationDeliveries.set(item.id, deliveryState);
+
+                const { error: trackingError } = await updateNotificationState(item.id, deliveryState);
+                if (trackingError) {
+                  throw new Error(`No se pudo guardar la trazabilidad del envio: ${trackingError.message}`);
+                }
+
+                await waitForMessageServerAck(client, message);
+                const { error: sentStateError } = await updateNotificationState(item.id, {
+                  sent: true,
+                  sent_at: new Date().toISOString(),
+                  delivery_error: null,
+                });
                 if (sentStateError) {
                   throw new Error(`No se pudo confirmar la entrega en la cola: ${sentStateError.message}`);
                 }
+                inMemoryNotificationDeliveries.delete(item.id);
                 noteNotificationDelivered(now, priority);
                 deliveredThisRun += 1;
 
@@ -347,6 +455,11 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 }
               } catch (err) {
                 console.error('[scheduler] Error despachando una notificacion:', err.message);
+                if (notificationDeliveryColumnsSupported) {
+                  await updateNotificationState(item.id, {
+                    delivery_error: String(err?.code ?? err?.message ?? 'delivery_error').slice(0, 240),
+                  });
+                }
                 if (isTransientWhatsappDeliveryError(err)) {
                   notificationDispatchPausedUntil = Date.now() + NOTIFICATION_CONTEXT_RETRY_DELAY_MS;
                   console.warn(
@@ -356,8 +469,12 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 }
 
                 if (isPermanentWhatsappRecipientError(err)) {
-                  // ponytail: la tabla no tiene estado failed; sent=true evita bloquear para siempre la cola con un destinatario invalido.
-                  await botStateSupabase.from('bot_notifications_queue').update({ sent: true }).eq('id', item.id);
+                  // ponytail: sent=true evita bloquear para siempre la cola con un destinatario invalido.
+                  await updateNotificationState(item.id, {
+                    sent: true,
+                    delivery_error: String(err?.message ?? err).slice(0, 240),
+                  });
+                  inMemoryNotificationDeliveries.delete(item.id);
                   continue;
                 }
 
@@ -474,10 +591,14 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
             `Un nuevo ciclo comienza en el reino.\n\nEl Rey Supremo te observa, *${username}*. Las bestias son feroces, los caminos oscuros, pero tu leyenda apenas comienza a escribirse.\n\nQue los dioses de Kingdoom guien tus pasos esta semana.`
         );
 
-        await supabase
+        const { error: resetError } = await supabase
           .from('players')
           .update({ weekly_gold: 0 })
           .gte('weekly_gold', 0);
+
+        if (resetError) {
+          throw new Error(`No se pudo resetear weekly_gold: ${resetError.message}`);
+        }
 
         console.log('[scheduler] weekly_gold reseteado.');
       });

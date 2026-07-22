@@ -19,6 +19,7 @@ import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, isStaffUser, normalizePhone } from '../adminStore.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
+import { parseGoldAmount } from '../economy.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -178,7 +179,7 @@ export async function handlePlayerMessage(msg) {
       '⚠️ `!cofre`, `!trampa` y `!21` se juegan por privado con el bot.',
     ];
 
-    if (isSenderOwner || isSenderAdmin || isSenderStaff) {
+    if (isSenderOwner || isSenderAdmin) {
       const staffCommands = [
         heraldCommand('!registrar <nombre> [oro]', 'Registra un aventurero.'),
         heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
@@ -216,6 +217,17 @@ export async function handlePlayerMessage(msg) {
       menuLines.push(
         heraldSection(isSenderOwner ? 'Comandos del soberano' : isSenderAdmin ? 'Comandos de administrador' : 'Comandos de staff'),
         heraldList(staffCommands)
+      );
+    } else if (isSenderStaff) {
+      menuLines.push(
+        heraldSection('Comandos de staff'),
+        heraldList([
+          heraldCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
+          heraldCommand('!faltasgrupo @jugador', 'Consulta faltas del grupo principal.'),
+          heraldCommand('!fichasrecicladas', 'Lista fichas disponibles.'),
+          heraldCommand('!asignarficha <ficha> @jugador', 'Asigna una ficha reciclada.'),
+          heraldCommand('!rolestado <jugador>', 'Consulta el acceso de roleo.'),
+        ])
       );
     }
 
@@ -282,9 +294,9 @@ export async function handlePlayerMessage(msg) {
     }
 
     const parts = body.split(/\s+/);
-    const amount = parseInt(parts[0].replace(/\./g, ''));
+    const amount = parseGoldAmount(parts[0]);
     
-    if (isNaN(amount) || amount <= 0) {
+    if (amount === null) {
       return `❌ *Uso correcto para enviar oro:*\n\`!oro <monto> <@usuario>\``;
     }
 

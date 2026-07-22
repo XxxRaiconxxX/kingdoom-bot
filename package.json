@@ -4,6 +4,8 @@
   "scripts": {
     "start": "node src/launcher.js",
     "dev": "node --watch src/index.js",
+    "test": "node scripts/run-tests.mjs",
+    "test:real": "node scripts/run-tests.mjs --real",
     "graphify:setup": "node scripts/graphify-manager.mjs setup",
     "graphify:doctor": "node scripts/graphify-manager.mjs doctor",
     "graphify:update": "node scripts/graphify-manager.mjs update",

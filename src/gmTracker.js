@@ -684,7 +684,15 @@ export async function startMissionTracker(shortId, participants) {
   };
 
   activeMissions.set(instanceId, state);
-  await saveActiveMissionState(state);
+  try {
+    await saveActiveMissionState(state);
+  } catch (error) {
+    activeMissions.delete(instanceId);
+    return {
+      success: false,
+      message: `Error: no se pudo persistir el inicio de la mision. ${error.message}`,
+    };
+  }
 
   const playerMentions = normalizedParticipants.map((phone) => `@${phone}`).join(', ');
 
@@ -1022,9 +1030,9 @@ export function getActiveMissionsList() {
 export async function cancelActiveMission(instanceId) {
   const state = activeMissions.get(instanceId);
   if (state) {
+    await deleteResolvedMission(instanceId);
     state.resolved = true;
     state.finalState = { resultado: 'cerrada_por_admin', motivo: 'Misión cerrada manualmente por el staff.' };
-    await deleteResolvedMission(instanceId);
     activeMissions.delete(instanceId);
     return true;
   }

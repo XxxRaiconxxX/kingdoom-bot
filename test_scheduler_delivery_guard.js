@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import {
+  decideTrackedDelivery,
   getWhatsAppMessageId,
+  inspectMessageServerAck,
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   sendMessageWithResult,
   sendMessageWithServerAck,
+  WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS,
   waitForMessageServerAck,
 } from './src/whatsappDelivery.js';
 
@@ -115,7 +118,7 @@ await assert.rejects(
     { id: { _serialized: 'message-2' }, ack: 0 },
     5
   ),
-  (error) => error.code === 'WHATSAPP_ACK_TIMEOUT'
+  (error) => error.code === 'WHATSAPP_ACK_TIMEOUT' && error.messageId === 'message-2'
 );
 
 const hangingLookupClient = new EventEmitter();
@@ -134,11 +137,33 @@ assert.ok(
   'A zombie page lookup must not leave ACK confirmation hanging.'
 );
 
-const schedulerSource = fs.readFileSync(new URL('./src/scheduler.js', import.meta.url), 'utf8');
-assert.ok(
-  schedulerSource.indexOf('await sendMessageWithServerAck(') <
-    schedulerSource.indexOf(".update({ sent: true, sent_at:"),
-  'The queue must wait for server ACK before marking a notification as sent.'
+assert.deepEqual(
+  await inspectMessageServerAck({ getMessageById: async () => ({ ack: 1 }) }, 'tracked-1'),
+  { state: 'acknowledged', ack: 1 }
+);
+assert.deepEqual(
+  await inspectMessageServerAck({ getMessageById: async () => ({ ack: 0 }) }, 'tracked-2'),
+  { state: 'pending', ack: 0 }
+);
+assert.deepEqual(
+  await inspectMessageServerAck({ getMessageById: async () => null }, 'tracked-3'),
+  { state: 'missing', ack: null }
+);
+
+const now = Date.now();
+const recentTrackedItem = {
+  delivery_message_id: 'tracked-1',
+  delivery_started_at: new Date(now - 60_000).toISOString(),
+};
+assert.equal(decideTrackedDelivery(recentTrackedItem, { state: 'acknowledged' }, now), 'mark_sent');
+assert.equal(decideTrackedDelivery(recentTrackedItem, { state: 'pending' }, now), 'hold');
+assert.equal(decideTrackedDelivery(recentTrackedItem, { state: 'rejected' }, now), 'retry');
+assert.equal(
+  decideTrackedDelivery({
+    ...recentTrackedItem,
+    delivery_started_at: new Date(now - WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS - 1).toISOString(),
+  }, { state: 'missing' }, now),
+  'retry'
 );
 
 const treasureSource = fs.readFileSync(new URL('./src/handlers/treasure.js', import.meta.url), 'utf8');

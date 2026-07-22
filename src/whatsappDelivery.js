@@ -1,4 +1,12 @@
 export const NOTIFICATION_CONTEXT_RETRY_DELAY_MS = 5 * 60 * 1000;
+const configuredAmbiguousHoldMs = Number.parseInt(
+  process.env.WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS ?? '1800000',
+  10
+);
+export const WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS = Math.max(
+  5 * 60 * 1000,
+  Number.isFinite(configuredAmbiguousHoldMs) ? configuredAmbiguousHoldMs : 30 * 60 * 1000
+);
 const configuredAckTimeoutMs = Number.parseInt(
   process.env.WHATSAPP_DELIVERY_ACK_TIMEOUT_MS ?? '20000',
   10
@@ -176,6 +184,36 @@ async function getStoredMessageWithTimeout(client, messageId, timeoutMs) {
   }
 }
 
+export async function inspectMessageServerAck(client, messageId, timeoutMs = 2_000) {
+  const normalizedMessageId = getWhatsAppMessageId(messageId);
+  if (!normalizedMessageId) return { state: 'missing', ack: null };
+
+  try {
+    const storedMessage = await getStoredMessageWithTimeout(client, normalizedMessageId, timeoutMs);
+    if (!storedMessage) return { state: 'missing', ack: null };
+
+    const ack = Number(storedMessage?.ack ?? storedMessage?._data?.ack);
+    if (isServerAcknowledged(ack)) return { state: 'acknowledged', ack };
+    if (Number.isFinite(ack) && ack < 0) return { state: 'rejected', ack };
+    return { state: 'pending', ack: Number.isFinite(ack) ? ack : null };
+  } catch {
+    return { state: 'unknown', ack: null };
+  }
+}
+
+export function decideTrackedDelivery(item, inspection, now = Date.now()) {
+  if (!getWhatsAppMessageId(item?.delivery_message_id)) return 'send';
+  if (inspection?.state === 'acknowledged') return 'mark_sent';
+  if (inspection?.state === 'rejected') return 'retry';
+
+  const startedAt = Date.parse(String(item?.delivery_started_at ?? ''));
+  if (!Number.isFinite(startedAt) || now - startedAt < WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS) {
+    return 'hold';
+  }
+
+  return 'retry';
+}
+
 export async function waitForMessageServerAck(
   client,
   message,
@@ -217,8 +255,8 @@ export async function waitForMessageServerAck(
     timeoutId = setTimeout(async () => {
       try {
         const lookupTimeoutMs = Math.min(2_000, Math.max(1, timeoutMs));
-        const storedMessage = await getStoredMessageWithTimeout(client, messageId, lookupTimeoutMs);
-        if (isServerAcknowledged(storedMessage?.ack ?? storedMessage?._data?.ack)) {
+        const inspection = await inspectMessageServerAck(client, messageId, lookupTimeoutMs);
+        if (inspection.state === 'acknowledged') {
           finish();
           return;
         }
@@ -228,6 +266,7 @@ export async function waitForMessageServerAck(
 
       const error = new Error(`WhatsApp server ack timeout after ${timeoutMs}ms`);
       error.code = 'WHATSAPP_ACK_TIMEOUT';
+      error.messageId = messageId;
       finish(error);
     }, timeoutMs);
   });

@@ -13,7 +13,8 @@ assert.match(gamesSource, /cancelInterruptedBet\(betId, totalExposure/);
 assert.match(gamesSource, /cancelInterruptedBet\(betId, totalApuesta/);
 assert.match(gamesSource, /buildPendingSettlementCard\('Dados del destino'/);
 assert.match(gamesSource, /buildPendingSettlementCard\('Trampa del Reino'/);
-assert.match(gamesSource, /GOLD_CREDIT_UNCONFIRMED/);
+assert.match(gamesSource, /reserveCofreReward/);
+assert.match(gamesSource, /settleCofreReward/);
 
 assert.match(blackjackSource, /SOLO_SESSION_TIMEOUT_MS/);
 assert.match(blackjackSource, /handleSoloBlackjackTimeout[\s\S]*resolveBet\(session\.betId, session\.bet\)/);
@@ -25,6 +26,7 @@ assert.match(treasureSource, /buildTreasureClaimFeedback\(status/);
 assert.match(treasureSource, /runTreasureClaimSerial/);
 assert.match(treasureSource, /msg\.react\('\\u23F3'\)/);
 assert.match(supabaseSource, /status: 'credit_pending'/);
+assert.match(supabaseSource, /reconcilePendingGameRewards/);
 
 assert.match(supabaseSource, /runBotUsageSerial/);
 assert.match(supabaseSource, /throw new Error\('No se pudo consultar el contador diario\.'/);
