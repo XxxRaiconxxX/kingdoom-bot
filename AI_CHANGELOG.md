@@ -5,6 +5,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `test_scheduler_delivery_guard.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Cerrada la carrera de doble despacho entre workers de la cola durante reinicios y despliegues solapados.
+*   **Cambios Clave:**
+    *   **[Hallazgo vivo]:** Una notificacion con ACK ambiguo permanecia correctamente pendiente, pero alcanzo seis intentos durante los reemplazos de contenedor. El flujo tenia tracking posterior al envio, pero no reclamaba la fila antes de llamar a WhatsApp.
+    *   **[Lease atomico]:** Cada worker debe ganar una actualizacion condicional sobre la misma fila antes de enviar. Un claim reciente bloquea competidores y uno huerfano puede recuperarse tras cinco minutos usando las columnas ya migradas.
+    *   **[Retry seguro]:** Retirar un ID trazado viejo tambien exige que ese ID siga siendo el actual; un worker atrasado ya no puede borrar el ID nuevo guardado por otro.
+    *   **[Sin migracion adicional]:** Se reutilizan `delivery_message_id`, `delivery_started_at` y `delivery_error`; no se agregaron tablas, columnas ni dependencias.
+*   **Validacion:** La integracion real hizo competir dos workers por el reset y por el claim, con exactamente un ganador en ambos pasos. `npm test` paso 21/21, `npm run test:real` paso 22/22 y `REAL_CLEANUP_OK` termino en cero para los seis tipos de artefactos sinteticos.
+*   **Notas/Advertencias:** El lease evita duplicar la misma fila; el rate limit horario sigue siendo memoria por proceso y no constituye un lock global entre replicas.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/remoteAuth.js`, `test_remote_auth.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Verificacion postdespliegue de la segunda auditoria y endurecimiento del borrado RemoteAuth frente a una carrera transitoria de Windows.
 *   **Cambios Clave:**

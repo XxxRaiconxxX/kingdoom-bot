@@ -30,6 +30,10 @@ const {
 } = await import('./src/handlers/blackjack.js');
 const { handleAdminCommand } = await import('./src/handlers/admin.js');
 const { cancelActiveMission, getActiveMissionsList } = await import('./src/gmTracker.js');
+const {
+  claimPendingNotificationDelivery,
+  prepareTrackedNotificationRetry,
+} = await import('./src/scheduler.js');
 
 assert.equal(usingDedicatedBotStateSupabase, true, 'La auditoria real debe usar el Supabase dedicado del bot.');
 
@@ -39,6 +43,7 @@ const eventMessageIds = [];
 const auctionArtifacts = [];
 const missionInstanceIds = [];
 const authUserIds = [];
+const notificationQueueIds = [];
 
 function throwIfError(error, context) {
   if (error) throw new Error(`${context}: ${error.message}`);
@@ -277,6 +282,54 @@ try {
     .limit(1);
   throwIfError(deliveryColumns.error, 'notification delivery migration');
 
+  const claimNow = Date.now();
+  const { data: notificationProbe, error: notificationProbeError } = await botStateSupabase
+    .from('bot_notifications_queue')
+    .insert({
+      player_phone: players.usage.phone,
+      message: `[AUDIT] delivery lease ${runId}`,
+      sent: false,
+      delivery_message_id: `audit-tracked-${runId}`,
+      delivery_started_at: new Date(claimNow - 10 * 60 * 1000).toISOString(),
+      delivery_error: 'AUDIT_STALE_CLAIM',
+    })
+    .select('id, delivery_message_id, delivery_started_at, delivery_attempts, delivery_error')
+    .single();
+  throwIfError(notificationProbeError, 'notification lease insert');
+  notificationQueueIds.push(notificationProbe.id);
+  const retryResults = await Promise.all([
+    prepareTrackedNotificationRetry(notificationProbe, 'missing'),
+    prepareTrackedNotificationRetry(notificationProbe, 'missing'),
+  ]);
+  for (const result of retryResults) throwIfError(result.error, 'notification retry claim');
+  assert.equal(
+    retryResults.filter(({ prepared }) => prepared).length,
+    1,
+    'Solo un worker debe retirar el ID trazado anterior.'
+  );
+  const { data: resetNotification, error: resetNotificationError } = await botStateSupabase
+    .from('bot_notifications_queue')
+    .select('id, delivery_message_id, delivery_started_at, delivery_attempts, delivery_error')
+    .eq('id', notificationProbe.id)
+    .single();
+  throwIfError(resetNotificationError, 'notification retry reset check');
+  assert.equal(resetNotification.delivery_message_id, null);
+  assert.equal(resetNotification.delivery_started_at, null);
+  const claimResults = await Promise.all([
+    claimPendingNotificationDelivery(resetNotification, claimNow),
+    claimPendingNotificationDelivery(resetNotification, claimNow),
+  ]);
+  assert.equal(claimResults.filter(Boolean).length, 1, 'Solo un worker debe reclamar la notificacion.');
+  const { data: claimedNotification, error: claimedNotificationError } = await botStateSupabase
+    .from('bot_notifications_queue')
+    .select('id, delivery_message_id, delivery_started_at, delivery_attempts, delivery_error')
+    .eq('id', notificationProbe.id)
+    .single();
+  throwIfError(claimedNotificationError, 'notification lease check');
+  assert.equal(claimedNotification.delivery_message_id, null);
+  assert.equal(claimedNotification.delivery_error, 'DELIVERY_CLAIMED');
+  assert.equal(await claimPendingNotificationDelivery(claimedNotification, claimNow + 1_000), false);
+
   const itemName = `Audit Auction ${runId}`;
   const { data: auction, error: auctionInsertError } = await supabase
     .from('market_auctions')
@@ -448,6 +501,7 @@ try {
     missionStart: true,
     treasureConcurrency: true,
     notificationTracking: true,
+    notificationLease: true,
     auctionLockRelease: true,
     anonRpcDenied: true,
     botAnonRpcDenied: true,
@@ -455,6 +509,9 @@ try {
     unlinkedAuthenticatedRpcDenied: true,
   }));
 } finally {
+  if (notificationQueueIds.length > 0) {
+    await botStateSupabase.from('bot_notifications_queue').delete().in('id', notificationQueueIds);
+  }
   for (const authUserId of authUserIds) {
     const { error } = await supabase.auth.admin.deleteUser(authUserId);
     throwIfError(error, 'temporary auth user cleanup');

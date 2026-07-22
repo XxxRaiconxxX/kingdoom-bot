@@ -5,6 +5,7 @@ import {
   decideTrackedDelivery,
   getWhatsAppMessageId,
   inspectMessageServerAck,
+  isNotificationDeliveryClaimAvailable,
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   sendMessageWithResult,
@@ -164,6 +165,20 @@ assert.equal(
     delivery_started_at: new Date(now - WHATSAPP_AMBIGUOUS_DELIVERY_HOLD_MS - 1).toISOString(),
   }, { state: 'missing' }, now),
   'retry'
+);
+assert.equal(isNotificationDeliveryClaimAvailable({}, now), true);
+assert.equal(isNotificationDeliveryClaimAvailable(recentTrackedItem, now), false);
+assert.equal(
+  isNotificationDeliveryClaimAvailable({
+    delivery_started_at: new Date(now - 5 * 60 * 1000 - 1).toISOString(),
+  }, now),
+  true
+);
+assert.equal(
+  isNotificationDeliveryClaimAvailable({
+    delivery_started_at: new Date(now - 60_000).toISOString(),
+  }, now),
+  false
 );
 
 const treasureSource = fs.readFileSync(new URL('./src/handlers/treasure.js', import.meta.url), 'utf8');

@@ -214,6 +214,12 @@ export function decideTrackedDelivery(item, inspection, now = Date.now()) {
   return 'retry';
 }
 
+export function isNotificationDeliveryClaimAvailable(item, now = Date.now()) {
+  if (getWhatsAppMessageId(item?.delivery_message_id)) return false;
+  const startedAt = Date.parse(String(item?.delivery_started_at ?? ''));
+  return !Number.isFinite(startedAt) || now - startedAt >= NOTIFICATION_CONTEXT_RETRY_DELAY_MS;
+}
+
 export async function waitForMessageServerAck(
   client,
   message,

@@ -16,6 +16,7 @@ import {
   decideTrackedDelivery,
   getWhatsAppMessageId,
   inspectMessageServerAck,
+  isNotificationDeliveryClaimAvailable,
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   NOTIFICATION_CONTEXT_RETRY_DELAY_MS,
@@ -88,6 +89,48 @@ async function updateNotificationState(itemId, values) {
         Object.entries(values).filter(([key]) => !key.startsWith('delivery_'))
       );
   return botStateSupabase.from('bot_notifications_queue').update(safeValues).eq('id', itemId);
+}
+
+export async function claimPendingNotificationDelivery(item, now = Date.now()) {
+  if (!notificationDeliveryColumnsSupported) return true;
+  if (!isNotificationDeliveryClaimAvailable(item, now)) return false;
+
+  const previousStartedAt = String(item?.delivery_started_at ?? '').trim();
+  let query = botStateSupabase
+    .from('bot_notifications_queue')
+    .update({
+      delivery_started_at: new Date(now).toISOString(),
+      delivery_error: 'DELIVERY_CLAIMED',
+    })
+    .eq('id', item.id)
+    .eq('sent', false)
+    .is('delivery_message_id', null);
+  query = previousStartedAt
+    ? query.eq('delivery_started_at', previousStartedAt)
+    : query.is('delivery_started_at', null);
+
+  const { data, error } = await query.select('id');
+  if (error) throw error;
+  return Array.isArray(data) && data.length === 1;
+}
+
+export async function prepareTrackedNotificationRetry(item, inspectionState) {
+  if (!notificationDeliveryColumnsSupported) return { prepared: true, error: null };
+  const messageId = getWhatsAppMessageId(item?.delivery_message_id);
+  if (!messageId) return { prepared: false, error: null };
+
+  const { data, error } = await botStateSupabase
+    .from('bot_notifications_queue')
+    .update({
+      delivery_message_id: null,
+      delivery_started_at: null,
+      delivery_error: `retry_after_${inspectionState}`,
+    })
+    .eq('id', item.id)
+    .eq('sent', false)
+    .eq('delivery_message_id', messageId)
+    .select('id');
+  return { prepared: Array.isArray(data) && data.length === 1, error };
 }
 
 function isWhatsappClientReady(client, isClientReady) {
@@ -375,6 +418,7 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 ...item,
                 ...(inMemoryNotificationDeliveries.get(item.id) ?? {}),
               };
+              let deliveryItem = trackedItem;
               if (getWhatsAppMessageId(trackedItem.delivery_message_id)) {
                 const inspection = await inspectMessageServerAck(
                   client,
@@ -400,21 +444,30 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                   continue;
                 }
 
-                inMemoryNotificationDeliveries.delete(item.id);
-                const { error: resetError } = await updateNotificationState(item.id, {
-                  delivery_message_id: null,
-                  delivery_started_at: null,
-                  delivery_error: `retry_after_${inspection.state}`,
-                });
+                const { prepared, error: resetError } = await prepareTrackedNotificationRetry(
+                  trackedItem,
+                  inspection.state
+                );
                 if (resetError) {
                   console.error('[scheduler] Error preparando reintento trazable:', resetError.message);
                   return;
                 }
+                if (!prepared) return;
+                inMemoryNotificationDeliveries.delete(item.id);
+                deliveryItem = {
+                  ...trackedItem,
+                  delivery_message_id: null,
+                  delivery_started_at: null,
+                  delivery_error: `retry_after_${inspection.state}`,
+                };
               }
 
               if (!canDispatchNotification(now, priority)) {
                 return;
               }
+
+              const claimed = await claimPendingNotificationDelivery(deliveryItem, now);
+              if (!claimed) return;
 
               try {
                 const { message, messageId } = await sendMessageWithResult(
@@ -426,7 +479,7 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
                 const deliveryState = {
                   delivery_message_id: messageId,
                   delivery_started_at: deliveryStartedAt,
-                  delivery_attempts: Number(item.delivery_attempts ?? 0) + 1,
+                  delivery_attempts: Number(deliveryItem.delivery_attempts ?? 0) + 1,
                   delivery_error: null,
                 };
                 inMemoryNotificationDeliveries.set(item.id, deliveryState);

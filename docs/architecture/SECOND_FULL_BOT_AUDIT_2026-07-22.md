@@ -232,3 +232,24 @@ por eso no se hizo una actualizacion parcial que dejaria build y manifiesto desi
 - El cierre corregido paso 50 ciclos RemoteAuth consecutivos, 21 pruebas locales y 22 pruebas
   con integracion real. La comprobacion independiente termino con cero perfiles, subastas,
   tesoros, reclamos y premios sinteticos.
+
+### Carrera de workers en la cola
+
+La observacion posterior mostro que la notificacion ambigua seguia `sent=false` y trazada,
+pero su contador habia llegado a seis intentos durante los reemplazos del contenedor. El
+codigo protegia ejecuciones solapadas dentro de un proceso, no entre dos procesos que hubieran
+leido la misma fila antes de que alguno persistiera el ID saliente.
+
+El cierre reutiliza las columnas existentes como lease optimista:
+
+- antes de enviar, el worker actualiza la fila solo si continua pendiente, sin ID y con el
+  mismo timestamp que leyo;
+- un lease reciente se respeta y uno huerfano puede reclamarse despues de cinco minutos;
+- para reintentar un mensaje trazado, el reset solo gana si el ID viejo sigue siendo el actual;
+- si otro worker gana cualquiera de las dos carreras, el perdedor abandona esa ejecucion sin
+  tocar WhatsApp.
+
+La prueba contra el Supabase dedicado creo una fila sintetica, lanzo dos resets y dos claims
+concurrentes y obtuvo exactamente un ganador en cada etapa. La fila se elimino al terminar.
+No fue necesaria otra migracion. El cierre completo paso 21 pruebas locales y 22 con
+integracion real; la comprobacion independiente dejo en cero los seis tipos de artefactos.
