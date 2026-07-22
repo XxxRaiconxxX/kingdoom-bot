@@ -1570,14 +1570,33 @@ export async function handleAdminCommand(msg, client) {
         if (quotedDetails.id && client && typeof client.getMessageById === 'function') {
           try {
             targetMsg = await client.getMessageById(quotedDetails.id);
-          } catch {
+          } catch (e) {
             // fallback
           }
         }
         if (!targetMsg && typeof msg.getQuotedMessage === 'function') {
-          const quoted = await msg.getQuotedMessage();
-          if (quoted) {
-            targetMsg = quoted;
+          try {
+            const quoted = await msg.getQuotedMessage();
+            if (quoted) targetMsg = quoted;
+          } catch (e) {
+            // fallback
+          }
+        }
+        // Fallback sintético directo desde _data.quotedMsg si getMessageById falló con 'r'
+        if (!targetMsg) {
+          const qData = msg._data?.quotedMsg || msg._originalMsg?._data?.quotedMsg || msg._data?.quotedSticker;
+          if (qData) {
+            const qId = typeof qData.id === 'string' ? qData.id : (qData.id?._serialized || qData.id);
+            targetMsg = {
+              id: qId,
+              hasMedia: Boolean(qData.isMedia || qData.type === 'document' || qData.type === 'image' || qData.directPath || qData.mimetype),
+              body: qData.body || qData.caption || '',
+              type: qData.type,
+              mimetype: qData.mimetype,
+              filename: qData.filename || 'documento.txt',
+              _data: qData
+            };
+            console.log('[admin !data] TargetMsg sintético resuelto desde msg._data.quotedMsg:', qId);
           }
         }
       } catch (quotedErr) {
@@ -1587,16 +1606,18 @@ export async function handleAdminCommand(msg, client) {
 
     // 2. Si el mensaje objetivo tiene media, descargar el archivo
     if (targetMsg && targetMsg.hasMedia) {
+      const activePupPage = client?.pupPage || msg?.client?.pupPage || targetMsg?.client?.pupPage || msg?._originalMsg?.client?.pupPage;
+
       // Método A: Intento directo vía Puppeteer context (evita el bug de FETCHING en whatsapp-web.js)
-      if (client?.pupPage) {
+      if (activePupPage) {
         try {
           const rawId = typeof targetMsg.id === 'string'
             ? targetMsg.id
-            : (targetMsg.id?._serialized || targetMsg._data?.id?._serialized || targetMsg._originalMsg?.id?._serialized);
+            : (targetMsg.id?._serialized || targetMsg._data?.id?._serialized || targetMsg._originalMsg?.id?._serialized || targetMsg._data?.id);
 
           if (rawId) {
             console.log('[admin !data] Descargando via Puppeteer con polling de mediaStage para ID:', rawId);
-            const pupResult = await client.pupPage.evaluate(async (msgId) => {
+            const pupResult = await activePupPage.evaluate(async (msgId) => {
               try {
                 const MsgColl = window.require('WAWebCollections').Msg;
                 let msgObj = MsgColl.get(msgId);
