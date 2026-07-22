@@ -1621,13 +1621,13 @@ function getSerializedId(idObj) {
     if (targetMsg && targetMsg.hasMedia) {
       const activePupPage = client?.pupPage || msg?.client?.pupPage || targetMsg?.client?.pupPage || msg?._originalMsg?.client?.pupPage;
 
-      // Método A: Intento directo vía Puppeteer context (evita el bug de FETCHING en whatsapp-web.js)
-      if (activePupPage) {
-        try {
-          const rawId = getSerializedId(targetMsg.id) || getSerializedId(targetMsg._data?.id) || getSerializedId(targetMsg._originalMsg?.id);
+      // Método A: Puppeteer por ID serializado (funciona si el ID es válido)
+      if (activePupPage && !media?.data) {
+        const rawId = getSerializedId(targetMsg.id) || getSerializedId(targetMsg._data?.id) || getSerializedId(targetMsg._originalMsg?.id);
 
-          if (rawId) {
-            console.log('[admin !data] Descargando via Puppeteer con polling de mediaStage para ID:', rawId);
+        if (rawId) {
+          try {
+            console.log('[admin !data] Método A: Puppeteer lookup por ID:', rawId);
             const pupResult = await activePupPage.evaluate(async (msgId) => {
               try {
                 const MsgColl = window.require('WAWebCollections').Msg;
@@ -1638,12 +1638,10 @@ function getSerializedId(idObj) {
                 }
                 if (!msgObj) return null;
 
-                // Forzar inicio de descarga si no está resuelto
                 if (msgObj.mediaData?.mediaStage !== 'RESOLVED') {
                   if (typeof msgObj.downloadMedia === 'function') {
                     try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
                   }
-                  // Polling de hasta 12 segundos esperando que el blob cargue
                   const start = Date.now();
                   while (Date.now() - start < 12000) {
                     if (msgObj.mediaData?.mediaStage === 'RESOLVED' && msgObj.mediaData?._blob) break;
@@ -1668,34 +1666,6 @@ function getSerializedId(idObj) {
                     };
                   }
                 }
-
-                // Fallback a WAWebDownloadManager
-                const dm = window.require('WAWebDownloadManager')?.downloadManager;
-                if (dm) {
-                  const fn = dm.downloadAndMaybeDecrypt || dm.downloadAndDecrypt || dm.downloadMedia;
-                  if (typeof fn === 'function') {
-                    const mockQpl = { addAnnotations: function() { return this; }, addPoint: function() { return this; } };
-                    const decrypted = await fn.call(dm, {
-                      directPath: msgObj.directPath,
-                      encFilehash: msgObj.encFilehash,
-                      filehash: msgObj.filehash,
-                      mediaKey: msgObj.mediaKey,
-                      mediaKeyTimestamp: msgObj.mediaKeyTimestamp,
-                      type: msgObj.type,
-                      mimetype: msgObj.mimetype,
-                      signal: new AbortController().signal,
-                      downloadQpl: mockQpl,
-                    });
-                    if (decrypted) {
-                      const data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
-                      return {
-                        data,
-                        mimetype: msgObj.mimetype || 'text/plain',
-                        filename: msgObj.filename || 'documento.txt'
-                      };
-                    }
-                  }
-                }
               } catch (e) {
                 return { error: String(e?.message || e) };
               }
@@ -1704,24 +1674,87 @@ function getSerializedId(idObj) {
 
             if (pupResult && pupResult.data) {
               media = pupResult;
-              console.log('[admin !data] Descarga exitosa vía Puppeteer!');
+              console.log('[admin !data] Método A exitoso!');
+            } else if (pupResult?.error) {
+              console.warn('[admin !data] Método A error interno:', pupResult.error);
             }
+          } catch (pupErr) {
+            console.warn('[admin !data] Método A error:', pupErr?.message || pupErr);
           }
-        } catch (pupErr) {
-          console.warn('[admin !data] Error en descarga vía Puppeteer:', pupErr?.message || pupErr);
         }
       }
 
-      // Método B: Fallback a targetMsg.downloadMedia() si Puppeteer devolvió null
-      if (!media || !media.data) {
+      // Método B: Puppeteer con metadatos de media crudos (para quotedMsg sin ID válido)
+      // ponytail: este método bypasea WAWebCollections completamente, usa directPath+mediaKey del _data
+      if (activePupPage && !media?.data && targetMsg._data) {
+        const md = targetMsg._data;
+        if (md.directPath && md.mediaKey) {
+          try {
+            console.log('[admin !data] Método B: Descarga directa por directPath+mediaKey');
+            const pupResult = await activePupPage.evaluate(async (mediaMeta) => {
+              try {
+                const dm = window.require('WAWebDownloadManager')?.downloadManager;
+                if (!dm) return { error: 'WAWebDownloadManager no disponible' };
+
+                const fn = dm.downloadAndMaybeDecrypt || dm.downloadAndDecrypt || dm.downloadMedia;
+                if (typeof fn !== 'function') return { error: 'No se encontró función de descarga en DownloadManager' };
+
+                const mockQpl = { addAnnotations: function() { return this; }, addPoint: function() { return this; } };
+                const decrypted = await fn.call(dm, {
+                  directPath: mediaMeta.directPath,
+                  encFilehash: mediaMeta.encFilehash,
+                  filehash: mediaMeta.filehash,
+                  mediaKey: mediaMeta.mediaKey,
+                  mediaKeyTimestamp: mediaMeta.mediaKeyTimestamp,
+                  type: mediaMeta.type || 'document',
+                  mimetype: mediaMeta.mimetype || 'text/plain',
+                  signal: new AbortController().signal,
+                  downloadQpl: mockQpl,
+                });
+
+                if (decrypted) {
+                  const data = await window.WWebJS.arrayBufferToBase64Async(decrypted);
+                  return {
+                    data,
+                    mimetype: mediaMeta.mimetype || 'text/plain',
+                    filename: mediaMeta.filename || 'documento.txt'
+                  };
+                }
+              } catch (e) {
+                return { error: String(e?.message || e) };
+              }
+              return null;
+            }, {
+              directPath: md.directPath,
+              encFilehash: md.encFilehash,
+              filehash: md.filehash,
+              mediaKey: md.mediaKey,
+              mediaKeyTimestamp: md.mediaKeyTimestamp,
+              type: md.type,
+              mimetype: md.mimetype,
+              filename: md.filename
+            });
+
+            if (pupResult && pupResult.data) {
+              media = pupResult;
+              console.log('[admin !data] Método B exitoso!');
+            } else if (pupResult?.error) {
+              console.warn('[admin !data] Método B error interno:', pupResult.error);
+            }
+          } catch (pupErr) {
+            console.warn('[admin !data] Método B error:', pupErr?.message || pupErr);
+          }
+        }
+      }
+
+      // Método C: Fallback a targetMsg.downloadMedia() nativo
+      if (!media?.data && typeof targetMsg.downloadMedia === 'function') {
         for (let attempt = 1; attempt <= 2; attempt++) {
           try {
-            if (typeof targetMsg.downloadMedia === 'function') {
-              media = await targetMsg.downloadMedia();
-              if (media && media.data) break;
-            }
+            media = await targetMsg.downloadMedia();
+            if (media && media.data) break;
           } catch (err) {
-            console.warn(`[admin !data] Fallback downloadMedia() intento ${attempt} falló:`, err?.message || err);
+            console.warn(`[admin !data] Método C intento ${attempt} falló:`, err?.message || err);
           }
           if (attempt < 2) await new Promise(r => setTimeout(r, 600));
         }
