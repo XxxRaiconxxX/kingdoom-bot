@@ -8,6 +8,7 @@ import {
   getRoleplayLockWindowDays,
   reconcilePendingGameRewards,
   reconcilePendingTreasureCredits,
+  getPlayersByPhoneStrict,
 } from './supabase.js';
 import { normalizePhone, formatJid } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
@@ -131,6 +132,19 @@ export async function prepareTrackedNotificationRetry(item, inspectionState) {
     .eq('delivery_message_id', messageId)
     .select('id');
   return { prepared: Array.isArray(data) && data.length === 1, error };
+}
+
+export async function closeOrphanedNotification(item, now = Date.now()) {
+  const linkedPlayers = await getPlayersByPhoneStrict(item?.player_phone);
+  if (linkedPlayers.length > 0) return false;
+
+  const { error } = await updateNotificationState(item.id, {
+    sent: true,
+    sent_at: new Date(now).toISOString(),
+    delivery_error: 'RECIPIENT_NOT_LINKED',
+  });
+  if (error) throw error;
+  return true;
 }
 
 function isWhatsappClientReady(client, isClientReady) {
@@ -412,6 +426,11 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
               if (!isWhatsappClientReady(client, isClientReady)) {
                 console.warn('[scheduler] Cola en pausa: WhatsApp ya no esta listo para despachar.');
                 return;
+              }
+
+              if (await closeOrphanedNotification(item, now)) {
+                inMemoryNotificationDeliveries.delete(item.id);
+                continue;
               }
 
               const trackedItem = {

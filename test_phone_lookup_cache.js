@@ -3,20 +3,35 @@ import http from 'node:http';
 
 const playerId = '00000000-0000-4000-8000-000000000001';
 const phone = '595981111111';
+const legacyPhone = `5959${phone.slice(3)}`;
 let playerReads = 0;
+let failPlayerReads = false;
+let returnEmptyPlayerReads = false;
+let responsePlayerPhone = legacyPhone;
+let lastPlayerRequestUrl = '';
 
 const server = http.createServer((request, response) => {
   response.setHeader('Content-Type', 'application/json');
 
   if (request.url?.startsWith('/rest/v1/players')) {
     playerReads += 1;
+    lastPlayerRequestUrl = decodeURIComponent(request.url);
+    if (failPlayerReads) {
+      response.statusCode = 503;
+      response.end(JSON.stringify({ message: 'temporary database failure' }));
+      return;
+    }
+    if (returnEmptyPlayerReads) {
+      response.end(JSON.stringify([]));
+      return;
+    }
     response.end(JSON.stringify([
       {
         id: playerId,
         username: 'AuditPlayer',
         gold: 100,
         weekly_gold: 0,
-        phone,
+        phone: responsePlayerPhone,
         is_admin: false,
         banned: false,
         created_at: '2026-01-01T00:00:00.000Z',
@@ -44,7 +59,7 @@ process.env.SUPABASE_SERVICE_KEY = 'audit-service-key';
 process.env.PHONE_LOOKUP_TTL_MS = '60000';
 
 try {
-  const { getPlayersByPhone, updateGold } = await import(
+  const { getPlayersByPhone, getPlayersByPhoneStrict, updateGold } = await import(
     `./src/supabase.js?cache-test=${Date.now()}`
   );
 
@@ -54,6 +69,7 @@ try {
 
   assert.equal(playerReads, 1, 'Concurrent lookups for one phone must share one request.');
   assert.equal(burst.every((players) => players[0]?.id === playerId), true);
+  assert.match(lastPlayerRequestUrl, new RegExp(legacyPhone));
 
   await getPlayersByPhone(phone);
   assert.equal(playerReads, 1, 'A warm lookup must use the TTL cache.');
@@ -62,7 +78,29 @@ try {
   await getPlayersByPhone(phone);
   assert.equal(playerReads, 2, 'A balance mutation must invalidate the cached player.');
 
-  console.log('PHONE_LOOKUP_CACHE_OK concurrent=20 reads=2');
+  failPlayerReads = true;
+  await assert.rejects(
+    getPlayersByPhoneStrict('595989999999'),
+    'A strict lookup must not turn a database outage into an empty player result.'
+  );
+
+  failPlayerReads = false;
+  returnEmptyPlayerReads = true;
+  const newlyLinkedPhone = '595982222222';
+  assert.deepEqual(await getPlayersByPhone(newlyLinkedPhone), []);
+  const readsAfterEmptyResult = playerReads;
+
+  returnEmptyPlayerReads = false;
+  responsePlayerPhone = `5959${newlyLinkedPhone.slice(3)}`;
+  const newlyLinkedPlayers = await getPlayersByPhoneStrict(newlyLinkedPhone);
+  assert.equal(newlyLinkedPlayers[0]?.id, playerId);
+  assert.equal(
+    playerReads,
+    readsAfterEmptyResult + 1,
+    'A strict lookup must recheck an empty cache before closing a recipient.'
+  );
+
+  console.log(`PHONE_LOOKUP_CACHE_OK concurrent=20 reads=${playerReads} strict_error=closed empty_cache=rechecked`);
 } finally {
   await new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));

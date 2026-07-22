@@ -236,7 +236,7 @@ por eso no se hizo una actualizacion parcial que dejaria build y manifiesto desi
 ### Carrera de workers en la cola
 
 La observacion posterior mostro que la notificacion ambigua seguia `sent=false` y trazada,
-pero su contador habia llegado a seis intentos durante los reemplazos del contenedor. El
+pero su contador llego a nueve intentos durante las transiciones desde workers anteriores. El
 codigo protegia ejecuciones solapadas dentro de un proceso, no entre dos procesos que hubieran
 leido la misma fila antes de que alguno persistiera el ID saliente.
 
@@ -252,4 +252,17 @@ El cierre reutiliza las columnas existentes como lease optimista:
 La prueba contra el Supabase dedicado creo una fila sintetica, lanzo dos resets y dos claims
 concurrentes y obtuvo exactamente un ganador en cada etapa. La fila se elimino al terminar.
 No fue necesaria otra migracion. El cierre completo paso 21 pruebas locales y 22 con
-integracion real; la comprobacion independiente dejo en cero los seis tipos de artefactos.
+integracion real; la comprobacion independiente dejo en cero siete tipos de artefactos.
+
+### Destinatario eliminado
+
+La misma fila era un aviso masivo del 20 de julio y su telefono ya no tenia coincidencias en
+`players`. El scheduler ahora valida esa relacion antes del claim. Una fila sin jugador se
+cierra con `sent=true` y `delivery_error=RECIPIENT_NOT_LINKED`, evitando reintentos perpetuos.
+
+La consulta usa una variante estricta de `getPlayersByPhone`: conserva el filtro exacto y la
+cache positiva existente, pero revalida resultados vacios y propaga errores de Supabase. Una
+caida de base deja la notificacion pendiente en vez de cerrarla falsamente. La prueba local
+fuerza HTTP 503 y una cache vacia obsoleta; la integracion real crea/cierra una fila huerfana.
+Ademas, la lectura de produccion encontro dos formatos telefonicos historicos y ambos resolvieron
+el perfil exacto (`2/2`). Todas las filas sinteticas se eliminaron.

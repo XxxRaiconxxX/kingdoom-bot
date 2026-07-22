@@ -241,11 +241,11 @@ export async function getPlayersByPhone(whatsappNumber) {
 
   const lookupRevision = phoneLookupRevision;
   const lookupPromise = (async () => {
-    const { data, error } = await supabase
+    let query = supabase
       .from('players')
-      .select(PLAYER_SELECT_COLUMNS)
-      .ilike('phone', `%${phone}%`)
-      .order('created_at', { ascending: true });
+      .select(PLAYER_SELECT_COLUMNS);
+    query = applyPhoneLookupFilter(query, phone);
+    const { data, error } = await query.order('created_at', { ascending: true });
 
     if (error) {
       console.error('[getPlayersByPhone]', error.message);
@@ -255,11 +255,7 @@ export async function getPlayersByPhone(whatsappNumber) {
     if (!data) return [];
 
     // Exact match filtering to avoid substring issues (e.g., 59598112345 matching 595981123456)
-    const matchedPlayers = data.filter(player => {
-      if (!player.phone) return false;
-      const phones = player.phone.split(',').map(p => p.trim());
-      return phones.includes(phone);
-    });
+    const matchedPlayers = filterPlayersByExactPhone(data, phone);
 
     if (lookupRevision === phoneLookupRevision) {
       writePhoneLookupCache(phone, matchedPlayers);
@@ -275,6 +271,59 @@ export async function getPlayersByPhone(whatsappNumber) {
       pendingPhoneLookups.delete(phone);
     }
   }
+}
+
+function filterPlayersByExactPhone(players, phone) {
+  return (players ?? []).filter((player) => {
+    if (!player.phone) return false;
+    return player.phone.split(',').map((value) => normalizePhone(value)).includes(phone);
+  });
+}
+
+function getPhoneLookupCandidates(phone) {
+  const candidates = new Set([phone]);
+  if (phone.startsWith('595') && phone.length === 12) {
+    candidates.add(`5959${phone.slice(3)}`);
+  }
+  if (phone.startsWith('521') && phone.length === 13) {
+    candidates.add(`52${phone.slice(3)}`);
+  }
+  if (phone.startsWith('549')) {
+    candidates.add(`54${phone.slice(3)}`);
+    candidates.add(`5415${phone.slice(3)}`);
+  }
+  if (phone === '595987273405') {
+    candidates.add('275162062668001');
+  }
+  return [...candidates];
+}
+
+function applyPhoneLookupFilter(query, phone) {
+  const candidates = getPhoneLookupCandidates(phone);
+  if (candidates.length === 1) return query.ilike('phone', `%${phone}%`);
+  return query.or(candidates.map((candidate) => `phone.ilike.%${candidate}%`).join(','));
+}
+
+export async function getPlayersByPhoneStrict(whatsappNumber) {
+  const phone = normalizePhone(whatsappNumber);
+  if (!phone) return [];
+
+  const cachedPlayers = readPhoneLookupCache(phone);
+  if (cachedPlayers?.length > 0) return cachedPlayers;
+
+  const lookupRevision = phoneLookupRevision;
+  let query = supabase
+    .from('players')
+    .select(PLAYER_SELECT_COLUMNS);
+  query = applyPhoneLookupFilter(query, phone);
+  const { data, error } = await query.order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const matchedPlayers = filterPlayersByExactPhone(data, phone);
+  if (lookupRevision === phoneLookupRevision) {
+    writePhoneLookupCache(phone, matchedPlayers);
+  }
+  return matchedPlayers;
 }
 
 function isMissingLifecycleSchemaError(error) {
