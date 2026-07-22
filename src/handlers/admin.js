@@ -1614,43 +1614,60 @@ export async function handleAdminCommand(msg, client) {
       }
 
       // Fallback secundario via Puppeteer _blob si downloadMedia() arrojó excepción de desencripción
-      if ((!media || !media.data) && client?.pupPage && targetMsg?.id) {
+      if ((!media || !media.data) && client?.pupPage && targetMsg) {
         try {
-          const rawId = typeof targetMsg.id === 'string' ? targetMsg.id : targetMsg.id._serialized;
-          console.log('[admin !data] Intentando fallback via Puppeteer _blob para ID:', rawId);
-          const puppeteerMedia = await client.pupPage.evaluate(async (msgId) => {
-            try {
-              const msgObj = window.require('WAWebCollections').Msg.get(msgId) ||
-                (await window.require('WAWebCollections').Msg.getMessagesById([msgId]))?.messages?.[0];
-              if (!msgObj) return null;
+          const rawId = typeof targetMsg.id === 'string'
+            ? targetMsg.id
+            : (targetMsg.id?._serialized || targetMsg._data?.id?._serialized || targetMsg._originalMsg?.id?._serialized);
+            
+          if (rawId) {
+            console.log('[admin !data] Intentando fallback con polling via Puppeteer _blob para ID:', rawId);
+            const puppeteerMedia = await client.pupPage.evaluate(async (msgId) => {
+              try {
+                const MsgColl = window.require('WAWebCollections').Msg;
+                let msgObj = MsgColl.get(msgId);
+                if (!msgObj) {
+                  const fetchedArr = await MsgColl.getMessagesById([msgId]);
+                  msgObj = fetchedArr?.messages?.[0] || fetchedArr?.[0];
+                }
+                if (!msgObj) return null;
 
-              if (msgObj.downloadMedia && msgObj.mediaData?.mediaStage !== 'RESOLVED') {
-                try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
-              }
+                if (msgObj.mediaData?.mediaStage !== 'RESOLVED') {
+                  if (typeof msgObj.downloadMedia === 'function') {
+                    try { await msgObj.downloadMedia({ downloadEvenIfExpensive: true, rmrReason: 1 }); } catch {}
+                  }
+                  const start = Date.now();
+                  while (Date.now() - start < 8000) {
+                    if (msgObj.mediaData?.mediaStage === 'RESOLVED' && msgObj.mediaData?._blob) break;
+                    if (String(msgObj.mediaData?.mediaStage || '').includes('ERROR')) break;
+                    await new Promise(r => setTimeout(r, 250));
+                  }
+                }
 
-              if (msgObj.mediaData && msgObj.mediaData._blob) {
-                const dataUrl = await new Promise((resolve, reject) => {
-                  const reader = new FileReader();
-                  reader.onload = () => resolve(reader.result);
-                  reader.onerror = (err) => reject(err);
-                  reader.readAsDataURL(msgObj.mediaData._blob);
-                });
-                const base64Data = String(dataUrl).split(',')[1] || '';
-                return {
-                  data: base64Data,
-                  mimetype: msgObj.mimetype || 'text/plain',
-                  filename: msgObj.filename || 'documento.txt'
-                };
+                if (msgObj.mediaData && msgObj.mediaData._blob) {
+                  const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = (err) => reject(err);
+                    reader.readAsDataURL(msgObj.mediaData._blob);
+                  });
+                  const base64Data = String(dataUrl).split(',')[1] || '';
+                  return {
+                    data: base64Data,
+                    mimetype: msgObj.mimetype || msgObj.mediaData.mimetype || 'text/plain',
+                    filename: msgObj.filename || msgObj.mediaData.filename || 'documento.txt'
+                  };
+                }
+              } catch (e) {
+                return { error: String(e?.message || e) };
               }
-            } catch (e) {
-              return { error: String(e?.message || e) };
+              return null;
+            }, rawId);
+
+            if (puppeteerMedia && puppeteerMedia.data) {
+              media = puppeteerMedia;
+              console.log('[admin !data] Fallback con polling via Puppeteer _blob exitoso!');
             }
-            return null;
-          }, rawId);
-
-          if (puppeteerMedia && puppeteerMedia.data) {
-            media = puppeteerMedia;
-            console.log('[admin !data] Fallback via Puppeteer _blob exitoso!');
           }
         } catch (pupErr) {
           console.warn('[admin !data] Fallback Puppeteer _blob falló:', pupErr?.message || pupErr);
