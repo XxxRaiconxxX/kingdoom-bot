@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import {
+  getWhatsAppMessageId,
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
+  sendMessageWithResult,
+  sendMessageWithServerAck,
   waitForMessageServerAck,
 } from './src/whatsappDelivery.js';
 
@@ -17,6 +20,29 @@ assert.equal(
 );
 assert.equal(isTransientWhatsappDeliveryError(new Error('Invalid WhatsApp recipient')), false);
 assert.equal(isPermanentWhatsappRecipientError(new Error('Invalid WhatsApp recipient')), true);
+assert.equal(
+  getWhatsAppMessageId({ _data: { id: { _serialized: 'message-from-data' } } }),
+  'message-from-data'
+);
+assert.equal(
+  getWhatsAppMessageId({ id: { fromMe: true, remote: 'group@g.us', id: 'message-object' } }),
+  'message-object'
+);
+
+let sendOptions;
+const sendClient = {
+  async sendMessage(_chatId, _content, options) {
+    sendOptions = options;
+    return options.waitUntilMsgSent
+      ? { _data: { id: { _serialized: 'message-result' }, ack: 1 } }
+      : undefined;
+  },
+};
+const sentResult = await sendMessageWithResult(sendClient, 'group@g.us', 'test');
+assert.equal(sentResult.messageId, 'message-result');
+assert.equal(sendOptions.waitUntilMsgSent, true);
+const ackedMessage = await sendMessageWithServerAck(sendClient, 'group@g.us', 'test');
+assert.equal(getWhatsAppMessageId(ackedMessage), 'message-result');
 
 const client = new EventEmitter();
 client.getMessageById = async () => ({ ack: 0 });
@@ -59,16 +85,16 @@ assert.ok(
 
 const schedulerSource = fs.readFileSync(new URL('./src/scheduler.js', import.meta.url), 'utf8');
 assert.ok(
-  schedulerSource.indexOf('waitForMessageServerAck(client, sentMessage)') <
+  schedulerSource.indexOf('await sendMessageWithServerAck(') <
     schedulerSource.indexOf(".update({ sent: true, sent_at:"),
   'The queue must wait for server ACK before marking a notification as sent.'
 );
 
 const treasureSource = fs.readFileSync(new URL('./src/handlers/treasure.js', import.meta.url), 'utf8');
 assert.ok(
-  treasureSource.indexOf('waitForMessageServerAck(client, message)') <
+  treasureSource.indexOf('await sendMessageWithResult(client, TARGET_GROUP, text)') <
     treasureSource.indexOf('const event = await createTreasureEvent'),
-  'A treasure must receive server ACK before its active event is persisted.'
+  'A treasure must obtain its stable message id before its active event is persisted.'
 );
 
 console.log('SCHEDULER_DELIVERY_GUARD_OK');

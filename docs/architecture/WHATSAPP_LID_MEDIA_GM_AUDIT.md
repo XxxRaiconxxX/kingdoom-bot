@@ -22,6 +22,12 @@ Autor: Codex
   https://github.com/wwebjs/whatsapp-web.js/blob/v1.34.7/src/structures/Message.js
 - La API publica `Client.getContactLidAndPhone()` existe para convertir LID y numero:
   https://docs.wwebjs.dev/Client.html#getContactLidAndPhone
+- `MessageSendOptions.waitUntilMsgSent` permite esperar el resultado real del envio antes de
+  reconstruir el objeto `Message`; su valor por defecto es `false`:
+  https://docs.wwebjs.dev/global.html#MessageSendOptions
+- El codigo oficial espera `sendMsgResultPromise` solo con esa opcion y despues recupera el
+  mensaje desde la coleccion por su ID generado:
+  https://github.com/wwebjs/whatsapp-web.js/blob/v1.34.7/src/util/Injected/Utils.js
 - WhatsApp documenta su sintaxis propia de formato; no es Markdown completo:
   https://faq.whatsapp.com/539178204879377
 - El tracker oficial registra limites/rate limiting al resolver muchos LID, por lo que los
@@ -79,6 +85,25 @@ Decision:
   comportamiento productivo antes de la migracion.
 - La respuesta inmediata y el resumen muestran `@telefono`, nombre, recompensa y saldo
   confirmado cuando la RPC lo devuelve.
+
+#### Incidente productivo del 22/07/2026
+
+Los logs del Space confirmaron que el anuncio visible de las 13:55 hora Paraguay termino con
+`WhatsApp no devolvio el ID del mensaje de tesoro`. El envio se habia mostrado en el grupo,
+pero `dropTreasure` no pudo registrar el evento en memoria ni persistirlo. A las 13:59 el bot
+recibio `!reclamar` y respondio con la ayuda generica; a las 14:00 recibio el segundo mensaje
+sin prefijo, pero la cita volvio a quedar fuera del interceptor y no hubo respuesta. No existio
+una escritura de tesoro que migrar o reparar en Supabase.
+
+Correccion:
+
+- Los envios que requieren identidad o ACK usan `waitUntilMsgSent: true` mediante un helper
+  compartido; el alcance cubre tesoros, cola de notificaciones y subastas en tiempo real.
+- El ID se recupera tambien desde `_data.id`, `$1`, `key.id` y objetos anidados actuales.
+- Las citas comparan el stanza ID aunque WhatsApp entregue un objeto LID en vez de una cadena.
+- Si se cita un anuncio reconocible que ya no corresponde a un evento activo, el bot responde
+  explicitamente y no anuncia ni acredita oro.
+- No se agregaron dependencias ni cambios de esquema para esta correccion.
 
 ### 4. Game Master
 

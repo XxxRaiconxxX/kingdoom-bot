@@ -1,11 +1,12 @@
 import { normalizePhone } from './adminStore.js';
 import { findPlayerByIdentifier } from './supabase.js';
 import { resolveWhatsAppPhone, serializeWhatsAppId } from './whatsappIdentity.js';
+import { getWhatsAppMessageId } from './whatsappDelivery.js';
 
 const quotedDetailsCache = new WeakMap();
 
 function getMessageStanzaId(value) {
-  const messageId = String(value ?? '').trim();
+  const messageId = getWhatsAppMessageId(value);
   if (!messageId) return '';
 
   const serializedMatch = messageId.match(/^(?:true|false)_[^_]+_([^_]+)(?:_|$)/i);
@@ -13,7 +14,7 @@ function getMessageStanzaId(value) {
 }
 
 export function findActiveQuotedMessageKey(activeMessages, quotedId) {
-  const candidate = String(quotedId ?? '').trim();
+  const candidate = getWhatsAppMessageId(quotedId);
   if (!candidate || !activeMessages) return null;
   if (activeMessages.has(candidate)) return candidate;
 
@@ -67,21 +68,19 @@ export async function safeGetQuotedDetails(msg) {
     if (msg._data) {
       const rawQuoted = msg._data.quotedMsg;
       if (rawQuoted) {
-        if (rawQuoted.id) {
-          id = rawQuoted.id._serialized || rawQuoted.id;
-        }
+        id = getWhatsAppMessageId(rawQuoted.id) || null;
         author = rawQuoted.author || rawQuoted.from || null;
         body = rawQuoted.body || rawQuoted.caption || null;
       }
-      id ||= msg._data.quotedStanzaID || null;
+      id ||= getWhatsAppMessageId(msg._data.quotedStanzaID) || null;
       author ||= msg._data.quotedParticipant || null;
     }
 
-    if ((!id || !author) && typeof msg.getQuotedMessage === 'function') {
+    if ((!id || !author || !body) && typeof msg.getQuotedMessage === 'function') {
       try {
         const quoted = await msg.getQuotedMessage();
         if (quoted) {
-          id ||= quoted.id?._serialized || quoted.id?.id || null;
+          id ||= getWhatsAppMessageId(quoted) || null;
           author ||= quoted.author || quoted.from || null;
           body ||= quoted.body || quoted.caption || null;
         }

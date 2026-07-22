@@ -15,7 +15,7 @@ import {
   isPermanentWhatsappRecipientError,
   isTransientWhatsappDeliveryError,
   NOTIFICATION_CONTEXT_RETRY_DELAY_MS,
-  waitForMessageServerAck,
+  sendMessageWithServerAck,
 } from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
@@ -326,8 +326,11 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
               }
 
               try {
-                const sentMessage = await client.sendMessage(formatJid(item.player_phone), item.message);
-                await waitForMessageServerAck(client, sentMessage);
+                await sendMessageWithServerAck(
+                  client,
+                  formatJid(item.player_phone),
+                  item.message
+                );
                 const { error: sentStateError } = await botStateSupabase
                   .from('bot_notifications_queue')
                   .update({ sent: true, sent_at: new Date().toISOString() })

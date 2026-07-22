@@ -8,7 +8,11 @@ import {
   getTreasureClaims,
   touchPlayerActivity,
 } from '../supabase.js';
-import { waitForMessageServerAck } from '../whatsappDelivery.js';
+import {
+  sendMessageWithResult,
+  sendMessageWithServerAck,
+  waitForMessageServerAck,
+} from '../whatsappDelivery.js';
 import { heraldCard, heraldStat } from '../formatting.js';
 import { formatJid, normalizePhone } from '../adminStore.js';
 
@@ -111,6 +115,18 @@ function normalizeTreasureReply(value) {
     .trim();
 }
 
+export function isTreasureClaimText(value) {
+  return normalizeTreasureReply(value) === 'reclamar';
+}
+
+export function isTreasureAnnouncementText(value) {
+  return String(value ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .includes('tesoro errante del reino');
+}
+
 export async function waitForTreasureAckBestEffort(client, message) {
   try {
     await waitForMessageServerAck(client, message);
@@ -149,6 +165,13 @@ export function buildTreasureClaimFeedback(status, details = {}) {
     return heraldCard('Tesoro desvanecido', [
       'El tiempo limite termino antes de confirmar tu reclamo.',
       'No se acredito ninguna recompensa.',
+    ], { icon: '⌛' });
+  }
+
+  if (status === 'inactive') {
+    return heraldCard('Tesoro no disponible', [
+      'El anuncio citado ya no corresponde a un tesoro activo.',
+      'No se acredito ninguna recompensa. Espera el proximo Tesoro Errante.',
     ], { icon: '⌛' });
   }
 
@@ -242,18 +265,7 @@ export async function dropTreasure(client, isClientReady = () => Boolean(client?
       `⏳ Tiempo limite: 5 minutos\n` +
       `🏆 Ganadores posibles: ${maxWinners}`;
 
-    let message;
-    try {
-      const chat = await client.getChatById(TARGET_GROUP);
-      message = await chat.sendMessage(text);
-    } catch (err) {
-      console.log('[Treasure] getChatById fallo; intentando envio directo.');
-      message = await client.sendMessage(TARGET_GROUP, text);
-    }
-    const messageId = message?.id?._serialized || message?.id?.id;
-    if (!messageId) {
-      throw new Error('WhatsApp no devolvio el ID del mensaje de tesoro.');
-    }
+    const { message, messageId } = await sendMessageWithResult(client, TARGET_GROUP, text);
     const expiresAt = new Date(Date.now() + TREASURE_DURATION_MS).toISOString();
 
     // Register active treasure in memory map immediately to avoid race conditions
@@ -324,17 +336,19 @@ export async function closeTreasure(messageId, client, options = {}) {
 
     const targetChat = cached?.chatId || TARGET_GROUP;
     const summary = await buildClaimsSummary(messageId);
-    let closeMessage = null;
     if (summary) {
-      closeMessage = await client.sendMessage(targetChat, summary.text, { mentions: summary.mentions });
+      await sendMessageWithServerAck(
+        client,
+        targetChat,
+        summary.text,
+        { mentions: summary.mentions }
+      );
     } else if (reason === 'expired') {
-      closeMessage = await client.sendMessage(
+      await sendMessageWithServerAck(
+        client,
         targetChat,
         '*El Tesoro Errante se desvanecio*\n\nEl tiempo termino y ya no quedan recompensas por reclamar.'
       );
-    }
-    if (closeMessage) {
-      await waitForMessageServerAck(client, closeMessage);
     }
   } catch (error) {
     console.error('[Treasure Close Error]', error);

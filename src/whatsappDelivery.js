@@ -8,8 +8,38 @@ export const WHATSAPP_DELIVERY_ACK_TIMEOUT_MS = Math.max(
   Number.isFinite(configuredAckTimeoutMs) ? configuredAckTimeoutMs : 20_000
 );
 
-function getMessageId(message) {
-  return String(message?.id?._serialized ?? message?.id?.id ?? '');
+export function getWhatsAppMessageId(value) {
+  const seen = new Set();
+
+  const visit = (candidate) => {
+    if (typeof candidate === 'string' || typeof candidate === 'number') {
+      return String(candidate).trim();
+    }
+    if (!candidate || typeof candidate !== 'object' || seen.has(candidate)) {
+      return '';
+    }
+
+    seen.add(candidate);
+    const nestedCandidates = [
+      candidate._serialized,
+      candidate.$1,
+      candidate.id,
+      candidate.messageId,
+      candidate.stanzaId,
+      candidate.quotedStanzaID,
+      candidate.key?.id,
+      candidate._data?.id,
+    ];
+
+    for (const nested of nestedCandidates) {
+      const messageId = visit(nested);
+      if (messageId) return messageId;
+    }
+
+    return '';
+  };
+
+  return visit(value);
 }
 
 function isServerAcknowledged(ack) {
@@ -35,11 +65,11 @@ export async function waitForMessageServerAck(
   message,
   timeoutMs = WHATSAPP_DELIVERY_ACK_TIMEOUT_MS
 ) {
-  const messageId = getMessageId(message);
+  const messageId = getWhatsAppMessageId(message);
   if (!messageId) {
     throw new Error('WhatsApp send returned no message id');
   }
-  if (isServerAcknowledged(message?.ack)) {
+  if (isServerAcknowledged(message?.ack ?? message?._data?.ack)) {
     return true;
   }
 
@@ -59,7 +89,7 @@ export async function waitForMessageServerAck(
       else resolve(true);
     };
     const onAck = (ackMessage, ack) => {
-      if (getMessageId(ackMessage) !== messageId) return;
+      if (getWhatsAppMessageId(ackMessage) !== messageId) return;
       if (Number(ack) < 0) {
         finish(new Error('WhatsApp rejected the outbound message'));
       } else if (isServerAcknowledged(ack)) {
@@ -72,7 +102,7 @@ export async function waitForMessageServerAck(
       try {
         const lookupTimeoutMs = Math.min(2_000, Math.max(1, timeoutMs));
         const storedMessage = await getStoredMessageWithTimeout(client, messageId, lookupTimeoutMs);
-        if (isServerAcknowledged(storedMessage?.ack)) {
+        if (isServerAcknowledged(storedMessage?.ack ?? storedMessage?._data?.ack)) {
           finish();
           return;
         }
@@ -87,8 +117,39 @@ export async function waitForMessageServerAck(
   });
 }
 
+export async function sendMessageWithResult(client, chatId, content, options = {}) {
+  const message = await client.sendMessage(chatId, content, {
+    ...options,
+    waitUntilMsgSent: true,
+  });
+  const messageId = getWhatsAppMessageId(message);
+  if (!messageId) {
+    const error = new Error('WhatsApp send completed without a recoverable message id');
+    error.code = 'WHATSAPP_MISSING_MESSAGE_ID';
+    throw error;
+  }
+
+  return { message, messageId };
+}
+
+export async function sendMessageWithServerAck(
+  client,
+  chatId,
+  content,
+  options = {},
+  timeoutMs = WHATSAPP_DELIVERY_ACK_TIMEOUT_MS
+) {
+  const { message } = await sendMessageWithResult(client, chatId, content, options);
+  await waitForMessageServerAck(client, message, timeoutMs);
+  return message;
+}
+
 export function isTransientWhatsappDeliveryError(error) {
-  if (error?.code === 'WHATSAPP_ACK_TIMEOUT' || error?.code === 'WHATSAPP_NOT_HEALTHY') {
+  if (
+    error?.code === 'WHATSAPP_ACK_TIMEOUT'
+    || error?.code === 'WHATSAPP_MISSING_MESSAGE_ID'
+    || error?.code === 'WHATSAPP_NOT_HEALTHY'
+  ) {
     return true;
   }
   const message = String(error?.message ?? error).toLowerCase();

@@ -30,7 +30,14 @@ import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMRes
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
-import { activeTreasures, handleTreasureReply, clearTreasureTimeouts } from './handlers/treasure.js';
+import {
+  activeTreasures,
+  buildTreasureClaimFeedback,
+  clearTreasureTimeouts,
+  handleTreasureReply,
+  isTreasureAnnouncementText,
+  isTreasureClaimText,
+} from './handlers/treasure.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
 import { findActiveQuotedMessageKey, safeGetQuotedDetails } from './targetResolver.js';
@@ -2296,6 +2303,17 @@ client.on('message', async (msg) => {
           }
           return;
         }
+      }
+
+      if (
+        quotedDetails.hasQuoted
+        && isTreasureClaimText(text)
+        && isTreasureAnnouncementText(quotedDetails.body)
+      ) {
+        await sendBotText(msg, buildTreasureClaimFeedback('inactive'), {
+          context: 'treasure_inactive',
+        });
+        return;
       }
     } catch (e) {
       console.error('[Reply Intercept Error]', e);

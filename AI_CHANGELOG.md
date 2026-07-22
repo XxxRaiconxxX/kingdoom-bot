@@ -5,6 +5,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/whatsappDelivery.js`, `src/targetResolver.js`, `src/handlers/treasure.js`, `src/scheduler.js`, `src/handlers/auctionsRealtime.js`, `src/index.js`, pruebas y documentacion de auditoria.
+*   **Resumen de Tareas:** Corregido el tesoro visible pero no reclamable reportado a las 13:55 y endurecidos los envios que dependen de ID/ACK frente al contrato actual de WhatsApp Web.
+*   **Cambios Clave:**
+    *   **[Causa productiva confirmada]:** El Space mostro que WhatsApp publico el anuncio pero devolvio el resultado sin `message.id`; por eso no se registro ni persistio el evento. `!reclamar` cayo en la ayuda generica y el segundo `Reclamar` sin prefijo quedo silencioso al no reconocer la cita.
+    *   **[Resultado de envio estable]:** El helper compartido fuerza la opcion oficial `waitUntilMsgSent: true` solo para tesoros, notificaciones y subastas, antes de validar el ID y esperar el ACK.
+    *   **[Compatibilidad de IDs]:** Se normalizan `_serialized`, `_data.id`, `$1`, `key.id` y objetos anidados; las citas LID se comparan por stanza ID sin convertir objetos a `[object Object]`.
+    *   **[Fallo visible y seguro]:** Citar un anuncio de tesoro sin evento activo devuelve `Tesoro no disponible`; no acredita ni anuncia oro y ya no queda en silencio.
+    *   **[Base de datos]:** No se requirio migracion: el evento reportado nunca alcanzo Supabase. Las migraciones atomicas aplicadas previamente permanecen sin cambios.
+*   **Validacion:** `node --check` pasa en los 9 archivos tocados; 20/20 scripts `test_*.js`, `npm ci --dry-run --ignore-scripts --omit=dev`, `npm run graphify:update` y `git diff --check` pasan.
+*   **Notas/Advertencias:** Falta el smoke real del proximo Tesoro Errante tras desplegar; no se inyecto un anuncio artificial en el grupo de produccion.
+
+### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `docs/architecture/WHATSAPP_LID_MEDIA_GM_AUDIT.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Cierre y verificacion productiva del release integral de compatibilidad WhatsApp, Tesoro y Game Master.
 *   **Cambios Clave:**

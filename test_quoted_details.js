@@ -31,10 +31,35 @@ const phantomQuote = await safeGetQuotedDetails({
 });
 assert.equal(phantomQuote.hasQuoted, false);
 
+const objectQuote = await safeGetQuotedDetails({
+  hasQuotedMsg: true,
+  _data: {
+    quotedMsg: {
+      id: {
+        fromMe: true,
+        remote: '595971938097-1618930274@g.us',
+        id: '3EB0OBJECT123',
+      },
+      author: '595981123456@c.us',
+      body: 'Tesoro Errante del Reino',
+    },
+  },
+});
+assert.equal(objectQuote.id, '3EB0OBJECT123');
+
 const serializedId = 'true_595971938097-1618930274@g.us_3EB0ABC123_240797811245267@lid';
 const activeMessages = new Map([[serializedId, { active: true }]]);
 assert.equal(findActiveQuotedMessageKey(activeMessages, serializedId), serializedId);
 assert.equal(findActiveQuotedMessageKey(activeMessages, '3EB0ABC123'), serializedId);
+assert.equal(
+  findActiveQuotedMessageKey(activeMessages, {
+    fromMe: true,
+    remote: '595971938097-1618930274@g.us',
+    id: '3EB0ABC123',
+  }),
+  serializedId
+);
+assert.equal(findActiveQuotedMessageKey(activeMessages, { $1: '3EB0ABC123' }), serializedId);
 assert.equal(findActiveQuotedMessageKey(activeMessages, '3EB0OTHER'), null);
 
 console.log('QUOTED_DETAILS_OK');

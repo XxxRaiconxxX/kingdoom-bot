@@ -1,5 +1,5 @@
 import { supabase } from '../supabase.js';
-import { waitForMessageServerAck } from '../whatsappDelivery.js';
+import { sendMessageWithServerAck } from '../whatsappDelivery.js';
 import { heraldCard, heraldCommand, heraldSection, heraldStat } from '../formatting.js';
 
 const MAX_COMPLETION_ANNOUNCEMENTS = 1000;
@@ -58,8 +58,7 @@ async function sendRealtimeAnnouncement(client, isClientReady, chatId, message) 
     throw error;
   }
 
-  const sentMessage = await client.sendMessage(chatId, message);
-  await waitForMessageServerAck(client, sentMessage);
+  await sendMessageWithServerAck(client, chatId, message);
 }
 
 export function startAuctionsRealtime(client, isClientReady = () => Boolean(client?.info)) {

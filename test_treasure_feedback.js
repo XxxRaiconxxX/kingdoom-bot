@@ -4,10 +4,12 @@ import 'dotenv/config';
 import {
   buildTreasureClaimFeedback,
   handleTreasureReply,
+  isTreasureAnnouncementText,
+  isTreasureClaimText,
   waitForTreasureAckBestEffort,
 } from './src/handlers/treasure.js';
 
-const statuses = ['ok', 'duplicate', 'credit_pending', 'expired', 'full', 'error', 'unexpected'];
+const statuses = ['ok', 'duplicate', 'credit_pending', 'expired', 'inactive', 'full', 'error', 'unexpected'];
 for (const status of statuses) {
   const message = buildTreasureClaimFeedback(status, {
     playerName: 'Grindelwald',
@@ -34,6 +36,10 @@ assert.match(
   }),
   /Recompensa reservada.*12\.500 oro/su
 );
+assert.match(buildTreasureClaimFeedback('inactive'), /Tesoro no disponible/u);
+assert.equal(isTreasureClaimText('Reclamar'), true);
+assert.equal(isTreasureClaimText('! reclamar'), true);
+assert.equal(isTreasureAnnouncementText('🎁 *Tesoro Errante del Reino*'), true);
 
 const closedReply = await handleTreasureReply(
   { from: '595971938097-1618930274@g.us', body: 'Reclamar' },
