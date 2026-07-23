@@ -4,6 +4,7 @@ import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
 import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
 import { parseGoldAmount, requireSafeGoldInteger } from '../economy.js';
+import { getWhatsAppMessageId } from '../whatsappDelivery.js';
 
 // Memory store for active blackjack sessions.
 // Key: botMsgId (quoted message ID)
@@ -408,7 +409,10 @@ export async function handleBlackjack(msg, client) {
       currentUsos: currentUsos + 1,
       timeoutRef: null,
     };
-    registerSoloSession(client, replyMsg.id._serialized, session);
+    const soloSessionId = getWhatsAppMessageId(replyMsg);
+    if (soloSessionId) {
+      registerSoloSession(client, soloSessionId, session);
+    }
 
     return null;
   }
@@ -530,14 +534,18 @@ export async function handleBlackjack(msg, client) {
   ], { icon: '⚔️' });
 
   const replyMsg = await msg.reply(boardText);
-  const sessionId = replyMsg.id._serialized;
+  const sessionId = getWhatsAppMessageId(replyMsg);
 
-  // Set timeout of 5 minutes (300,000 ms)
-  session.timeoutRef = setTimeout(() => {
-    handleMultiplayerTimeout(client, sessionId);
-  }, 5 * 60 * 1000);
+  if (sessionId) {
+    // Set timeout of 5 minutes (300,000 ms)
+    session.timeoutRef = setTimeout(() => {
+      handleMultiplayerTimeout(client, sessionId);
+    }, 5 * 60 * 1000);
 
-  activeSessions.set(sessionId, session);
+    activeSessions.set(sessionId, session);
+  } else {
+    console.warn('[handleBlackjack] No se pudo obtener el ID serializado de replyMsg en PvP');
+  }
   return null;
 }
 
@@ -691,7 +699,10 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
         registerSoloSession(client, sessionId, session);
         throw error;
       }
-      registerSoloSession(client, replyMsg.id._serialized, session);
+      const newSoloSessionId = getWhatsAppMessageId(replyMsg);
+      if (newSoloSessionId) {
+        registerSoloSession(client, newSoloSessionId, session);
+      }
       return null;
     }
 
@@ -851,13 +862,15 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
     }
     return;
   }
-  const newSessionId = replyMsg.id._serialized;
+  const newSessionId = getWhatsAppMessageId(replyMsg);
 
-  session.timeoutRef = setTimeout(() => {
-    handleMultiplayerTimeout(client, newSessionId);
-  }, 5 * 60 * 1000);
+  if (newSessionId) {
+    session.timeoutRef = setTimeout(() => {
+      handleMultiplayerTimeout(client, newSessionId);
+    }, 5 * 60 * 1000);
 
-  activeSessions.set(newSessionId, session);
+    activeSessions.set(newSessionId, session);
+  }
 }
 
 // Resolve the current round in a multiplayer PvP session
@@ -919,14 +932,16 @@ async function resolveMultiplayerRound(client, sessionId, session, groupChatId) 
       }
       return;
     }
-    const newSessionId = replyMsg.id._serialized;
+    const newSessionId = getWhatsAppMessageId(replyMsg);
 
-    // Set new timeout of 5 minutes
-    session.timeoutRef = setTimeout(() => {
-      handleMultiplayerTimeout(client, newSessionId);
-    }, 5 * 60 * 1000);
+    if (newSessionId) {
+      // Set new timeout of 5 minutes
+      session.timeoutRef = setTimeout(() => {
+        handleMultiplayerTimeout(client, newSessionId);
+      }, 5 * 60 * 1000);
 
-    activeSessions.set(newSessionId, session);
+      activeSessions.set(newSessionId, session);
+    }
   } else {
     // End of game, resolve payout and declare winners
     await finishMultiplayerGame(client, session, groupChatId);

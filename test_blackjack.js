@@ -45,5 +45,22 @@ runTest([
   { value: 'A', suit: { symbol: '♣️' } }
 ], 13, 'Múltiples Ases: A + A + A');
 
+// Test case 6: Safe message ID extraction from various replyMsg formats (LID, object without _serialized, etc.)
+import { getWhatsAppMessageId } from './src/whatsappDelivery.js';
+const testMsg1 = { id: { _serialized: 'true_123@g.us_ABC' } };
+const testMsg2 = { id: { $1: 'true_123@g.us_DEF' } };
+const testMsg3 = { id: 'true_123@g.us_GHI' };
+const testMsg4 = { _data: { id: { _serialized: 'true_123@g.us_JKL' } } };
+
+if (getWhatsAppMessageId(testMsg1) === 'true_123@g.us_ABC' &&
+    getWhatsAppMessageId(testMsg2) === 'true_123@g.us_DEF' &&
+    getWhatsAppMessageId(testMsg3) === 'true_123@g.us_GHI' &&
+    getWhatsAppMessageId(testMsg4) === 'true_123@g.us_JKL') {
+  console.log('✅ [OK] Extracción segura de IDs de replyMsg (evita doble respuesta/error ⚠️): OK');
+} else {
+  console.error('❌ [FAIL] Extracción segura de IDs falló');
+  process.exit(1);
+}
+
 console.log('--- TODAS LAS PRUEBAS DE LOGICA PASARON EXITOSAMENTE ---');
 process.exit(0);

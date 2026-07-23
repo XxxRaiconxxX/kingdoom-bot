@@ -4,6 +4,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 23/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/blackjack.js`, `test_blackjack.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Corrección de la causa raíz de la doble respuesta ("El reino está en llamas...") al ejecutar `!21` (Blackjack PvP/Solo).
+*   **Cambios Clave:**
+    *   **[Fix Acceso Unsafe a ID Serializado en `src/handlers/blackjack.js`]:** Al enviar un reto o tablero de 21 (`msg.reply()`), el objeto `replyMsg.id` retornado por WhatsApp Web (especialmente con IDs en nuevo formato `@lid`) no poseía la propiedad directa `._serialized`. Intentar leer `replyMsg.id._serialized` lanzaba un `TypeError: Cannot read properties of undefined (reading '_serialized')` descontrolado.
+    *   **[Causa Raíz de Doble Respuesta]:** El mensaje del reto o juego de 21 se enviaba exitosamente a WhatsApp, pero la excepción inmediatamente posterior hacía que el `catch` global en `src/index.js` capturara el error y enviara el mensaje de emergencia `⚠️ El reino esta en llamas...`.
+    *   **[Resolución Segura de IDs]:** Se reemplazó el acceso directo `replyMsg.id._serialized` por el extractor seguro `getWhatsAppMessageId(replyMsg)` en los 5 puntos de registro de sesión (`handleBlackjack`, `handleBlackjackReply`, `startMultiplayerGame`, `resolveMultiplayerRound`).
+    *   **[Pruebas Unitarias]:** Añadida prueba en `test_blackjack.js` para validar la extracción de ID de respuestas en múltiples formatos (`_serialized`, `$1`, string directo, `_data.id`), pasando 100% OK.
+
 ### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_compat.js`, `test_phone_lookup_cache.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Cerrada la carrera de doble despacho entre workers y agregado routing canonico de destinatarios antes de enviar por WhatsApp.
