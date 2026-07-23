@@ -16,23 +16,21 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function normalizeWhatsappId(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  return raw.endsWith('@c.us') || raw.endsWith('@g.us') || raw.endsWith('@lid') ? raw : `${raw}@c.us`;
+function getContactId(contact) {
+  return serializeWhatsAppId(contact?.id || contact) || String(contact?.number || '').trim();
 }
 
 function parseAdminIds(value) {
   return String(value ?? '')
     .split(',')
-    .map((entry) => normalizeWhatsappId(entry))
+    .map((entry) => serializeWhatsAppId(entry))
     .filter(Boolean);
 }
 
 function uniqueById(items) {
   const seen = new Set();
   return items.filter((item) => {
-    const key = item?.id?._serialized || item?._serialized || item?.number || '';
+    const key = getContactId(item);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -58,10 +56,11 @@ async function getNotificationRecipients(notification, client) {
     }));
   }
 
-  const botId = client.info?.wid?._serialized || '';
-  return uniqueById(rawContacts).filter(
-    (contact) => contact?.id?._serialized && contact.id._serialized !== botId
-  );
+  const botId = serializeWhatsAppId(client.info?.wid || client.info?.wid?._serialized);
+  return uniqueById(rawContacts).filter((contact) => {
+    const cid = getContactId(contact);
+    return Boolean(cid) && cid !== botId;
+  });
 }
 
 export function buildPlayerLifecycleConfig() {
@@ -140,11 +139,11 @@ export async function handleGroupLeave(notification, client, config = buildPlaye
     const phone = await resolveContactPhone(client, contact);
     if (!phone) continue;
 
-    mentions.push(contact.id._serialized);
+    mentions.push(getContactId(contact));
 
     try {
       const lifecycleResult = await markPhoneProfilesLeftGrace(phone, {
-        groupJid: chat?.id?._serialized || notification.chatId || '',
+        groupJid: serializeWhatsAppId(chat?.id) || notification.chatId || '',
         actor: 'bot:group_leave',
       });
       lines.push(buildLeaveSummaryLine(phone, lifecycleResult));
@@ -186,12 +185,12 @@ export async function handleGroupRejoin(notification, client, config = buildPlay
 
     try {
       const lifecycleResult = await reactivatePhoneProfilesFromGrace(phone, {
-        groupJid: chat?.id?._serialized || notification.chatId || '',
+        groupJid: serializeWhatsAppId(chat?.id) || notification.chatId || '',
         actor: 'bot:group_join',
       });
 
       if (lifecycleResult.updatedCount > 0) {
-        mentions.push(contact.id._serialized);
+        mentions.push(getContactId(contact));
         const line = buildRejoinSummaryLine(phone, lifecycleResult);
         if (line) {
           lines.push(line);

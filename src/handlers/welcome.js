@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
 import { getLatestApkUrl } from '../services/apkService.js';
-import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
+import { resolveWhatsAppPhones, serializeWhatsAppId } from '../whatsappIdentity.js';
 const { MessageMedia } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -66,10 +66,14 @@ function parseAdminIds(value) {
     .filter(Boolean);
 }
 
+function getContactId(contact) {
+  return serializeWhatsAppId(contact?.id || contact) || String(contact?.number || '').trim();
+}
+
 function uniqueById(items) {
   const seen = new Set();
   return items.filter((item) => {
-    const key = item?.id?._serialized || item?._serialized || item?.number || '';
+    const key = getContactId(item);
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -89,7 +93,7 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   if (!config.enabled) return;
 
   const chat = await notification.getChat();
-  const groupId = chat?.id?._serialized || notification.chatId || '';
+  const groupId = serializeWhatsAppId(chat?.id) || notification.chatId || '';
   const groupName = normalizeText(chat?.name ?? '');
   console.log(`[welcome] group_join detected enabled=${config.enabled} filterConfigured=${Boolean(config.groupId || config.groupName)}`);
 
@@ -101,7 +105,7 @@ export async function handleGroupWelcome(notification, client, config = buildWel
   }
   // If no filter is configured, welcome fires in every group
 
-  const botId = client.info?.wid?._serialized || '';
+  const botId = serializeWhatsAppId(client.info?.wid || client.info?.wid?._serialized);
   
   let rawContacts = [];
   try {
@@ -122,9 +126,10 @@ export async function handleGroupWelcome(notification, client, config = buildWel
     }));
   }
 
-  const joinedContacts = uniqueById(rawContacts).filter(
-    (contact) => contact?.id?._serialized && contact.id._serialized !== botId
-  );
+  const joinedContacts = uniqueById(rawContacts).filter((contact) => {
+    const cid = getContactId(contact);
+    return Boolean(cid) && cid !== botId;
+  });
 
   if (!joinedContacts.length) {
     console.log('[welcome] No valid contacts found to welcome.');
@@ -133,11 +138,11 @@ export async function handleGroupWelcome(notification, client, config = buildWel
 
   const identityResolution = await resolveWhatsAppPhones(
     client,
-    joinedContacts.map((contact) => contact.id._serialized)
+    joinedContacts.map((contact) => getContactId(contact))
   );
   const phoneById = new Map(identityResolution.resolved.map(({ id, phone }) => [id, phone]));
   const welcomeLabels = joinedContacts.map((contact) => {
-    const phone = phoneById.get(contact.id._serialized);
+    const phone = phoneById.get(getContactId(contact));
     const fallbackName = contact.pushname || contact.name || contact.shortName;
     if (phone) return `@${phone}`;
     if (fallbackName) return fallbackName;
@@ -217,7 +222,7 @@ Ahí encontrarás todo lo que necesitas para comenzar tu camino en las sombras.
 
   try {
     await chat.sendMessage(firstMessage, {
-      mentions: joinedContacts.map((c) => c.id._serialized),
+      mentions: joinedContacts.map((c) => getContactId(c)),
     });
     
     // Tiny delay of 1.5 seconds so both messages are received in order

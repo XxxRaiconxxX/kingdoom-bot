@@ -27,10 +27,11 @@ import { resolvePlayerTarget, safeGetQuotedDetails } from '../targetResolver.js'
 import { decorateCommandReply, heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
 import { buildWelcomeConfig } from './welcome.js';
 import { startMissionTracker, getActiveMissionsList, cancelActiveMission } from '../gmTracker.js';
-import { resolveWhatsAppPhone, resolveWhatsAppPhones } from '../whatsappIdentity.js';
+import { resolveWhatsAppPhone, resolveWhatsAppPhones, serializeWhatsAppId } from '../whatsappIdentity.js';
 import { resolveAndDownloadMedia } from '../whatsappMedia.js';
 import { canRunAdminCommand, isKnownAdminCommand } from '../adminCommands.js';
 import { parseGoldAmount } from '../economy.js';
+import { getWhatsAppMessageId } from '../whatsappDelivery.js';
 
 const DATA_MAX_FILE_BYTES = 1024 * 1024;
 const DATA_MAX_CONTENT_CHARS = 500000;
@@ -137,7 +138,7 @@ function normalizeMissionDifficulty(value) {
 }
 
 function getMessageSerializedId(msg) {
-  return msg?.id?._serialized || msg?.id?.id || '';
+  return getWhatsAppMessageId(msg);
 }
 
 function formatRecycledSheetLine(sheet, index) {

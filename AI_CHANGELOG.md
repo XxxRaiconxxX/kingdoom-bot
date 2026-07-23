@@ -5,13 +5,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 23/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/handlers/blackjack.js`, `test_blackjack.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Corrección de la causa raíz de la doble respuesta ("El reino está en llamas...") al ejecutar `!21` (Blackjack PvP/Solo).
+*   **Archivos Modificados:** `src/handlers/blackjack.js`, `src/handlers/welcome.js`, `src/handlers/playerLifecycle.js`, `src/handlers/admin.js`, `test_blackjack.js`, `AI_CHANGELOG.md`
+*   **Resumen de Tareas:** Auditoría integral de minijuegos y handlers del bot para corregir accesos inseguros a `id._serialized` y prevenir errores de doble respuesta/emergencia (`⚠️ El reino está en llamas...`).
 *   **Cambios Clave:**
-    *   **[Fix Acceso Unsafe a ID Serializado en `src/handlers/blackjack.js`]:** Al enviar un reto o tablero de 21 (`msg.reply()`), el objeto `replyMsg.id` retornado por WhatsApp Web (especialmente con IDs en nuevo formato `@lid`) no poseía la propiedad directa `._serialized`. Intentar leer `replyMsg.id._serialized` lanzaba un `TypeError: Cannot read properties of undefined (reading '_serialized')` descontrolado.
-    *   **[Causa Raíz de Doble Respuesta]:** El mensaje del reto o juego de 21 se enviaba exitosamente a WhatsApp, pero la excepción inmediatamente posterior hacía que el `catch` global en `src/index.js` capturara el error y enviara el mensaje de emergencia `⚠️ El reino esta en llamas...`.
-    *   **[Resolución Segura de IDs]:** Se reemplazó el acceso directo `replyMsg.id._serialized` por el extractor seguro `getWhatsAppMessageId(replyMsg)` en los 5 puntos de registro de sesión (`handleBlackjack`, `handleBlackjackReply`, `startMultiplayerGame`, `resolveMultiplayerRound`).
-    *   **[Pruebas Unitarias]:** Añadida prueba en `test_blackjack.js` para validar la extracción de ID de respuestas en múltiples formatos (`_serialized`, `$1`, string directo, `_data.id`), pasando 100% OK.
+    *   **[Auditoría General de Minijuegos]:**
+        * **`Dados`, `Cofre`, `Trampa`, `Oráculo` (`src/handlers/games.js`):** Pura arquitectura funcional síncrona/asíncrona con retorno de strings/tarjetas `heraldCard`. **100% Inmunes** (no manejan `activeSessions` ni llaman `msg.reply()` internamente).
+        * **`Subastas` & `Pujas` (`src/handlers/auctions.js`):** Retorno de cadenas formateadas a `index.js`. **100% Inmunes**.
+        * **`Tesoro Errante` (`src/handlers/treasure.js`):** Utiliza `sendMessageWithResult` que ya integra `getWhatsAppMessageId` de forma resiliente. **100% Inmune**.
+        * **`Blackjack` (`src/handlers/blackjack.js`):** Se corrigieron los 5 puntos de lectura insegura de `replyMsg.id._serialized` reemplazándolos por `getWhatsAppMessageId(replyMsg)`.
+    *   **[Endurecimiento en Handlers Adicionales]:**
+        * **`welcome.js` & `playerLifecycle.js`:** Reemplazados los accesos frágiles `contact.id._serialized` por `serializeWhatsAppId(contact?.id || contact)` y el helper seguro `getContactId(contact)`.
+        * **`admin.js`:** Actualizada la función `getMessageSerializedId(msg)` para delegar en `getWhatsAppMessageId(msg)`, protegiendo comandos administrativos contra excepciones al citar/procesar mensajes.
+    *   **[Verificación de Pruebas]:** Ejecutada la suite completa (`npm test`), confirmando **21/21 suites pasadas exitosamente (100% OK)**.
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_compat.js`, `test_phone_lookup_cache.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
