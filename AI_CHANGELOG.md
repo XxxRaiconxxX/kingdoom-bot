@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 24/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/playerLifecycle.js`, `test_player_lifecycle.js`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Corregida la caida de arranque del Space causada por un `ReferenceError` en la configuracion del ciclo de vida de jugadores.
+*   **Cambios Clave:**
+    *   **[Causa raiz]:** El commit `d69262c` reemplazo lecturas inseguras de IDs por `serializeWhatsAppId`, pero `playerLifecycle.js` no importo el helper. `buildPlayerLifecycleConfig()` se ejecuta al cargar `index.js`, por lo que el proceso terminaba antes de quedar saludable.
+    *   **[Correccion minima]:** Se importa `serializeWhatsAppId` desde el helper compartido ya usado por los demas handlers, sin modificar Supabase, economia ni mecanicas de mensajes.
+    *   **[Regresion cubierta]:** `test_player_lifecycle.js` construye la configuracion con IDs PN y LID, ejecutando la misma ruta que fallo en produccion.
+*   **Validacion:** Reproduccion previa identica a la traza del Space; prueba enfocada `PLAYER_LIFECYCLE_CONFIG_OK`; `node --check` limpio; `npm test` paso `22/22`.
+*   **Notas/Advertencias:** No requiere migraciones ni escrituras de datos. Falta confirmar el estado saludable del Space despues del despliegue de este commit.
+
 ### [Fecha: 23/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/blackjack.js`, `src/handlers/welcome.js`, `src/handlers/playerLifecycle.js`, `src/handlers/admin.js`, `test_blackjack.js`, `AI_CHANGELOG.md`
 *   **Resumen de Tareas:** Auditoría integral de minijuegos y handlers del bot para corregir accesos inseguros a `id._serialized` y prevenir errores de doble respuesta/emergencia (`⚠️ El reino está en llamas...`).

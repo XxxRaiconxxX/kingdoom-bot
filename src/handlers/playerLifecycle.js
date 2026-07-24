@@ -1,5 +1,5 @@
 import { normalizePhone } from '../adminStore.js';
-import { resolveContactPhone } from '../whatsappIdentity.js';
+import { resolveContactPhone, serializeWhatsAppId } from '../whatsappIdentity.js';
 import {
   getPlayerLifecycleGraceDays,
   markPhoneProfilesLeftGrace,
