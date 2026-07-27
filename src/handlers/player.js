@@ -17,7 +17,7 @@ import {
 import { setActiveProfile } from '../activeProfileStore.js';
 import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, isStaffUser, normalizePhone } from '../adminStore.js';
-import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat } from '../formatting.js';
+import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat, treeCommand, treeList, treeSection } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
 import { parseGoldAmount } from '../economy.js';
 
@@ -150,104 +150,119 @@ export async function handlePlayerMessage(msg) {
     else if (isSenderStaff) identityName = '🧾 Staff';
 
     const menuLines = [
-      '> _Bienvenido al compendio del Reino de las Sombras._',
-      heraldSection('Comandos del reino'),
-      heraldList([
-        heraldCommand('!oro [monto] [@user]', 'Consulta o envia oro.'),
-        heraldCommand('!perfil', 'Muestra tu estado de aventurero.'),
-        heraldCommand('!cambiarcuenta [nombre]', 'Cambia de personaje activo.'),
-        heraldCommand('!vinculo', 'Revisa tu enlace con la web.'),
-        heraldCommand('!nuevo', 'Abre la guia para comenzar.'),
-        heraldCommand('!verificar <usuario_o_id>', 'Vincula tu WhatsApp al reino.'),
-        heraldCommand('!ranking', 'Consulta el poder semanal.'),
-        heraldCommand('!reino', 'Muestra el estado publico del reino.'),
-        heraldCommand('!ricos', 'Consulta las mayores fortunas.'),
-        heraldCommand('!mercado [nombre]', 'Explora articulos del mercado.'),
-        heraldCommand('!item <nombre>', 'Consulta la ficha de un objeto.'),
-        heraldCommand('!mision [nombre]', 'Lista o inspecciona misiones.'),
-        heraldCommand('!evento [nombre]', 'Lista o inspecciona eventos.'),
-        heraldCommand('!subastas', 'Muestra las subastas activas.'),
-        heraldCommand('!pujar <item> <monto>', 'Presenta una oferta acumulada.'),
-        heraldCommand('!retirarse <item>', 'Abandona una subasta.'),
-        heraldCommand('!dados <monto> [x4]', 'Apuesta en los dados del destino.'),
-        heraldCommand('!cofre [xN]', 'Abre uno o varios cofres.'),
-        heraldCommand('!trampa <monto> [xN]', 'Arriesga oro en una trampa.'),
-        heraldCommand('!21 <monto>', 'Juega Blackjack.'),
-        heraldCommand('!oraculo <pregunta>', 'Consulta al Oraculo.'),
-        heraldCommand('!ayuda', 'Abre este compendio.'),
+      '> _Bienvenido al ciber-grimorio del Reino de las Sombras._',
+      '──────────────',
+      treeSection('01. PERSONAJE & ECONOMÍA'),
+      treeList([
+        treeCommand('!perfil', 'Muestra tu estado de aventurero.'),
+        treeCommand('!oro [monto] [@user]', 'Consulta o envia oro.'),
+        treeCommand('!inventario', 'Mochila y creditos activos.'),
+        treeCommand('!vinculo', 'Revisa tu enlace con la web.'),
+        treeCommand('!cambiarcuenta [nombre]', 'Cambia de personaje activo.'),
+        treeCommand('!nuevo', 'Abre la guia para comenzar.'),
+        treeCommand('!verificar <usuario_o_id>', 'Vincula tu WhatsApp al reino.'),
+        treeCommand('!ranking', 'Consulta el poder semanal.'),
+        treeCommand('!reino', 'Muestra el estado publico del reino.'),
+        treeCommand('!ricos', 'Consulta las mayores fortunas.'),
       ]),
-      '⚠️ `!cofre`, `!trampa` y `!21` se juegan por privado con el bot.',
+      '',
+      treeSection('02. TABERNA & MINIJUEGOS'),
+      treeList([
+        treeCommand('🎲 !dados <monto> [x4]', 'Apuesta en los dados del destino.'),
+        treeCommand('🎁 !cofre [xN]', 'Abre uno o varios cofres.'),
+        treeCommand('🕸️ !trampa <monto> [xN]', 'Arriesga oro en una trampa.'),
+        treeCommand('🃏 !21 <monto>', 'Juega Blackjack.'),
+        treeCommand('🔮 !oraculo <pregunta>', 'Consulta al Gran Oraculo.'),
+      ]),
+      '',
+      treeSection('03. MERCADO & SUBASTAS'),
+      treeList([
+        treeCommand('🏪 !mercado [nombre]', 'Explora articulos del mercado.'),
+        treeCommand('🗡️ !item <nombre>', 'Consulta la ficha de un objeto.'),
+        treeCommand('🎯 !mision [nombre]', 'Lista o inspecciona misiones.'),
+        treeCommand('🎪 !evento [nombre]', 'Lista o inspecciona eventos.'),
+        treeCommand('⚖️ !subastas', 'Muestra las subastas activas.'),
+        treeCommand('💰 !pujar <item> <monto>', 'Presenta una oferta acumulada.'),
+        treeCommand('🚪 !retirarse <item>', 'Abandona una subasta.'),
+      ]),
     ];
 
     if (isSenderOwner || isSenderAdmin) {
       const staffCommands = [
-        heraldCommand('!registrar <nombre> [oro]', 'Registra un aventurero.'),
-        heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
-        heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
-        heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
-        heraldCommand('!verificarnumero <objetivo>', 'Fuerza una vinculacion.'),
-        heraldCommand('!desvincular <objetivo>', 'Retira los numeros de un perfil.'),
-        heraldCommand('!stats', 'Muestra el resumen general.'),
-        heraldCommand('!censo', 'Genera el censo del reino.'),
-        heraldCommand('!pendientes', 'Lista jugadores pendientes.'),
-        heraldCommand('!purga', 'Expulsa pendientes inactivos.'),
-        heraldCommand('!actividad', 'Genera el reporte de actividad.'),
-        heraldCommand('!groupid', 'Muestra el ID del grupo.'),
-        heraldCommand('!staff', 'Abre la vista operativa.'),
-        heraldCommand('!bitacora', 'Consulta acciones recientes.'),
-        heraldCommand('!misionstart <ID> <@jugadores>', 'Inicia el seguimiento de una mision.'),
-        heraldCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
-        heraldCommand('!admin', 'Abre el menu del consejo.'),
+        treeCommand('!registrar <nombre> [oro]', 'Registra un aventurero.'),
+        treeCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
+        treeCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
+        treeCommand('!ban <objetivo>', 'Destierra un jugador.'),
+        treeCommand('!verificarnumero <objetivo>', 'Fuerza una vinculacion.'),
+        treeCommand('!desvincular <objetivo>', 'Retira los numeros de un perfil.'),
+        treeCommand('!stats', 'Muestra el resumen general.'),
+        treeCommand('!censo', 'Genera el censo del reino.'),
+        treeCommand('!pendientes', 'Lista jugadores pendientes.'),
+        treeCommand('!purga', 'Expulsa pendientes inactivos.'),
+        treeCommand('!actividad', 'Genera el reporte de actividad.'),
+        treeCommand('!groupid', 'Muestra el ID del grupo.'),
+        treeCommand('!staff', 'Abre la vista operativa.'),
+        treeCommand('!bitacora', 'Consulta acciones recientes.'),
+        treeCommand('!misionstart <ID> <@jugadores>', 'Inicia el seguimiento de una mision.'),
+        treeCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
+        treeCommand('!admin', 'Abre el menu del consejo.'),
       ];
 
       if (isSenderOwner) {
         staffCommands.unshift(
-          heraldCommand('!add admin <objetivo>', 'Otorga rango de administrador.'),
-          heraldCommand('!remove admin <objetivo>', 'Revoca rango de administrador.')
+          treeCommand('!add admin <objetivo>', 'Otorga rango de administrador.'),
+          treeCommand('!remove admin <objetivo>', 'Revoca rango de administrador.')
         );
         staffCommands.splice(
           13,
           0,
-          heraldCommand('!grupos', 'Lista los grupos vinculados.'),
-          heraldCommand('!grupoactual', 'Inspecciona el grupo actual.'),
-          heraldCommand('!data [titulo]', 'Carga un archivo de conocimiento adjunto.')
+          treeCommand('!grupos', 'Lista los grupos vinculados.'),
+          treeCommand('!grupoactual', 'Inspecciona el grupo actual.'),
+          treeCommand('!data [titulo]', 'Carga un archivo de conocimiento adjunto.')
         );
       }
 
       menuLines.push(
-        heraldSection(isSenderOwner ? 'Comandos del soberano' : isSenderAdmin ? 'Comandos de administrador' : 'Comandos de staff'),
-        heraldList(staffCommands)
+        '',
+        treeSection(isSenderOwner ? '04. COMANDOS DEL SOBERANO (OWNER)' : '04. CONTROL DE ADMINISTRADOR'),
+        treeList(staffCommands)
       );
     } else if (isSenderStaff) {
       menuLines.push(
-        heraldSection('Comandos de staff'),
-        heraldList([
-          heraldCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
-          heraldCommand('!faltasgrupo @jugador', 'Consulta faltas del grupo principal.'),
-          heraldCommand('!fichasrecicladas', 'Lista fichas disponibles.'),
-          heraldCommand('!asignarficha <ficha> @jugador', 'Asigna una ficha reciclada.'),
-          heraldCommand('!rolestado <jugador>', 'Consulta el acceso de roleo.'),
+        '',
+        treeSection('04. HERRAMIENTAS DE STAFF'),
+        treeList([
+          treeCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
+          treeCommand('!faltasgrupo @jugador', 'Consulta faltas del grupo principal.'),
+          treeCommand('!fichasrecicladas', 'Lista fichas disponibles.'),
+          treeCommand('!asignarficha <ficha> @jugador', 'Asigna una ficha reciclada.'),
+          treeCommand('!rolestado <jugador>', 'Consulta el acceso de roleo.'),
         ])
       );
     }
 
     menuLines.push(
-      heraldSection('Tu identidad'),
-      heraldStat('Rango', identityName),
-      heraldStat('Telefono', `\`${normalizePhone(sender)}\``)
+      '',
+      treeSection('REGISTRO DE IDENTIDAD'),
+      treeList([
+        `👑 Rango: *${identityName}*`,
+        `📱 Usuario: \`${normalizePhone(sender)}\``,
+      ])
     );
 
     if (!player) {
       if (isSenderOwner || isSenderAdmin) {
-        menuLines.push('⚠️ Aun no tienes personaje forjado. Usa `!registrar <tu_nombre> [oro]`.');
+        menuLines.push('\n⚠️ Aun no tienes personaje forjado. Usa `!registrar <tu_nombre> [oro]`.');
       } else {
-        menuLines.push('⚠️ Aun no estas registrado. Pidele al staff que use `!registrar` para darte entrada.');
+        menuLines.push('\n⚠️ Aun no estas registrado. Pidele al staff que use `!registrar` para darte entrada.');
       }
     }
 
-    return heraldCard('Kingdoom · Reino de las Sombras', menuLines, {
-      icon: '⚔️',
-      footer: '╰─ _Que el oro fluya y el reino prospere_',
+    menuLines.push('\n💡 _Tip: `!cofre`, `!trampa` y `!21` se juegan por privado con el bot._');
+
+    return heraldCard('KINGDOOM BOT · COMPENDIO', menuLines, {
+      icon: '🏰',
+      footer: '╰─ _Ciber-Grimorio del Reino de las Sombras_',
     });
 
   }

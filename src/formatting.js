@@ -107,6 +107,25 @@ export function heraldSection(title) {
   return `◆ *${title}*`;
 }
 
+export function treeSection(title) {
+  return `▸ *[${title}]*`;
+}
+
+export function treeList(items = []) {
+  const filtered = items.filter(Boolean);
+  return filtered
+    .map((item, index) => {
+      const isLast = index === filtered.length - 1;
+      const prefix = isLast ? '└─' : '├─';
+      return `${prefix} ${item}`;
+    })
+    .join('\n');
+}
+
+export function treeCommand(command, description) {
+  return `\`${command}\` ➔ ${description}`;
+}
+
 export function decorateCommandReply(command, text) {
   const value = String(text ?? '').trim();
   if (!value || /^(?:╭─|╔═)/u.test(value)) return value;

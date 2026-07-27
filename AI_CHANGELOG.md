@@ -5,13 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Redirección del mensaje motivacional semanal a transmisión de grupo principal y optimización de visibilidad del código QR en la vista web de Hugging Face.
+*   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Rediseño estético del comando `!ayuda` (Opción 2: Ciber-Grimorio Jerárquico) para todos los roles (Jugador, Staff, Admin, Owner) y optimización de la vista web QR en Hugging Face.
 *   **Cambios Clave:**
-    *   **[Optimización de Visibilidad QR en Hugging Face]:** Se configuró la generación del QR en alta resolución (`width: 360`, `margin: 2`) y se ajustó el layout CSS del panel web HTTP (`/` y `/qr`). El código QR se colocó en grande y al centro (`280x280px`), y la grilla pesada de métricas de estado (`renderStatusMetaHtml()`) se envolvió dentro de un elemento colapsable `<details>`, evitando que comprima o desplace el QR fuera de pantalla en iFrames o móviles.
-    *   **[Transmisión Semanal en Grupo]:** La tarea Cron de los Lunes a las 09:00 AM (`0 9 * * 1`) envía el anuncio motivacional al Grupo Principal de Eventos (`595971938097-1618930274@g.us`) usando `MAIN_EVENT_GROUP_ID`.
-    *   **[Limpieza YAGNI / Ponytail]:** Remoción de `sendToAll` recortando 55 líneas de código de encolado masivo por DM.
-*   **Validación:** Sintaxis verificada mediante `node --check src/index.js` y `node --check src/scheduler.js`.
+    *   **[Comando !ayuda - Ciber-Grimorio]:** Implementación de formateadores de árbol jerárquico (`treeSection`, `treeList`, `treeCommand` con conectoras `├─` y `└─`) en `src/formatting.js`. El comando `!ayuda` en `src/handlers/player.js` ahora presenta secciones clasificadas por módulos numerados (`01. PERSONAJE & ECONOMÍA`, `02. TABERNA & MINIJUEGOS`, `03. MERCADO & SUBASTAS`, `04. HERRAMIENTAS / SOBERANO / ADMIN`), además del bloque de registro de identidad.
+    *   **[Optimización de Visibilidad QR]:** Generación del QR en alta resolución (`width: 360`, `margin: 2`) y envoltorio colapsable `<details>` para métricas de estado en la vista HTTP.
+    *   **[Transmisión Semanal en Grupo]:** Redirección del mensaje motivacional semanal al Grupo Principal de Eventos (`595971938097-1618930274@g.us`).
+*   **Validación:** Sintaxis verificada con `node --check`; tests ejecutados con éxito (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+
 
 
 
