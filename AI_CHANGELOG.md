@@ -5,13 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Redirección del mensaje motivacional semanal desde envíos masivos por DM privado hacia una transmisión única en el grupo principal de eventos, previniendo baneos de WhatsApp por spam.
+*   **Archivos Modificados:** `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Redirección del mensaje motivacional semanal a transmisión de grupo principal y optimización de visibilidad del código QR en la vista web de Hugging Face.
 *   **Cambios Clave:**
-    *   **[Transmisión Semanal en Grupo]:** La tarea Cron de los Lunes a las 09:00 AM (`0 9 * * 1`) envía ahora el anuncio de inicio de ciclo al Grupo Principal de Eventos (`595971938097-1618930274@g.us`) usando la constante `MAIN_EVENT_GROUP_ID` (configurable vía `WEEKLY_MOTIVATIONAL_GROUP_ID`).
-    *   **[Limpieza YAGNI / Ponytail]:** Se removió la función `sendToAll` recortando 55 líneas de código innecesario de encolamiento masivo por DM.
-    *   **[Reseteo semanal intacto]:** La limpieza del acumulado semanal de oro (`weekly_gold = 0`) permanece sin alteraciones.
-*   **Validación:** Sintaxis verificada mediante `node --check src/scheduler.js`; suite `node test_scheduler_delivery_guard.js` limpia (OK).
+    *   **[Optimización de Visibilidad QR en Hugging Face]:** Se configuró la generación del QR en alta resolución (`width: 360`, `margin: 2`) y se ajustó el layout CSS del panel web HTTP (`/` y `/qr`). El código QR se colocó en grande y al centro (`280x280px`), y la grilla pesada de métricas de estado (`renderStatusMetaHtml()`) se envolvió dentro de un elemento colapsable `<details>`, evitando que comprima o desplace el QR fuera de pantalla en iFrames o móviles.
+    *   **[Transmisión Semanal en Grupo]:** La tarea Cron de los Lunes a las 09:00 AM (`0 9 * * 1`) envía el anuncio motivacional al Grupo Principal de Eventos (`595971938097-1618930274@g.us`) usando `MAIN_EVENT_GROUP_ID`.
+    *   **[Limpieza YAGNI / Ponytail]:** Remoción de `sendToAll` recortando 55 líneas de código de encolado masivo por DM.
+*   **Validación:** Sintaxis verificada mediante `node --check src/index.js` y `node --check src/scheduler.js`.
+
 
 
 ### [Fecha: 24/07/2026] - [Autor: Codex]

@@ -1713,51 +1713,81 @@ http.createServer(async (req, res) => {
           <style>
             body {
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
-              height: 100vh;
-              background-color: #121212;
+              justify-content: flex-start;
+              min-height: 100vh;
+              background-color: #0c0c0e;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               margin: 0;
+              padding: 24px 16px;
+              box-sizing: border-box;
               color: #f5f5f7;
+              overflow-y: auto;
             }
             .container {
               text-align: center;
-              background: #1e1e1e;
-              padding: 40px;
-              border-radius: 16px;
-              box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-              max-width: 400px;
-              width: 90%;
+              background: #18181c;
+              border: 1px solid #2e2e36;
+              padding: 32px 24px;
+              border-radius: 20px;
+              box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+              max-width: 480px;
+              width: 100%;
+              box-sizing: border-box;
             }
             h2 {
               margin-top: 0;
               color: #f5f5f7;
+              font-size: 24px;
             }
             .qr-wrapper {
               background: #ffffff;
-              padding: 15px;
-              border-radius: 12px;
+              padding: 20px;
+              border-radius: 16px;
               display: inline-block;
-              margin: 20px 0;
+              margin: 16px 0;
+              box-shadow: 0 0 30px rgba(255, 255, 255, 0.25);
             }
             .qr-wrapper img {
               display: block;
+              width: 280px;
+              height: 280px;
+              max-width: 100%;
+              object-fit: contain;
+              border-radius: 4px;
               transition: opacity 160ms ease, transform 160ms ease;
+            }
+            details summary {
+              cursor: pointer;
+              color: #a3a3a8;
+              font-size: 13px;
+              font-weight: 500;
+              user-select: none;
+              outline: none;
+            }
+            details summary:hover {
+              color: #f5f5f7;
             }
           </style>
         </head>
         <body>
           <div class="container">
             <h2>Kingdoom Bot</h2>
-            <p>Estado actual: <strong id="qr-status-value" style="color: #ffc107;">${escapeHtml(appStatus)}</strong></p>
-            <p>Escanea este codigo QR con WhatsApp:</p>
+            <p style="font-size:15px;color:#a3a3a8;margin:6px 0 12px;">Estado actual: <strong id="qr-status-value" style="color: #ffc107;">${escapeHtml(appStatus)}</strong></p>
+            <p style="font-size:16px;font-weight:600;margin:0 0 8px;color:#f5f5f7;">Escanea este código QR con WhatsApp:</p>
             <div class="qr-wrapper">
               <img id="qr-image" src="${latestQrDataUrl}" alt="Codigo QR de WhatsApp" data-qr-updated-at="${escapeHtml(latestQrUpdatedAt ?? '')}" />
             </div>
-            <p id="qr-sync-hint" style="color: #ffc107; font-weight: 500;">La vista se sincroniza sola. Si WhatsApp genera un QR nuevo, esta imagen se reemplazara automaticamente.</p>
-            <p id="qr-updated-label" style="color:#a3a3a8;font-size:13px;margin-top:-4px;">Ultima renovacion del QR: ${escapeHtml(formatStatusTimestamp(latestQrUpdatedAt))}</p>
-            ${renderStatusMetaHtml()}
+            <p id="qr-sync-hint" style="color: #ffc107; font-weight: 500; font-size: 14px; margin: 12px 0 6px;">La vista se sincroniza sola. Si WhatsApp genera un QR nuevo, la imagen se reemplazara automaticamente.</p>
+            <p id="qr-updated-label" style="color:#a3a3a8;font-size:13px;margin-top:2px;">Ultima renovacion del QR: ${escapeHtml(formatStatusTimestamp(latestQrUpdatedAt))}</p>
+            
+            <details style="margin-top:24px;text-align:left;background:#121215;border:1px solid #282830;border-radius:12px;padding:12px 16px;">
+              <summary>📊 Ver métricas detalladas del sistema y estado</summary>
+              <div style="margin-top:12px;">
+                ${renderStatusMetaHtml()}
+              </div>
+            </details>
           </div>
           ${renderAutoRefreshScript()}
         </body>
@@ -1773,31 +1803,49 @@ http.createServer(async (req, res) => {
           <style>
             body {
               display: flex;
+              flex-direction: column;
               align-items: center;
-              justify-content: center;
-              height: 100vh;
-              background-color: #121212;
+              justify-content: flex-start;
+              min-height: 100vh;
+              background-color: #0c0c0e;
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
               margin: 0;
+              padding: 24px 16px;
+              box-sizing: border-box;
               color: #f5f5f7;
+              overflow-y: auto;
             }
             .container {
               text-align: center;
-              background: #1e1e1e;
-              padding: 40px;
-              border-radius: 16px;
-              box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-              max-width: 400px;
-              width: 90%;
+              background: #18181c;
+              border: 1px solid #2e2e36;
+              padding: 32px 24px;
+              border-radius: 20px;
+              box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+              max-width: 480px;
+              width: 100%;
+              box-sizing: border-box;
             }
             h2 {
               margin-top: 0;
               color: ${whatsappHealth.isHealthy() ? '#4caf50' : '#ffc107'};
+              font-size: 24px;
             }
             p {
               color: #a3a3a8;
-              font-size: 16px;
+              font-size: 15px;
               line-height: 1.5;
+            }
+            details summary {
+              cursor: pointer;
+              color: #a3a3a8;
+              font-size: 13px;
+              font-weight: 500;
+              user-select: none;
+              outline: none;
+            }
+            details summary:hover {
+              color: #f5f5f7;
             }
           </style>
         </head>
@@ -1807,7 +1855,13 @@ http.createServer(async (req, res) => {
             <p>Estado del sistema: <strong style="color: ${whatsappHealth.isHealthy() ? '#4caf50' : '#ffc107'};">${escapeHtml(appStatus)}</strong></p>
             <p>El socket y el canal de mensajes se verifican por separado. Los envios automaticos solo se habilitan cuando el canal figura HEALTHY.</p>
             ${latestPairingCode ? `<p style="color:#ffc107;font-weight:600;">Codigo de vinculacion: <span style="letter-spacing:0.18em;">${escapeHtml(latestPairingCode)}</span></p>` : ''}
-            ${renderStatusMetaHtml()}
+            
+            <details style="margin-top:24px;text-align:left;background:#121215;border:1px solid #282830;border-radius:12px;padding:12px 16px;">
+              <summary>📊 Ver métricas detalladas del sistema y estado</summary>
+              <div style="margin-top:12px;">
+                ${renderStatusMetaHtml()}
+              </div>
+            </details>
           </div>
           ${renderAutoRefreshScript()}
         </body>
@@ -1895,7 +1949,7 @@ client.on('qr', async (qr) => {
   lastLoadingPercent = null;
 
   try {
-    latestQrDataUrl = await qrcodeImage.toDataURL(qr);
+    latestQrDataUrl = await qrcodeImage.toDataURL(qr, { margin: 2, width: 360 });
     const reconnectResult = reconnectAudit.completeFailed('pairing_required');
     if (reconnectResult) {
       recordRuntimeEvent(
