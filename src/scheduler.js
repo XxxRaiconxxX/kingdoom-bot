@@ -26,6 +26,7 @@ import {
 } from './whatsappDelivery.js';
 
 const TZ = { timezone: 'America/Asuncion' };
+const MAIN_EVENT_GROUP_ID = process.env.WEEKLY_MOTIVATIONAL_GROUP_ID || '595971938097-1618930274@g.us';
 const NOTIFICATION_QUEUE_FETCH_LIMIT = Number(process.env.WHATSAPP_QUEUE_FETCH_LIMIT ?? 5);
 const NOTIFICATION_MAX_SUCCESS_PER_RUN = Math.max(1, Number(process.env.WHATSAPP_QUEUE_MAX_SUCCESS_PER_RUN ?? 1));
 const NOTIFICATION_MIN_INTERVAL_MS = Math.max(30_000, Number(process.env.WHATSAPP_QUEUE_MIN_INTERVAL_MS ?? 90_000));
@@ -263,61 +264,7 @@ async function runScheduledJob(key, label, task) {
   }
 }
 
-async function sendToAll(client, buildMessage) {
-  const { data: players, error } = await supabase
-    .from('players')
-    .select('id, username, phone')
-    .not('phone', 'is', null);
 
-  if (error || !players?.length) return;
-
-  const phoneMap = new Map();
-  players.forEach((player) => {
-    if (player.phone) {
-      player.phone.split(',').forEach((p) => {
-        const norm = normalizePhone(p.trim());
-        if (norm) {
-          if (!phoneMap.has(norm)) {
-            phoneMap.set(norm, []);
-          }
-          phoneMap.get(norm).push(player);
-        }
-      });
-    }
-  });
-
-  const queueInserts = [];
-  for (const [phone, linkedPlayers] of phoneMap.entries()) {
-    try {
-      const activeId = getActiveProfile(phone);
-      const activePlayer = linkedPlayers.find((p) => p.id === activeId) || linkedPlayers[0];
-
-      const msg =
-        typeof buildMessage === 'function'
-          ? buildMessage({ phone, username: activePlayer.username })
-          : buildMessage;
-
-      queueInserts.push({
-        player_phone: phone,
-        message: msg,
-      });
-    } catch (err) {
-      console.error('[scheduler] Error construyendo una notificacion:', err.message);
-    }
-  }
-
-  if (queueInserts.length > 0) {
-    const { error: insertError } = await botStateSupabase
-      .from('bot_notifications_queue')
-      .insert(queueInserts);
-
-    if (insertError) {
-      console.error('[scheduler] Error encolando notificaciones:', insertError.message);
-    } else {
-      console.log(`[scheduler] ${queueInserts.length} mensajes encolados exitosamente.`);
-    }
-  }
-}
 
 export function startScheduler(client, isClientReady = () => Boolean(client?.info)) {
   void hydrateOpenTreasures(client, isClientReady);
@@ -639,13 +586,19 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
     '0 9 * * 1',
     async () => {
       await runScheduledJob('weeklyResetRunning', 'reset semanal', async () => {
-        console.log('[scheduler] Enviando mensaje motivacional semanal...');
+        console.log('[scheduler] Enviando mensaje motivacional semanal al grupo principal...');
 
-        await sendToAll(
-          client,
-          ({ username }) =>
-            `Un nuevo ciclo comienza en el reino.\n\nEl Rey Supremo te observa, *${username}*. Las bestias son feroces, los caminos oscuros, pero tu leyenda apenas comienza a escribirse.\n\nQue los dioses de Kingdoom guien tus pasos esta semana.`
-        );
+        const motivationalText =
+          `👑 *Inicio de Ciclo Semanal*\n\n` +
+          `Un nuevo ciclo comienza en el reino.\n\n` +
+          `El Rey Supremo les observa, guerreros de Kingdoom. Las bestias son feroces, los caminos oscuros, pero su leyenda apenas comienza a escribirse.\n\n` +
+          `Que los dioses del reino guíen sus pasos esta semana. ⚔️🛡️`;
+
+        try {
+          await sendMessageWithResult(client, MAIN_EVENT_GROUP_ID, motivationalText);
+        } catch (msgErr) {
+          console.error('[scheduler] Error enviando mensaje motivacional semanal al grupo:', msgErr?.message ?? msgErr);
+        }
 
         const { error: resetError } = await supabase
           .from('players')

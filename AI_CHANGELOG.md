@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 26/07/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Redirección del mensaje motivacional semanal desde envíos masivos por DM privado hacia una transmisión única en el grupo principal de eventos, previniendo baneos de WhatsApp por spam.
+*   **Cambios Clave:**
+    *   **[Transmisión Semanal en Grupo]:** La tarea Cron de los Lunes a las 09:00 AM (`0 9 * * 1`) envía ahora el anuncio de inicio de ciclo al Grupo Principal de Eventos (`595971938097-1618930274@g.us`) usando la constante `MAIN_EVENT_GROUP_ID` (configurable vía `WEEKLY_MOTIVATIONAL_GROUP_ID`).
+    *   **[Limpieza YAGNI / Ponytail]:** Se removió la función `sendToAll` recortando 55 líneas de código innecesario de encolamiento masivo por DM.
+    *   **[Reseteo semanal intacto]:** La limpieza del acumulado semanal de oro (`weekly_gold = 0`) permanece sin alteraciones.
+*   **Validación:** Sintaxis verificada mediante `node --check src/scheduler.js`; suite `node test_scheduler_delivery_guard.js` limpia (OK).
+
+
 ### [Fecha: 24/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/playerLifecycle.js`, `test_player_lifecycle.js`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corregida la caida de arranque del Space causada por un `ReferenceError` en la configuracion del ciclo de vida de jugadores.
