@@ -614,9 +614,9 @@ async function sendBotText(msg, text, {
   for (const [index, chunk] of chunks.entries()) {
     const shouldReply = preferReply && index === 0;
     const sendOptions = index === 0 && mentions.length > 0 ? { mentions } : {};
-    if (shouldReply) {
+    if (shouldReply && typeof msg?.reply === 'function') {
       try {
-        await msg.reply(chunk, undefined, sendOptions);
+        await msg.reply(chunk, sendOptions);
         continue;
       } catch (replyError) {
         console.warn(`[delivery:${context}] msg.reply fallo; intentando envio directo.`, replyError?.message ?? replyError);
