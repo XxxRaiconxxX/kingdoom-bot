@@ -6,12 +6,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Rediseño estético del comando `!ayuda` (Opción 2: Ciber-Grimorio Jerárquico) para todos los roles (Jugador, Staff, Admin, Owner) y optimización de la vista web QR en Hugging Face.
+*   **Resumen de Tareas:** Rediseño estético del comando `!ayuda` (Opción 2: Ciber-Grimorio Jerárquico) garantizando visibilidad del 100% de los comandos para todos los roles (Jugador, Staff, Admin, Owner) y optimización del QR en Hugging Face.
 *   **Cambios Clave:**
-    *   **[Comando !ayuda - Ciber-Grimorio]:** Implementación de formateadores de árbol jerárquico (`treeSection`, `treeList`, `treeCommand` con conectoras `├─` y `└─`) en `src/formatting.js`. El comando `!ayuda` en `src/handlers/player.js` ahora presenta secciones clasificadas por módulos numerados (`01. PERSONAJE & ECONOMÍA`, `02. TABERNA & MINIJUEGOS`, `03. MERCADO & SUBASTAS`, `04. HERRAMIENTAS / SOBERANO / ADMIN`), además del bloque de registro de identidad.
+    *   **[Cobertura Total del Comando !ayuda]:** Se agregaron los comandos restantes (`!reclamar`, `!forjaritem`, `!apk`, `!misioneson`, `!misionoff`, `!rolbloquear`, `!roldesbloquear`, `!rolgracia`, `!rolforzaractividad`) asegurando que el 100% de los comandos del bot estén visibles para sus respectivos roles.
+    *   **[Diseño Ciber-Grimorio]:** Implementación de formateadores de árbol jerárquico (`treeSection`, `treeList`, `treeCommand` con conectoras `├─` y `└─`) en `src/formatting.js`.
     *   **[Optimización de Visibilidad QR]:** Generación del QR en alta resolución (`width: 360`, `margin: 2`) y envoltorio colapsable `<details>` para métricas de estado en la vista HTTP.
     *   **[Transmisión Semanal en Grupo]:** Redirección del mensaje motivacional semanal al Grupo Principal de Eventos (`595971938097-1618930274@g.us`).
 *   **Validación:** Sintaxis verificada con `node --check`; tests ejecutados con éxito (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+
 
 
 

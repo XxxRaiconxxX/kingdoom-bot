@@ -157,6 +157,7 @@ export async function handlePlayerMessage(msg) {
         treeCommand('!perfil', 'Muestra tu estado de aventurero.'),
         treeCommand('!oro [monto] [@user]', 'Consulta o envia oro.'),
         treeCommand('!inventario', 'Mochila y creditos activos.'),
+        treeCommand('!reclamar <codigo>', 'Reclama un tesoro o recompensa.'),
         treeCommand('!vinculo', 'Revisa tu enlace con la web.'),
         treeCommand('!cambiarcuenta [nombre]', 'Cambia de personaje activo.'),
         treeCommand('!nuevo', 'Abre la guia para comenzar.'),
@@ -179,11 +180,13 @@ export async function handlePlayerMessage(msg) {
       treeList([
         treeCommand('🏪 !mercado [nombre]', 'Explora articulos del mercado.'),
         treeCommand('🗡️ !item <nombre>', 'Consulta la ficha de un objeto.'),
+        treeCommand('⚒️ !forjaritem <idea> [url]', 'Crea un borrador IA para el mercado.'),
         treeCommand('🎯 !mision [nombre]', 'Lista o inspecciona misiones.'),
         treeCommand('🎪 !evento [nombre]', 'Lista o inspecciona eventos.'),
         treeCommand('⚖️ !subastas', 'Muestra las subastas activas.'),
         treeCommand('💰 !pujar <item> <monto>', 'Presenta una oferta acumulada.'),
         treeCommand('🚪 !retirarse <item>', 'Abandona una subasta.'),
+        treeCommand('📲 !apk', 'Descarga la aplicacion oficial de Kingdoom.'),
       ]),
     ];
 
@@ -204,7 +207,17 @@ export async function handlePlayerMessage(msg) {
         treeCommand('!staff', 'Abre la vista operativa.'),
         treeCommand('!bitacora', 'Consulta acciones recientes.'),
         treeCommand('!misionstart <ID> <@jugadores>', 'Inicia el seguimiento de una mision.'),
+        treeCommand('!misioneson', 'Lista misiones activas y participantes.'),
+        treeCommand('!misionoff <ID>', 'Cierra el seguimiento de una mision.'),
         treeCommand('!misioncompleta <dificultad> <@jugadores>', 'Otorga puntos de temporada.'),
+        treeCommand('!faltasgrupo @jugador', 'Consulta faltas en el grupo principal.'),
+        treeCommand('!fichasrecicladas', 'Lista fichas disponibles.'),
+        treeCommand('!asignarficha <ficha> @jugador', 'Asigna una ficha reciclada.'),
+        treeCommand('!rolestado <jugador>', 'Consulta el acceso de roleo.'),
+        treeCommand('!rolbloquear <jugador>', 'Bloquea manualmente el roleo.'),
+        treeCommand('!roldesbloquear <jugador>', 'Desbloquea manualmente el roleo.'),
+        treeCommand('!rolgracia <jugador> <dias>', 'Extiende la gracia de roleo.'),
+        treeCommand('!rolforzaractividad <jugador>', 'Fuerza actividad y desbloquea.'),
         treeCommand('!admin', 'Abre el menu del consejo.'),
       ];
 
