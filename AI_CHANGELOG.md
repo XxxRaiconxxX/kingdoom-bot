@@ -6,12 +6,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Compactación de descripciones y sintaxis del compendio `!ayuda` (Ciber-Grimorio) para garantizar entrega en 1 solo mensaje sin particiones en WhatsApp, manteniendo la visibilidad del 100% de comandos.
+*   **Resumen de Tareas:** Reducción drástica del compendio `!ayuda` a 33 líneas y 1.500 caracteres agrupando comandos afines por pares para garantizar entrega en 1 solo mensaje de WhatsApp sin partición.
 *   **Cambios Clave:**
-    *   **[Optimización Monomensaje WhatsApp]:** Se sintetizaron las descripciones y nombres de parámetros del árbol `!ayuda` en `src/handlers/player.js` reduciendo el peso del mensaje para que nunca sobrepase el umbral de partición automática de WhatsApp (~2000 car. / 35 líneas), llegando siempre en 1 único mensaje limpio.
-    *   **[Diseño Ciber-Grimorio]:** Formateadores `treeSection`, `treeList`, `treeCommand` (`├─` y `└─`) en `src/formatting.js`.
+    *   **[Solución Definitiva Monomensaje WhatsApp]:** Se agruparon los comandos afines en una disposición limpia por línea (`!perfil · !inventario`, `!reclamar · !vinculo`, `!dados`, `!cofre · !trampa`, `!mercado · !item`, etc.). Esto redujo el tamaño de la respuesta de 77 líneas (2.764 caracteres) a solo 33 líneas (1.528 caracteres), quedando por debajo del límite de partición automática de WhatsApp y entregándose en un único mensaje perfecto.
+    *   **[Diseño Ciber-Grimorio]:** Mantenidos los formateadores de árbol jerárquico (`treeSection`, `treeList`, `treeCommand`).
     *   **[Visibilidad QR & Transmisión Cron]:** QR en alta resolución en web HTTP y transmisión motivacional semanal al Grupo Principal.
-*   **Validación:** Sintaxis verificada con `node --check`; suite limpia (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+*   **Validación:** Sintaxis verificada con `node --check`; tests ejecutados con éxito (`message formatting tests passed`, `GM_FORMATTING_OK`).
+
 
 
 

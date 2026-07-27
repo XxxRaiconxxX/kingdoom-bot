@@ -154,86 +154,39 @@ export async function handlePlayerMessage(msg) {
       '──────────────',
       treeSection('01. PERSONAJE & ECONOMÍA'),
       treeList([
-        treeCommand('!perfil', 'Estado aventurero.'),
-        treeCommand('!oro [monto] [@user]', 'Consultar / enviar oro.'),
-        treeCommand('!inventario', 'Mochila y créditos.'),
-        treeCommand('!reclamar <cod>', 'Reclamar tesoro.'),
-        treeCommand('!vinculo', 'Enlace web.'),
-        treeCommand('!cambiarcuenta [nom]', 'Cambiar personaje.'),
-        treeCommand('!nuevo', 'Guía de inicio.'),
-        treeCommand('!verificar <id>', 'Vincular WhatsApp.'),
-        treeCommand('!ranking', 'Poder semanal.'),
-        treeCommand('!reino', 'Estado del reino.'),
-        treeCommand('!ricos', 'Fortunas del reino.'),
+        treeCommand('!perfil · !inventario', 'Estado de aventurero y mochila.'),
+        treeCommand('!oro [monto] [@user]', 'Consultar o transferir oro.'),
+        treeCommand('!reclamar <cod> · !vinculo', 'Reclamar tesoro / enlace web.'),
+        treeCommand('!cambiarcuenta · !nuevo', 'Cambiar personaje / guía inicio.'),
+        treeCommand('!verificar <id>', 'Vincular tu WhatsApp al reino.'),
+        treeCommand('!ranking · !reino · !ricos', 'Poder semanal y fortunas.'),
       ]),
       '',
       treeSection('02. TABERNA & MINIJUEGOS'),
       treeList([
         treeCommand('🎲 !dados <monto> [x4]', 'Dados del destino.'),
-        treeCommand('🎁 !cofre [xN]', 'Abrir cofres.'),
-        treeCommand('🕸️ !trampa <monto> [xN]', 'Arriesgar oro.'),
-        treeCommand('🃏 !21 <monto>', 'Blackjack.'),
-        treeCommand('🔮 !oraculo <pregunta>', 'Gran Oráculo.'),
+        treeCommand('🎁 !cofre [xN] · 🕸️ !trampa <m>', 'Abrir cofres / arriesgar oro.'),
+        treeCommand('🃏 !21 <monto> · 🔮 !oraculo', 'Blackjack / Gran Oráculo.'),
       ]),
       '',
       treeSection('03. MERCADO & SUBASTAS'),
       treeList([
-        treeCommand('🏪 !mercado [nom]', 'Explorar tienda.'),
-        treeCommand('🗡️ !item <nom>', 'Ficha de objeto.'),
-        treeCommand('⚒️ !forjaritem <idea>', 'Borrador IA.'),
-        treeCommand('🎯 !mision [nom]', 'Ver misiones.'),
-        treeCommand('🎪 !evento [nom]', 'Ver eventos.'),
-        treeCommand('⚖️ !subastas', 'Subastas activas.'),
-        treeCommand('💰 !pujar <item> <monto>', 'Oferta puja.'),
-        treeCommand('🚪 !retirarse <item>', 'Salir subasta.'),
-        treeCommand('📲 !apk', 'App oficial.'),
+        treeCommand('🏪 !mercado · 🗡️ !item <nom>', 'Explorar tienda y fichas.'),
+        treeCommand('⚒️ !forjaritem <idea>', 'Borrador IA para el mercado.'),
+        treeCommand('🎯 !mision · 🎪 !evento', 'Ver misiones y eventos.'),
+        treeCommand('⚖️ !subastas · 💰 !pujar · 🚪 !retirarse', 'Subastas y pujas.'),
+        treeCommand('📲 !apk', 'App Android oficial.'),
       ]),
     ];
 
     if (isSenderOwner || isSenderAdmin) {
       const staffCommands = [
-        treeCommand('!registrar <nom> [oro]', 'Registrar aventurero.'),
-        treeCommand('!grant <user> <monto>', 'Entregar oro.'),
-        treeCommand('!quitar <user> <monto>', 'Descontar oro.'),
-        treeCommand('!ban <user>', 'Desterrar jugador.'),
-        treeCommand('!verificarnumero <user>', 'Forzar vínculo.'),
-        treeCommand('!desvincular <user>', 'Retirar números.'),
-        treeCommand('!stats', 'Resumen general.'),
-        treeCommand('!censo', 'Censo del reino.'),
-        treeCommand('!pendientes', 'Lista pendientes.'),
-        treeCommand('!purga', 'Expulsar inactivos.'),
-        treeCommand('!actividad', 'Reporte actividad.'),
-        treeCommand('!groupid', 'ID del grupo.'),
-        treeCommand('!staff', 'Vista operativa.'),
-        treeCommand('!bitacora', 'Acciones recientes.'),
-        treeCommand('!misionstart <id> <@users>', 'Iniciar misión GM.'),
-        treeCommand('!misioneson', 'Misiones activas.'),
-        treeCommand('!misionoff <id>', 'Cerrar misión.'),
-        treeCommand('!misioncompleta <dif> <@users>', 'Puntos temporada.'),
-        treeCommand('!faltasgrupo @user', 'Faltas del grupo.'),
-        treeCommand('!fichasrecicladas', 'Fichas archivadas.'),
-        treeCommand('!asignarficha <f> @user', 'Asignar ficha.'),
-        treeCommand('!rolestado <user>', 'Acceso de roleo.'),
-        treeCommand('!rolbloquear <user>', 'Bloquear roleo.'),
-        treeCommand('!roldesbloquear <user>', 'Desbloquear roleo.'),
-        treeCommand('!rolgracia <user> <dias>', 'Extender gracia.'),
-        treeCommand('!rolforzaractividad <user>', 'Forzar activo.'),
-        treeCommand('!admin', 'Menú del consejo.'),
+        treeCommand('!add admin · !remove admin', 'Gestión de rango admin.'),
+        treeCommand('!registrar · !grant · !quitar · !ban', 'Gestión de aventureros.'),
+        treeCommand('!misionstart · !misioncompleta', 'Control de misiones GM.'),
+        treeCommand('!rolestado · !stats · !censo', 'Monitoreo de roleo y censo.'),
+        treeCommand('!admin', 'Menú del consejo completo (30+ cmds).'),
       ];
-
-      if (isSenderOwner) {
-        staffCommands.unshift(
-          treeCommand('!add admin <user>', 'Dar admin.'),
-          treeCommand('!remove admin <user>', 'Revocar admin.')
-        );
-        staffCommands.splice(
-          13,
-          0,
-          treeCommand('!grupos', 'Grupos vinculados.'),
-          treeCommand('!grupoactual', 'Grupo actual.'),
-          treeCommand('!data [titulo]', 'Cargar conocimiento.')
-        );
-      }
 
       menuLines.push(
         '',
@@ -245,11 +198,9 @@ export async function handlePlayerMessage(msg) {
         '',
         treeSection('04. STAFF'),
         treeList([
-          treeCommand('!misioncompleta <dif> <@users>', 'Puntos temporada.'),
-          treeCommand('!faltasgrupo @user', 'Faltas grupo.'),
-          treeCommand('!fichasrecicladas', 'Fichas archivadas.'),
-          treeCommand('!asignarficha <f> @user', 'Asignar ficha.'),
-          treeCommand('!rolestado <user>', 'Acceso roleo.'),
+          treeCommand('!misioncompleta · !faltasgrupo', 'Acciones de staff.'),
+          treeCommand('!fichasrecicladas · !asignarficha', 'Gestión de fichas.'),
+          treeCommand('!rolestado <user>', 'Acceso de roleo.'),
         ])
       );
     }
