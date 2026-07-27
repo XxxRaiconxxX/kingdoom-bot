@@ -6,13 +6,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Rediseño estético del comando `!ayuda` (Opción 2: Ciber-Grimorio Jerárquico) garantizando visibilidad del 100% de los comandos para todos los roles (Jugador, Staff, Admin, Owner) y optimización del QR en Hugging Face.
+*   **Resumen de Tareas:** Compactación de descripciones y sintaxis del compendio `!ayuda` (Ciber-Grimorio) para garantizar entrega en 1 solo mensaje sin particiones en WhatsApp, manteniendo la visibilidad del 100% de comandos.
 *   **Cambios Clave:**
-    *   **[Cobertura Total del Comando !ayuda]:** Se agregaron los comandos restantes (`!reclamar`, `!forjaritem`, `!apk`, `!misioneson`, `!misionoff`, `!rolbloquear`, `!roldesbloquear`, `!rolgracia`, `!rolforzaractividad`) asegurando que el 100% de los comandos del bot estén visibles para sus respectivos roles.
-    *   **[Diseño Ciber-Grimorio]:** Implementación de formateadores de árbol jerárquico (`treeSection`, `treeList`, `treeCommand` con conectoras `├─` y `└─`) en `src/formatting.js`.
-    *   **[Optimización de Visibilidad QR]:** Generación del QR en alta resolución (`width: 360`, `margin: 2`) y envoltorio colapsable `<details>` para métricas de estado en la vista HTTP.
-    *   **[Transmisión Semanal en Grupo]:** Redirección del mensaje motivacional semanal al Grupo Principal de Eventos (`595971938097-1618930274@g.us`).
-*   **Validación:** Sintaxis verificada con `node --check`; tests ejecutados con éxito (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+    *   **[Optimización Monomensaje WhatsApp]:** Se sintetizaron las descripciones y nombres de parámetros del árbol `!ayuda` en `src/handlers/player.js` reduciendo el peso del mensaje para que nunca sobrepase el umbral de partición automática de WhatsApp (~2000 car. / 35 líneas), llegando siempre en 1 único mensaje limpio.
+    *   **[Diseño Ciber-Grimorio]:** Formateadores `treeSection`, `treeList`, `treeCommand` (`├─` y `└─`) en `src/formatting.js`.
+    *   **[Visibilidad QR & Transmisión Cron]:** QR en alta resolución en web HTTP y transmisión motivacional semanal al Grupo Principal.
+*   **Validación:** Sintaxis verificada con `node --check`; suite limpia (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+
 
 
 
