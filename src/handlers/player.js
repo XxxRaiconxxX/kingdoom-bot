@@ -20,6 +20,7 @@ import { isAdminUser, isOwner, isStaffUser, normalizePhone } from '../adminStore
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat, treeCommand, treeList, treeSection } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
 import { parseGoldAmount } from '../economy.js';
+import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 
 const SYSTEM_PROMPT = `Eres el Heraldo del Reino de Kingdoom - Reino de las Sombras.
 Hablas con tono medieval, misterioso y epico. Usas emojis de espadas, coronas y fuego.
@@ -283,14 +284,15 @@ export async function handlePlayerMessage(msg) {
       return `❌ No tienes suficiente oro para transferir.\n🪙 Tu oro actual: *${player.gold.toLocaleString('es-PY')}*`;
     }
 
+    const hasQuotedMessage = hasQuotedMessageMetadata(msg);
     let identifier = '';
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       identifier = ''; // resolvePlayerTarget handles quoted msg when identifier is empty
     } else {
       identifier = parts.slice(1).join(' ').trim();
     }
 
-    if (!identifier && !msg.hasQuotedMsg) {
+    if (!identifier && !hasQuotedMessage) {
       return `❌ *Uso correcto para enviar oro:*\n\`!oro <monto> <@usuario>\``;
     }
 

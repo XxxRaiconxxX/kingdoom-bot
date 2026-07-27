@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
@@ -226,13 +227,32 @@ try {
       return { id: { _serialized: `audit-blackjack-${runId}-${blackjackReplies.length}` } };
     },
   };
+  const blackjackClient = new EventEmitter();
+  blackjackClient.sendMessage = async (chatId, text) => {
+    blackjackReplies.push(text);
+    queueMicrotask(() => {
+      blackjackClient.emit('message_create', {
+        fromMe: true,
+        id: { _serialized: `true_${chatId}_audit-blackjack-${runId}` },
+        to: chatId,
+        body: text,
+        timestamp: Math.floor(Date.now() / 1000),
+      });
+    });
+    return undefined;
+  };
   const blackjackBefore = await readGold(players.blackjack.id);
-  const blackjackStartReply = await handleBlackjack(blackjackMessage, { sendMessage: async () => null });
+  const blackjackStartReply = await handleBlackjack(blackjackMessage, blackjackClient);
   const activeEntry = [...activeSessions.entries()]
     .find(([, session]) => session.playerId === players.blackjack.id);
   if (activeEntry) {
     const [sessionId, session] = activeEntry;
-    await handleBlackjackReply({ ...blackjackMessage, body: 'plantarse' }, session, sessionId, {});
+    await handleBlackjackReply(
+      { ...blackjackMessage, body: 'plantarse' },
+      session,
+      sessionId,
+      blackjackClient
+    );
   } else {
     assert.equal(typeof blackjackStartReply, 'string', 'Blackjack natural debe devolver resultado visible.');
   }

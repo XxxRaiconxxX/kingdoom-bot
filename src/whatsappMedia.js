@@ -1,4 +1,7 @@
-import { serializeWhatsAppId } from './whatsappIdentity.js';
+import {
+  getWhatsAppMessageId,
+  hasQuotedMessageMetadata,
+} from './whatsappDelivery.js';
 
 const DEFAULT_RETRY_DELAY_MS = 600;
 
@@ -17,7 +20,7 @@ function buildSyntheticQuotedMessage(rawQuoted) {
   if (!rawQuoted) return null;
 
   return {
-    id: serializeWhatsAppId(rawQuoted.id),
+    id: getWhatsAppMessageId(rawQuoted.id || rawQuoted),
     hasMedia: Boolean(
       rawQuoted.isMedia
       || ['document', 'image', 'video', 'audio', 'sticker'].includes(rawQuoted.type)
@@ -34,7 +37,7 @@ function buildSyntheticQuotedMessage(rawQuoted) {
 
 export async function resolveMediaMessage(msg, client = msg?.client) {
   if (msg?.hasMedia) return msg;
-  if (!msg?.hasQuotedMsg) return null;
+  if (!hasQuotedMessageMetadata(msg)) return null;
 
   if (typeof msg.getQuotedMessage === 'function') {
     try {
@@ -46,8 +49,9 @@ export async function resolveMediaMessage(msg, client = msg?.client) {
   }
 
   const rawQuoted = getRawQuotedData(msg);
-  const quotedId = serializeWhatsAppId(rawQuoted?.id)
-    || String(msg?._data?.quotedStanzaID || '').trim();
+  const quotedId = getWhatsAppMessageId(rawQuoted?.id || rawQuoted)
+    || getWhatsAppMessageId(msg?._data?.quotedStanzaID)
+    || getWhatsAppMessageId(msg?._originalMsg?._data?.quotedStanzaID);
   if (quotedId && client && typeof client.getMessageById === 'function') {
     try {
       const quoted = await client.getMessageById(quotedId);

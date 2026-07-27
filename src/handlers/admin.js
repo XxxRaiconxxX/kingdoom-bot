@@ -31,7 +31,10 @@ import { resolveWhatsAppPhone, resolveWhatsAppPhones, serializeWhatsAppId } from
 import { resolveAndDownloadMedia } from '../whatsappMedia.js';
 import { canRunAdminCommand, isKnownAdminCommand } from '../adminCommands.js';
 import { parseGoldAmount } from '../economy.js';
-import { getWhatsAppMessageId } from '../whatsappDelivery.js';
+import {
+  getWhatsAppMessageId,
+  hasQuotedMessageMetadata,
+} from '../whatsappDelivery.js';
 
 const DATA_MAX_FILE_BYTES = 1024 * 1024;
 const DATA_MAX_CONTENT_CHARS = 500000;
@@ -264,6 +267,7 @@ export async function handleAdminCommand(msg, client) {
     isStaff,
   } = await getActorPrivileges(sender);
   const isPrivileged = isAdmin || isStaff;
+  const hasQuotedMessage = hasQuotedMessageMetadata(msg);
 
   if (
     isKnownAdminCommand(cmd)
@@ -826,7 +830,7 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Solo el Soberano del Reino puede otorgar funciones administrativas.`;
     }
     let identifier = '';
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {
@@ -868,7 +872,7 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Solo el Soberano del Reino puede revocar funciones administrativas.`;
     }
     let identifier = '';
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {
@@ -910,7 +914,7 @@ export async function handleAdminCommand(msg, client) {
     let username = '';
     let goldAmount = 2500;
 
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       // Caso 1: Respondiendo a un mensaje -> !registrar <nombre> [oro]
       const quotedDetails = await safeGetQuotedDetails(msg);
       targetPhone = await resolveWhatsAppPhone(client, quotedDetails.author);
@@ -984,7 +988,7 @@ export async function handleAdminCommand(msg, client) {
     let targetPhone = '';
     let identifier = '';
     
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       targetPhone = await resolveWhatsAppPhone(client, quotedDetails.author);
       identifier = parts.slice(1).join(' ').trim();
@@ -1083,7 +1087,7 @@ export async function handleAdminCommand(msg, client) {
     let identifier = '';
     let amount = 0;
 
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
       amount = parseGoldAmount(parts[1]);
@@ -1166,7 +1170,7 @@ export async function handleAdminCommand(msg, client) {
   // 7. !ban o !eliminar
   if (cmd === '!ban' || cmd === '!eliminar' || cmd === '!kick') {
     let identifier = '';
-    if (msg.hasQuotedMsg) {
+    if (hasQuotedMessage) {
       const quotedDetails = await safeGetQuotedDetails(msg);
       identifier = await resolveWhatsAppPhone(client, quotedDetails.author);
     } else {

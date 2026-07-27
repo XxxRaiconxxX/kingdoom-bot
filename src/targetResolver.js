@@ -1,7 +1,10 @@
 import { normalizePhone } from './adminStore.js';
 import { findPlayerByIdentifier } from './supabase.js';
 import { resolveWhatsAppPhone, serializeWhatsAppId } from './whatsappIdentity.js';
-import { getWhatsAppMessageId } from './whatsappDelivery.js';
+import {
+  getWhatsAppMessageId,
+  hasQuotedMessageMetadata,
+} from './whatsappDelivery.js';
 
 const quotedDetailsCache = new WeakMap();
 
@@ -52,7 +55,7 @@ export async function getMentionedPhone(msg) {
 }
 
 export async function safeGetQuotedDetails(msg) {
-  if (!msg || !msg.hasQuotedMsg) {
+  if (!hasQuotedMessageMetadata(msg)) {
     return { hasQuoted: false, id: null, author: null, body: null };
   }
 
@@ -65,15 +68,20 @@ export async function safeGetQuotedDetails(msg) {
     let author = null;
     let body = null;
 
-    if (msg._data) {
-      const rawQuoted = msg._data.quotedMsg;
+    const dataSources = [
+      msg._data,
+      msg._originalMsg?._data,
+    ].filter(Boolean);
+
+    for (const data of dataSources) {
+      const rawQuoted = data.quotedMsg || data.quotedSticker;
       if (rawQuoted) {
-        id = getWhatsAppMessageId(rawQuoted.id) || null;
-        author = rawQuoted.author || rawQuoted.from || null;
-        body = rawQuoted.body || rawQuoted.caption || null;
+        id ||= getWhatsAppMessageId(rawQuoted.id || rawQuoted) || null;
+        author ||= rawQuoted.author || rawQuoted.from || null;
+        body ||= rawQuoted.body || rawQuoted.caption || null;
       }
-      id ||= getWhatsAppMessageId(msg._data.quotedStanzaID) || null;
-      author ||= msg._data.quotedParticipant || null;
+      id ||= getWhatsAppMessageId(data.quotedStanzaID) || null;
+      author ||= data.quotedParticipant || null;
     }
 
     if ((!id || !author || !body) && typeof msg.getQuotedMessage === 'function') {
@@ -102,7 +110,7 @@ export async function safeGetQuotedDetails(msg) {
 }
 
 export async function extractTargetIdentifier(msg, fallbackIdentifier = '') {
-  if (msg?.hasQuotedMsg) {
+  if (hasQuotedMessageMetadata(msg)) {
     const quotedDetails = await safeGetQuotedDetails(msg);
     const quotedPhone = await resolveWhatsAppPhone(
       msg?.client || msg?._originalMsg?.client,

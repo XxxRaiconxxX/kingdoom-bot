@@ -4,6 +4,19 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 27/07/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/whatsappDelivery.js`, `src/targetResolver.js`, `src/whatsappMedia.js`, `src/handlers/admin.js`, `src/handlers/player.js`, `src/handlers/marketForge.js`, `src/handlers/blackjack.js`, `src/index.js`, `test_reply_routing.js`, `test_real_integration.js`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Parche general para respuestas citadas que WhatsApp entrega con metadatos parciales, con recuperacion de sesiones de Blackjack, proteccion de apuestas y cobertura compartida para tesoros, media y comandos sobre mensajes citados.
+*   **Cambios Clave:**
+    *   **[Causa raiz confirmada en produccion]:** El tablero de Blackjack fue entregado a las `19:46:51Z`, pero `sendMessage()` no devolvio un ID util. La apuesta quedo creada a las `19:46:50.661848Z`, mientras que la sesion y su temporizador nunca llegaron a registrarse; las respuestas `pedir` recibidas hasta las `19:47:28Z` no tenian una clave activa que enrutar.
+    *   **[Envio interactivo trazable]:** Blackjack reutiliza `sendMessageWithResult`, que recupera el ID desde `message_create` cuando el retorno directo es nulo. Los tableros solo se registran despues de obtener una clave; si falla el envio inicial se revierte la apuesta, y si falla un tablero intermedio se restaura la mano o se reembolsa la ronda segun corresponda.
+    *   **[Routing general de citas]:** Un helper unico reconoce `hasQuotedMsg`, `quotedMsg`, `quotedSticker`, `quotedStanzaID` y metadatos dentro de `_originalMsg`. Se aplica a Blackjack, Tesoro, `!data`/media, Forja, transferencias y comandos administrativos sobre mensajes citados.
+    *   **[Fallback acotado]:** Si WhatsApp omite el ID de la cita, una accion valida de Blackjack puede recuperar una unica sesion del mismo chat y participante. Se rechazan chat, jugador, accion o coincidencias ambiguas, evitando actuar sobre una partida ajena.
+    *   **[Firma real de `Message.reply`]:** Se corrige la conclusion registrada el 26/07: en `whatsapp-web.js@1.34.7` la firma instalada es `reply(content, chatId, options)`. Pasar las opciones como segundo argumento las interpretaba como chat; `sendBotText` usa ahora `msg.from` de forma explicita antes de `sendOptions`.
+    *   **[Compensacion economica]:** Se resolvio atomicamente la unica apuesta de Blackjack huerfana del incidente y se restituyeron exactamente `5.000` de oro. La operacion encontro una sola fila, quedo marcada resuelta y no requirio migraciones.
+*   **Validacion:** Los 24 scripts `test_*.js` quedaron cubiertos sin fallos, incluida integracion real contra ambos Supabase para transferencia, escrow, concurrencia, cuatro juegos, `!misionstart`, tesoro, notificaciones, subasta y permisos. La regresion reproduce `sendMessage() => undefined`, recupera el ID con `message_create` y comprueba que el listener se elimina. Tambien pasan `node --check` en los diez archivos JS modificados, `npm run graphify:update` y `git diff --check`.
+*   **Notas/Advertencias:** La verificacion productiva posterior al despliegue debe confirmar el SHA, `/healthz`, red activa, reconexion y snapshot RemoteAuth. No se genero una respuesta entrante desde una cuenta humana durante las pruebas automatizadas.
+
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección del fallo de envío silencioso en `sendBotText` (firma `msg.reply`) y optimización monomensaje del compendio `!ayuda` (Ciber-Grimorio).

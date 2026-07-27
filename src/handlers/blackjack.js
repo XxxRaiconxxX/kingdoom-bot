@@ -4,13 +4,65 @@ import { resolvePlayerTarget } from '../targetResolver.js';
 import { normalizePhone } from '../adminStore.js';
 import { resolveWhatsAppPhones } from '../whatsappIdentity.js';
 import { parseGoldAmount, requireSafeGoldInteger } from '../economy.js';
-import { getWhatsAppMessageId } from '../whatsappDelivery.js';
+import { sendMessageWithResult } from '../whatsappDelivery.js';
 
 // Memory store for active blackjack sessions.
 // Key: botMsgId (quoted message ID)
 // Value: { isMultiplayer, playerId, playerPhone, username, bet, deck, playerCards, dealerCards, players, groupChatId, timeoutRef }
 export const activeSessions = new Map();
 const SOLO_SESSION_TIMEOUT_MS = 5 * 60 * 1000;
+const SOLO_ACTIONS = new Set(['pedir', 'plantarse']);
+const PENDING_MULTIPLAYER_ACTIONS = new Set(['aceptar', 'negar']);
+
+function normalizeBlackjackAction(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+export function isBlackjackReplyAction(value) {
+  const action = normalizeBlackjackAction(value);
+  return SOLO_ACTIONS.has(action) || PENDING_MULTIPLAYER_ACTIONS.has(action);
+}
+
+export function isBlackjackBoardText(value) {
+  return /21\s*\(blackjack(?:\s+pvp)?\)/i.test(String(value ?? ''));
+}
+
+export function findBlackjackReplySessionKey(activeMessages, {
+  chatId,
+  sender,
+  action,
+} = {}) {
+  if (!activeMessages || typeof activeMessages.entries !== 'function') return null;
+
+  const normalizedSender = normalizePhone(sender);
+  const normalizedAction = normalizeBlackjackAction(action);
+  if (!normalizedSender || !isBlackjackReplyAction(normalizedAction)) return null;
+
+  const matches = [];
+  for (const [sessionId, session] of activeMessages.entries()) {
+    const sessionChatId = session?.isMultiplayer ? session.groupChatId : session?.chatId;
+    if (!sessionChatId || sessionChatId !== chatId) continue;
+
+    const isParticipant = session?.isMultiplayer
+      ? session.players?.some((player) => normalizePhone(player.playerPhone) === normalizedSender)
+      : normalizePhone(session?.playerPhone) === normalizedSender;
+    if (!isParticipant) continue;
+
+    const allowedActions = session?.isMultiplayer && session.state === 'pending'
+      ? PENDING_MULTIPLAYER_ACTIONS
+      : SOLO_ACTIONS;
+    if (allowedActions.has(normalizedAction)) {
+      matches.push(sessionId);
+    }
+  }
+
+  return matches.length === 1 ? matches[0] : null;
+}
+
+export async function sendTrackedBlackjackMessage(client, chatId, content) {
+  const { messageId } = await sendMessageWithResult(client, chatId, content);
+  return messageId;
+}
 
 // Helper to check if a user already has an active session.
 function getActiveSessionByPlayerId(playerId) {
@@ -253,7 +305,7 @@ async function handleSoloBlackjackTimeout(client, sessionId) {
   }
 
   try {
-    await client.sendMessage(session.chatId, response);
+    await sendTrackedBlackjackMessage(client, session.chatId, response);
   } catch (error) {
     console.error('[handleSoloBlackjackTimeout] No se pudo enviar el cierre:', error);
   }
@@ -384,9 +436,9 @@ export async function handleBlackjack(msg, client) {
       `• *plantarse* (quedarte con tus cartas)`
     ], { icon: '🃏' });
 
-    let replyMsg;
+    let soloSessionId;
     try {
-      replyMsg = await msg.reply(boardText);
+      soloSessionId = await sendTrackedBlackjackMessage(client, msg.from, boardText);
     } catch (error) {
       console.error('[handleBlackjack] No se pudo enviar el tablero inicial:', error);
       const cancellationStatus = await cancelBlackjackBet(betId, apuesta, 'handleBlackjack.board');
@@ -409,10 +461,7 @@ export async function handleBlackjack(msg, client) {
       currentUsos: currentUsos + 1,
       timeoutRef: null,
     };
-    const soloSessionId = getWhatsAppMessageId(replyMsg);
-    if (soloSessionId) {
-      registerSoloSession(client, soloSessionId, session);
-    }
+    registerSoloSession(client, soloSessionId, session);
 
     return null;
   }
@@ -533,18 +582,17 @@ export async function handleBlackjack(msg, client) {
     `• *negar*`
   ], { icon: '⚔️' });
 
-  const replyMsg = await msg.reply(boardText);
-  const sessionId = getWhatsAppMessageId(replyMsg);
-
-  if (sessionId) {
+  try {
+    const sessionId = await sendTrackedBlackjackMessage(client, msg.from, boardText);
     // Set timeout of 5 minutes (300,000 ms)
     session.timeoutRef = setTimeout(() => {
       handleMultiplayerTimeout(client, sessionId);
     }, 5 * 60 * 1000);
 
     activeSessions.set(sessionId, session);
-  } else {
-    console.warn('[handleBlackjack] No se pudo obtener el ID serializado de replyMsg en PvP');
+  } catch (error) {
+    console.error('[handleBlackjack] No se pudo enviar el reto PvP con seguimiento:', error);
+    return 'No se pudo abrir el reto de Blackjack de forma segura. No se realizaron apuestas.';
   }
   return null;
 }
@@ -638,7 +686,7 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
           await resolveBet(session.betId, 0);
         } catch (err) {
           console.error('[handleBlackjackReply] resolveBet bust error:', err);
-          await msg.reply(buildBlackjackSettlementPending([
+          await sendTrackedBlackjackMessage(client, session.chatId || msg.from, buildBlackjackSettlementPending([
             `Aventurero: *${session.username}*`,
             `Puntaje final: *${playerTotal}* · te pasaste de 21`,
           ], 0));
@@ -666,12 +714,12 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
           heraldStat('Usos restantes', `${session.maxUsos - session.currentUsos}/${session.maxUsos}`)
         ], { icon: '🃏' });
 
-        await msg.reply(bustText);
+        await sendTrackedBlackjackMessage(client, session.chatId || msg.from, bustText);
         return null;
       }
 
       if (playerTotal === 21) {
-        await runDealerTurn(msg, session);
+        await runDealerTurn(msg, session, client);
         return null;
       }
 
@@ -690,31 +738,32 @@ export async function handleBlackjackReply(msg, session, sessionId, client) {
         `• *plantarse* (quedarte con tus cartas)`
       ], { icon: '🃏' });
 
-      let replyMsg;
+      let newSoloSessionId;
       try {
-        replyMsg = await msg.reply(updatedBoard);
+        newSoloSessionId = await sendTrackedBlackjackMessage(
+          client,
+          session.chatId || msg.from,
+          updatedBoard
+        );
       } catch (error) {
         session.playerCards.pop();
         session.deck.push(newCard);
         registerSoloSession(client, sessionId, session);
         throw error;
       }
-      const newSoloSessionId = getWhatsAppMessageId(replyMsg);
-      if (newSoloSessionId) {
-        registerSoloSession(client, newSoloSessionId, session);
-      }
+      registerSoloSession(client, newSoloSessionId, session);
       return null;
     }
 
     if (action === 'plantarse') {
-      await runDealerTurn(msg, session);
+      await runDealerTurn(msg, session, client);
       return null;
     }
   }
 }
 
 // Execute the dealer's drawing logic and resolve game payouts (Solo game)
-async function runDealerTurn(msg, session) {
+async function runDealerTurn(msg, session, client) {
   let dealerTotal = calculateHand(session.dealerCards);
 
   while (dealerTotal < 17) {
@@ -744,7 +793,7 @@ async function runDealerTurn(msg, session) {
     await resolveBet(session.betId, payout);
   } catch (err) {
     console.error('[runDealerTurn] resolveBet error:', err.message);
-    await msg.reply(buildBlackjackSettlementPending([
+    await sendTrackedBlackjackMessage(client, session.chatId || msg.from, buildBlackjackSettlementPending([
       `Aventurero: *${session.username}*`,
       `Puntaje: jugador *${playerTotal}* · crupier *${dealerTotal}*`,
     ], payout));
@@ -775,7 +824,7 @@ async function runDealerTurn(msg, session) {
     heraldStat('Usos restantes', `${session.maxUsos - session.currentUsos}/${session.maxUsos}`)
   ], { icon: '🃏' });
 
-  await msg.reply(finalText);
+  await sendTrackedBlackjackMessage(client, session.chatId || msg.from, finalText);
 }
 
 async function startMultiplayerGame(client, sessionId, session, groupChatId) {
@@ -784,7 +833,11 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
 
   const accepted = session.players.filter(p => p.status === 'accepted');
   if (accepted.length < 2) {
-    await client.sendMessage(groupChatId, decorateCommandReply('21', '❌ No hay suficientes jugadores para iniciar el Blackjack PvP.'));
+    await sendTrackedBlackjackMessage(
+      client,
+      groupChatId,
+      decorateCommandReply('21', '❌ No hay suficientes jugadores para iniciar el Blackjack PvP.')
+    );
     return;
   }
 
@@ -794,7 +847,11 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
     const dbPlayer = await getPlayer(p.playerPhone);
     const currentUsos = await getBlackjackUsage(p.playerId);
     if (!dbPlayer || dbPlayer.gold < session.bet || currentUsos >= 5) {
-      await client.sendMessage(groupChatId, decorateCommandReply('21', `⚠️ *${p.username}* fue excluido porque no tiene oro suficiente o alcanzó el límite de usos.`));
+      await sendTrackedBlackjackMessage(
+        client,
+        groupChatId,
+        decorateCommandReply('21', `⚠️ *${p.username}* fue excluido porque no tiene oro suficiente o alcanzó el límite de usos.`)
+      );
       continue;
     }
     
@@ -811,7 +868,11 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
       const cancellationText = cancellationStatus === 'refunded'
         ? `⚠️ La apuesta de *${p.username}* fue cancelada y reembolsada; quedo fuera de la ronda.`
         : `⚠️ La apuesta de *${p.username}* no pudo confirmarse; cualquier retencion queda en custodia y quedo fuera de la ronda.`;
-      await client.sendMessage(groupChatId, decorateCommandReply('21', cancellationText));
+      await sendTrackedBlackjackMessage(
+        client,
+        groupChatId,
+        decorateCommandReply('21', cancellationText)
+      );
       continue;
     }
     
@@ -830,7 +891,11 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
     const cancellationMessage = pendingRefunds.length > 0
       ? `⚠️ No hay suficientes jugadores validos. No se pudo confirmar el reembolso de *${pendingRefunds.join(', ')}*; su apuesta permanece en custodia.`
       : '❌ No hay suficientes jugadores validos para iniciar la partida. Reembolso emitido.';
-    await client.sendMessage(groupChatId, decorateCommandReply('21', cancellationMessage));
+    await sendTrackedBlackjackMessage(
+      client,
+      groupChatId,
+      decorateCommandReply('21', cancellationMessage)
+    );
     return;
   }
 
@@ -842,9 +907,9 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
   session.state = 'playing';
 
   const boardText = formatMultiplayerBoard(session);
-  let replyMsg;
+  let newSessionId;
   try {
-    replyMsg = await client.sendMessage(groupChatId, boardText);
+    newSessionId = await sendTrackedBlackjackMessage(client, groupChatId, boardText);
   } catch (error) {
     console.error('[startMultiplayerGame] No se pudo enviar el tablero:', error);
     const pendingRefunds = await refundBlackjackPlayers(
@@ -856,21 +921,22 @@ async function startMultiplayerGame(client, sessionId, session, groupChatId) {
       ? `⚠️ La partida no pudo iniciar. Reembolso pendiente para *${pendingRefunds.join(', ')}*.`
       : '⚠️ La partida no pudo iniciar y todas las apuestas fueron reembolsadas.';
     try {
-      await client.sendMessage(groupChatId, decorateCommandReply('21', cancellationText));
+      await sendTrackedBlackjackMessage(
+        client,
+        groupChatId,
+        decorateCommandReply('21', cancellationText)
+      );
     } catch (notificationError) {
       console.error('[startMultiplayerGame] No se pudo notificar la cancelacion:', notificationError);
     }
     return;
   }
-  const newSessionId = getWhatsAppMessageId(replyMsg);
 
-  if (newSessionId) {
-    session.timeoutRef = setTimeout(() => {
-      handleMultiplayerTimeout(client, newSessionId);
-    }, 5 * 60 * 1000);
+  session.timeoutRef = setTimeout(() => {
+    handleMultiplayerTimeout(client, newSessionId);
+  }, 5 * 60 * 1000);
 
-    activeSessions.set(newSessionId, session);
-  }
+  activeSessions.set(newSessionId, session);
 }
 
 // Resolve the current round in a multiplayer PvP session
@@ -912,9 +978,9 @@ async function resolveMultiplayerRound(client, sessionId, session, groupChatId) 
     }
 
     const boardText = formatMultiplayerBoard(session);
-    let replyMsg;
+    let newSessionId;
     try {
-      replyMsg = await client.sendMessage(groupChatId, boardText);
+      newSessionId = await sendTrackedBlackjackMessage(client, groupChatId, boardText);
     } catch (error) {
       console.error('[resolveMultiplayerRound] No se pudo enviar el siguiente tablero:', error);
       const pendingRefunds = await refundBlackjackPlayers(
@@ -926,22 +992,23 @@ async function resolveMultiplayerRound(client, sessionId, session, groupChatId) 
         ? `⚠️ La partida fue cancelada. Reembolso pendiente para *${pendingRefunds.join(', ')}*.`
         : '⚠️ La partida fue cancelada y todas las apuestas fueron reembolsadas.';
       try {
-        await client.sendMessage(groupChatId, decorateCommandReply('21', cancellationText));
+        await sendTrackedBlackjackMessage(
+          client,
+          groupChatId,
+          decorateCommandReply('21', cancellationText)
+        );
       } catch (notificationError) {
         console.error('[resolveMultiplayerRound] No se pudo notificar la cancelacion:', notificationError);
       }
       return;
     }
-    const newSessionId = getWhatsAppMessageId(replyMsg);
 
-    if (newSessionId) {
-      // Set new timeout of 5 minutes
-      session.timeoutRef = setTimeout(() => {
-        handleMultiplayerTimeout(client, newSessionId);
-      }, 5 * 60 * 1000);
+    // Set new timeout of 5 minutes
+    session.timeoutRef = setTimeout(() => {
+      handleMultiplayerTimeout(client, newSessionId);
+    }, 5 * 60 * 1000);
 
-      activeSessions.set(newSessionId, session);
-    }
+    activeSessions.set(newSessionId, session);
   } else {
     // End of game, resolve payout and declare winners
     await finishMultiplayerGame(client, session, groupChatId);
@@ -1067,5 +1134,5 @@ async function finishMultiplayerGame(client, session, groupChatId) {
   }
 
   const finalCard = heraldCard('21 (Blackjack PvP) - Fin de Partida', lines, { icon: '🏆' });
-  await client.sendMessage(groupChatId, finalCard);
+  await sendTrackedBlackjackMessage(client, groupChatId, finalCard);
 }

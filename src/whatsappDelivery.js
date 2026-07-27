@@ -33,12 +33,14 @@ export function getWhatsAppMessageId(value) {
     const nestedCandidates = [
       candidate._serialized,
       candidate.$1,
-      candidate.id,
       candidate.messageId,
       candidate.stanzaId,
+      candidate.id,
       candidate.quotedStanzaID,
       candidate.key?.id,
       candidate._data?.id,
+      candidate._data?.key,
+      candidate._data?.stanzaId,
     ];
 
     for (const nested of nestedCandidates) {
@@ -50,6 +52,26 @@ export function getWhatsAppMessageId(value) {
   };
 
   return visit(value);
+}
+
+export function hasQuotedMessageMetadata(msg) {
+  if (!msg || typeof msg !== 'object') return false;
+
+  const dataSources = [
+    msg._data,
+    msg._originalMsg?._data,
+  ].filter(Boolean);
+
+  return Boolean(
+    msg.hasQuotedMsg
+    || dataSources.some((data) => (
+      data.quotedMsg
+      || data.quotedSticker
+      || getWhatsAppMessageId(data.quotedStanzaID)
+      || getWhatsAppMessageId(data.quotedMsg?.id)
+      || data.quotedParticipant
+    ))
+  );
 }
 
 function isServerAcknowledged(ack) {

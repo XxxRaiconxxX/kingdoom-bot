@@ -33,7 +33,14 @@ import {
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
-import { handleBlackjack, handleBlackjackReply, activeSessions } from './handlers/blackjack.js';
+import {
+  activeSessions,
+  findBlackjackReplySessionKey,
+  handleBlackjack,
+  handleBlackjackReply,
+  isBlackjackBoardText,
+  isBlackjackReplyAction,
+} from './handlers/blackjack.js';
 import {
   activeTreasures,
   buildTreasureClaimFeedback,
@@ -74,6 +81,7 @@ import {
 import { ResilientRemoteAuth, VersionedFileRemoteAuthStore } from './remoteAuth.js';
 import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
 import { isLidWhatsAppId, resolveMessageSenderPhone } from './whatsappIdentity.js';
+import { hasQuotedMessageMetadata } from './whatsappDelivery.js';
 
 const { Client, LocalAuth, Message } = pkg;
 
@@ -616,7 +624,7 @@ async function sendBotText(msg, text, {
     const sendOptions = index === 0 && mentions.length > 0 ? { mentions } : {};
     if (shouldReply && typeof msg?.reply === 'function') {
       try {
-        await msg.reply(chunk, sendOptions);
+        await msg.reply(chunk, msg.from, sendOptions);
         continue;
       } catch (replyError) {
         console.warn(`[delivery:${context}] msg.reply fallo; intentando envio directo.`, replyError?.message ?? replyError);
@@ -2318,49 +2326,91 @@ client.on('message', async (msg) => {
   const routedMsg = createMessageView(msg, { author: sender });
 
   // Intercept replies (Blackjack, Tesoros, etc.)
-  if (msg.hasQuotedMsg) {
+  const hasQuotedMessage = hasQuotedMessageMetadata(routedMsg);
+  if (hasQuotedMessage || isBlackjackReplyAction(text)) {
     try {
-      const quotedDetails = await safeGetQuotedDetails(routedMsg);
-      if (quotedDetails.hasQuoted && quotedDetails.id) {
-        const quotedId = quotedDetails.id;
+      const quotedDetails = hasQuotedMessage
+        ? await safeGetQuotedDetails(routedMsg)
+        : { hasQuoted: false, id: null, author: null, body: null };
+      const quotedId = quotedDetails.id;
+      const quotedBlackjackSessionId = quotedId
+        ? findActiveQuotedMessageKey(activeSessions, quotedId)
+        : null;
+      const treasureMessageId = quotedId
+        ? findActiveQuotedMessageKey(activeTreasures, quotedId)
+        : null;
+      const canUseParticipantFallback = (
+        !quotedDetails.hasQuoted
+        || !quotedDetails.body
+        || isBlackjackBoardText(quotedDetails.body)
+      );
+      const fallbackBlackjackSessionId = (
+        !quotedBlackjackSessionId
+        && !treasureMessageId
+        && canUseParticipantFallback
+      )
+        ? findBlackjackReplySessionKey(activeSessions, {
+            chatId: msg.from,
+            sender,
+            action: text,
+          })
+        : null;
+      const blackjackSessionId = quotedBlackjackSessionId || fallbackBlackjackSessionId;
 
-        // Blackjack session replies
-        const blackjackSessionId = findActiveQuotedMessageKey(activeSessions, quotedId);
-        if (blackjackSessionId) {
-          const session = activeSessions.get(blackjackSessionId);
-          
-          let isAllowed = false;
-          if (session.isMultiplayer) {
-            isAllowed = session.players.some(p => p.playerPhone === normalizePhone(sender));
-          } else {
-            isAllowed = normalizePhone(sender) === normalizePhone(session.playerPhone);
-          }
+      if (blackjackSessionId) {
+        const session = activeSessions.get(blackjackSessionId);
+        const isAllowed = session.isMultiplayer
+          ? session.players.some(
+              (player) => normalizePhone(player.playerPhone) === normalizePhone(sender)
+            )
+          : normalizePhone(sender) === normalizePhone(session.playerPhone);
 
-          if (isAllowed) {
-            const replyText = await handleBlackjackReply(routedMsg, session, blackjackSessionId, client);
-            if (replyText) {
-              await msg.reply(decorateCommandReply('21', replyText));
-            }
-            return;
-          } else {
-            // Ignore replies from other players to prevent interference
-            return;
-          }
-        }
-
-        // Tesoro Errante replies
-        const treasureMessageId = findActiveQuotedMessageKey(activeTreasures, quotedId);
-        if (treasureMessageId) {
-          const treasure = activeTreasures.get(treasureMessageId);
-          const treasureReply = await handleTreasureReply(routedMsg, treasure, treasureMessageId, client);
-          if (treasureReply) {
-            await sendBotText(msg, treasureReply, {
-              context: 'treasure_claim',
-              mentions: resolvedSenderPhone ? [formatJid(resolvedSenderPhone)] : [],
+        if (isAllowed) {
+          const replyText = await handleBlackjackReply(
+            routedMsg,
+            session,
+            blackjackSessionId,
+            client
+          );
+          if (replyText) {
+            await sendBotText(msg, decorateCommandReply('21', replyText), {
+              context: 'blackjack_reply',
             });
           }
           return;
         }
+
+        // Ignore replies from other players to prevent interference.
+        return;
+      }
+
+      if (treasureMessageId) {
+        const treasure = activeTreasures.get(treasureMessageId);
+        const treasureReply = await handleTreasureReply(
+          routedMsg,
+          treasure,
+          treasureMessageId,
+          client
+        );
+        if (treasureReply) {
+          await sendBotText(msg, treasureReply, {
+            context: 'treasure_claim',
+            mentions: resolvedSenderPhone ? [formatJid(resolvedSenderPhone)] : [],
+          });
+        }
+        return;
+      }
+
+      if (
+        quotedDetails.hasQuoted
+        && isBlackjackReplyAction(text)
+        && isBlackjackBoardText(quotedDetails.body)
+      ) {
+        await sendBotText(msg, decorateCommandReply(
+          '21',
+          'Esta partida ya no esta activa. Si hubo una apuesta retenida, queda protegida para recuperacion segura.'
+        ), { context: 'blackjack_inactive' });
+        return;
       }
 
       if (
@@ -2375,6 +2425,12 @@ client.on('message', async (msg) => {
       }
     } catch (e) {
       console.error('[Reply Intercept Error]', e);
+      await sendEmergencyText(
+        msg,
+        'No pude procesar esta respuesta interactiva. No se aplicara una segunda accion; intenta una vez mas.',
+        'reply_intercept'
+      );
+      return;
     }
   }
 

@@ -1,6 +1,7 @@
 import { normalizePhone } from '../adminStore.js';
 import { safeGetQuotedDetails } from '../targetResolver.js';
 import { downloadMessageMedia, resolveMediaMessage } from '../whatsappMedia.js';
+import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 import {
   clearMarketForgeSession,
   getMarketForgeSession,
@@ -27,7 +28,7 @@ function isImageMimeType(mime) {
 }
 
 async function extractQuotedReference(msg) {
-  if (!msg.hasQuotedMsg) {
+  if (!hasQuotedMessageMetadata(msg)) {
     return { url: '', imageDataUrl: '', quotedText: '' };
   }
 
