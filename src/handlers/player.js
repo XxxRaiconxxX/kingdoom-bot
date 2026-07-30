@@ -162,7 +162,8 @@ export async function handlePlayerMessage(msg) {
       '──────────────',
       treeSection('01. PERSONAJE & ECONOMÍA'),
       treeList([
-        treeCommand('!perfil · !inventario', 'Estado de aventurero y mochila.'),
+        treeCommand('!perfil · !items · !vender', 'Perfil, mochila y venta a tienda.'),
+        treeCommand('🤝 !comerciar @user <deal>', 'Trueque directo entre aventureros.'),
         treeCommand('!oro [monto] [@user]', 'Consultar o transferir oro.'),
         treeCommand('!reclamar <cod> · !vinculo', 'Reclamar tesoro / enlace web.'),
         treeCommand('!cambiarcuenta · !nuevo', 'Cambiar personaje / guía inicio.'),
@@ -179,7 +180,8 @@ export async function handlePlayerMessage(msg) {
       '',
       treeSection('03. MERCADO & SUBASTAS'),
       treeList([
-        treeCommand('🏪 !mercado · 🗡️ !item <nom>', 'Explorar tienda y fichas.'),
+        treeCommand('🏪 !mercado · 💰 !vender <item>', 'Explorar tienda y vender objetos.'),
+        treeCommand('🗡️ !item <nom> · 🤝 !comerciar', 'Fichas de ítem y trueque.'),
         treeCommand('⚒️ !forjaritem <idea>', 'Borrador IA para el mercado.'),
         treeCommand('🎯 !mision · 🎪 !evento', 'Ver misiones y eventos.'),
         treeCommand('⚖️ !subastas · 💰 !pujar · 🚪 !retirarse', 'Subastas y pujas.'),

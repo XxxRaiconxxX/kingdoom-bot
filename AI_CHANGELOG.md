@@ -6,13 +6,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 30/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/games.js`, `src/handlers/player.js`, `src/handlers/tradeHandler.js`, `.env`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Actualización del Oráculo a la versión Prompt v2 con proveedor NVIDIA NIM y desarrollo del sistema de comercio e inventario en WhatsApp (`!items`, `!vender`, `!comerciar`, `!aceptarcomercio`, `!cancelarcomercio`).
+*   **Resumen de Tareas:** Actualización del Oráculo a la versión Prompt v2 con proveedor NVIDIA NIM, desarrollo del sistema de comercio e inventario en WhatsApp (`!items`, `!vender`, `!comerciar`, `!aceptarcomercio`, `!cancelarcomercio`) e inclusión de los nuevos comandos en el menú `!ayuda`.
 *   **Cambios Clave:**
     *   **[Prompt Oráculo v2]:** Se reemplazó el system prompt en `games.js` por la versión v2 (místico veterano cínico, anti-prompt injection, reconocimiento exclusivo de Nothing/E.XE, visualización de inventario real).
     *   **[Proveedor NVIDIA NIM]:** Integración y validación de 6 claves API NVIDIA NIM (`meta/llama-3.1-70b-instruct`) con fallback automático a Groq y Gemini en `.env`.
     *   **[Comando !items / !inventario / !mochila]:** Muestra la mochila del aventurero desde `player_inventory` en Supabase con cantidades, estado de financiación/bloqueo `is_locked` y valor de reventa.
     *   **[Comando !vender / !venderitem]:** Permite vender ítems de la mochila a la taberna (50% valor mercado), abonando oro en la bolsa de Supabase (`updateGold`) si no está bloqueado.
     *   **[Comando !comerciar / !trocar / !intercambiar]:** Sistema de comercio atómico entre aventureros (`!comerciar @jugador <oferta> por <pedido>`). Soporta trueques de oro por ítem, ítem por oro e ítem por ítem. Respuestas con `!aceptarcomercio` y `!cancelarcomercio`.
+    *   **[Actualización Compendio !ayuda]:** Se agregaron los accesos directos y descripciones de `!items`, `!vender` y `!comerciar` en las secciones `01. PERSONAJE & ECONOMÍA` y `03. MERCADO & SUBASTAS` del Grimorio.
 *   **Validación:** Verificación sintáctica ESM limpia, prueba de respuesta en tiempo real del Oráculo v2 con NVIDIA NIM (status 200) y simulación automatizada de variantes de comandos con outputs de tarjetas Heraldo.
 
 ### [Fecha: 27/07/2026] - [Autor: Codex]
