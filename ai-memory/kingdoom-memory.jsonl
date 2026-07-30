@@ -88,3 +88,5 @@
 
 
 
+
+{"id":"20260730-antigravity-oraculo-v2-and-trade-system","createdAt":"2026-07-30T19:59:24.320Z","project":"Kingdoom Bot","type":"decision","actor":"Antigravity","area":"bot-features","summary":"Upgrade de Oraculo v2 con NVIDIA NIM y nuevos comandos !items, !vender y !comerciar","details":"Se implemento el Prompt v2 del Oraculo con soporte de 6 API keys NVIDIA NIM y fallback automatico. Se creo el handler de comercio e inventario en WhatsApp (tradeHandler.js) con comandos !items, !vender, !comerciar, !aceptarcomercio y !cancelarcomercio.","status":"done","tags":["bot","oraculo","nvidia","trade","inventory","whatsapp"],"files":["src/handlers/games.js","src/handlers/player.js","src/handlers/tradeHandler.js",".env","AI_CHANGELOG.md","ai-memory/kingdoom-memory.jsonl"]}

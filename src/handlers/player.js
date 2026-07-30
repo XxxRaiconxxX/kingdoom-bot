@@ -19,6 +19,13 @@ import { askKingdoomAI } from '../ai.js';
 import { isAdminUser, isOwner, isStaffUser, normalizePhone } from '../adminStore.js';
 import { heraldCard, heraldCommand, heraldList, heraldSection, heraldStat, treeCommand, treeList, treeSection } from '../formatting.js';
 import { handleSubastas, handlePujar, handleRetirarse } from './auctions.js';
+import {
+  handleItems,
+  handleVenderItem,
+  handleComerciar,
+  handleAceptarComercio,
+  handleCancelarComercio
+} from './tradeHandler.js';
 import { parseGoldAmount } from '../economy.js';
 import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 
@@ -386,6 +393,99 @@ export async function handlePlayerMessage(msg) {
     const items = await searchMarketItems(body);
 
     if (!items.length) {
+      return `❌ *Uso correcto para enviar oro:*\n\`!oro <monto> <@usuario>\``;
+    }
+
+    const { resolvePlayerTarget } = await import('../targetResolver.js');
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    
+    if (!resolved.ok) {
+      if (resolved?.reason === 'ambiguous') {
+        return `⚠️ Hay varias coincidencias. Usa el celular, cita el mensaje o menciona al jugador directamente.`;
+      }
+      return `❌ Jugador no encontrado en el reino.`;
+    }
+
+    const targetPlayer = resolved.player;
+
+    if (targetPlayer.id === player.id) {
+      return `❌ No puedes enviarte oro a ti mismo.`;
+    }
+
+    try {
+      const transferResult = await transferGold(player.id, targetPlayer.id, amount);
+      const reportedTotal = Number(transferResult.sender_gold);
+      const nuevoTotal = Number.isFinite(reportedTotal) ? reportedTotal : player.gold - amount;
+      return `✅ Has enviado *${amount.toLocaleString('es-PY')} oro* a *${targetPlayer.username}*.\n🪙 Tu nuevo total: *${nuevoTotal.toLocaleString('es-PY')}*`;
+    } catch (err) {
+      console.error('[oro transfer error]', err);
+      return `❌ Hubo un error al procesar la transferencia de oro. Inténtalo de nuevo.`;
+    }
+  }
+
+  if (command === 'perfil' || command === 'estado') {
+    let targetPlayer = player;
+
+    if (body) {
+      if (isOwner(sender) || isAdminUser(sender) || player?.is_admin) {
+        const { resolvePlayerTarget } = await import('../targetResolver.js');
+        const resolved = await resolvePlayerTarget(msg, body);
+        if (!resolved.ok) {
+          if (resolved?.reason === 'ambiguous') {
+            return `⚠️ Hay varias coincidencias para "${body}". Especifica el nombre completo o usa el ID.`;
+          }
+          return `❌ Jugador no encontrado en el reino.`;
+        }
+        targetPlayer = resolved.player;
+      } else {
+        return `❌ Solo los administradores pueden ver el perfil de otros viajeros.`;
+      }
+    }
+
+    const phoneList = (targetPlayer.phone || '').split(',').map(n => n.trim()).filter(Boolean);
+    const ids = phoneList.filter(n => n.length >= 15);
+    const phones = phoneList.filter(n => n.length < 15);
+
+    const stats = [
+      heraldStat('Nombre', `*${targetPlayer.username}*`),
+      heraldStat('Oro total', `*${targetPlayer.gold.toLocaleString('es-PY')}*`),
+      heraldStat('Oro semanal', `*${(targetPlayer.weekly_gold ?? 0).toLocaleString('es-PY')}*`),
+      heraldStat('ID Web', `*${targetPlayer.id}*`),
+      heraldStat('ID WhatsApp', `*${ids.length > 0 ? ids.join(', ') : 'Ninguno'}*`),
+      heraldStat('Telefono', `*${phones.length > 0 ? phones.join(', ') : 'Ninguno'}*`),
+    ];
+
+    return heraldCard('Perfil del aventurero', stats, { icon: '🛡️' });
+  }
+
+  if (command === 'ranking' || command === 'top') {
+    const board = await getLeaderboard();
+    if (!board.length) return `📊 Aun no hay guerreros en el ranking.`;
+
+    const lines = board.map((entry, index) => {
+      const medal = ['🥇', '🥈', '🥉'][index] || `${index + 1}.`;
+      return `${medal} *${entry.username}* - ${entry.weekly_gold.toLocaleString('es-PY')} oro`;
+    }).join('\n');
+
+    return heraldCard('Ranking semanal del reino', [lines], { icon: '⚔️' });
+  }
+
+  if (command === 'ricos' || command === 'fortunas') {
+    const board = await getGoldLeaderboard();
+    if (!board.length) return `👑 Nadie ha amasado fortuna todavia.`;
+
+    const lines = board.map((entry, index) => {
+      const medal = ['🥇', '🥈', '🥉'][index] || `${index + 1}.`;
+      return `${medal} *${entry.username}* - ${entry.gold.toLocaleString('es-PY')} oro`;
+    }).join('\n');
+
+    return heraldCard('Grandes fortunas del reino', [lines], { icon: '👑' });
+  }
+
+  if (command === 'mercado') {
+    const items = await searchMarketItems(body);
+
+    if (!items.length) {
       return body
         ? `🏪 No halle articulos para *${body}* en el mercado del reino.`
         : `🏪 El mercado esta vacio hoy, viajero.`;
@@ -458,6 +558,26 @@ export async function handlePlayerMessage(msg) {
       `Cierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro`,
       clipText(event.description || event.long_description || event.rewards, 500),
     ], { icon: '🎭' });
+  }
+
+  if (command === 'items' || command === 'inventario' || command === 'mochila') {
+    return await handleItems(msg, player);
+  }
+
+  if (command === 'vender' || command === 'venderitem') {
+    return await handleVenderItem(msg, player, body);
+  }
+
+  if (command === 'comerciar' || command === 'trocar' || command === 'intercambiar') {
+    return await handleComerciar(msg, player, body);
+  }
+
+  if (command === 'aceptarcomercio' || command === 'aceptartrato') {
+    return await handleAceptarComercio(msg, player);
+  }
+
+  if (command === 'cancelarcomercio' || command === 'rechazarcomercio') {
+    return await handleCancelarComercio(msg, player);
   }
 
   if (command === 'subasta' || command === 'subastas') {
