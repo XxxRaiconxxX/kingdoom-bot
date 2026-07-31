@@ -5,13 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 31/07/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/supabase.js`, `src/handlers/player.js`, `src/handlers/businessHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación del esquema de cobro de fondos y consulta de negocios pasivos mediante el bot de WhatsApp (`!negocios`, `!cobrar`, `!recolectar`).
+*   **Archivos Modificados:** `src/supabase.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/handlers/businessHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementación del esquema de cobro de fondos y consulta de negocios pasivos mediante el bot de WhatsApp (`!negocios`, `!cobrar`, `!recolectar`) y auditoría total de enrutamiento de comandos en menús de ayuda y administración.
 *   **Cambios Clave:**
     *   **[Helpers de Supabase para Negocios]:** Adición de `getPlayerBusinesses(playerId)` y `collectPlayerBusinessesGold(playerId)` en `supabase.js`, consumiendo la tabla `businesses` y el RPC de recolección `collect_business_gold`.
     *   **[Handler de Negocios (businessHandler.js)]:** Módulo con `handleNegocios` (muestra lista de propiedades activas, tasa/h, oro acumulado y tope) y `handleCobrarNegocios` (ejecuta la recolección segura en Supabase y acredita el oro a la bolsa del jugador).
     *   **[Comandos !negocios y !cobrar en WhatsApp]:** Enrutamiento de alias (`!negocios`, `!misnegocios`, `!cobrar`, `!recolectar`) e integración en la sección `01. PERSONAJE & ECONOMÍA` de `!ayuda`.
-*   **Validación:** Verificación sintáctica ESM limpia, prueba de recolección segura contra Supabase RPC y script de simulación de ejecuciones.
+    *   **[Auditoría Total y Menú !admin]:** Verificación exhaustiva de 58 comandos únicos en el bot. Se integraron los comandos `!verificarnumero`, `!desvincular` y `!data` en las listas del menú `!admin`, logrando 100% de cobertura en menús.
+*   **Validación:** Verificación sintáctica ESM limpia, prueba de recolección segura contra Supabase RPC y auditoría estática de todos los comandos en código.
 
 ### [Fecha: 30/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/games.js`, `src/handlers/player.js`, `src/handlers/tradeHandler.js`, `.env`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
