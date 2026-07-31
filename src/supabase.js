@@ -2968,3 +2968,95 @@ export async function processMarketInstallments() {
   return data;
 }
 
+export async function getPlayerBusinesses(playerId) {
+  if (!playerId) return [];
+  const { data, error } = await supabase
+    .from('businesses')
+    .select('id, name, description, business_type, icon, production_label, gold_per_hour, max_storage, status, last_collected_at, opened_at')
+    .eq('player_id', playerId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+
+  if (error || !data) {
+    if (error) console.error('[getPlayerBusinesses]', error.message);
+    return [];
+  }
+
+  const now = Date.now();
+  return data.map(b => {
+    const lastCollectedAt = Date.parse(b.last_collected_at);
+    const elapsedSeconds = Number.isFinite(lastCollectedAt) ? Math.max(0, Math.floor((now - lastCollectedAt) / 1000)) : 0;
+    const storedGold = Math.min(
+      Math.max(0, b.max_storage || 0),
+      Math.floor((elapsedSeconds * Math.max(0, b.gold_per_hour || 0)) / 3600)
+    );
+    const capped = storedGold >= (b.max_storage || 0);
+    return {
+      ...b,
+      stored_gold: storedGold,
+      capped
+    };
+  });
+}
+
+export async function collectPlayerBusinessesGold(playerId, businessId = null) {
+  if (!playerId) return { success: false, message: 'ID de jugador no válido.', totalCollected: 0 };
+
+  let targetBusinessIds = [];
+  if (businessId) {
+    targetBusinessIds = [businessId];
+  } else {
+    const businesses = await getPlayerBusinesses(playerId);
+    const collectible = businesses.filter(b => b.stored_gold > 0);
+    if (collectible.length === 0) {
+      return {
+        success: false,
+        message: 'Tus negocios aún no han producido oro suficiente para recolectar.',
+        totalCollected: 0,
+        details: []
+      };
+    }
+    targetBusinessIds = collectible.map(b => b.id);
+  }
+
+  let totalCollected = 0;
+  let newBalance = null;
+  const details = [];
+
+  for (const bId of targetBusinessIds) {
+    const { data, error } = await supabase.rpc('collect_business_gold', {
+      p_business_id: bId,
+      p_player_id: playerId
+    });
+
+    if (error) {
+      console.error('[collectPlayerBusinessesGold RPC]', error.message);
+      continue;
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row && row.success) {
+      const amount = Number(row.collected_gold || 0);
+      totalCollected += amount;
+      newBalance = row.remaining_gold ?? newBalance;
+      details.push({ businessId: bId, collected: amount });
+    }
+  }
+
+  if (totalCollected === 0) {
+    return {
+      success: false,
+      message: 'No se pudo recolectar oro de los negocios seleccionados.',
+      totalCollected: 0,
+      details: []
+    };
+  }
+
+  return {
+    success: true,
+    message: `¡Has recolectado 🪙 ${totalCollected.toLocaleString('es-PY')} oro de tus negocios!`,
+    totalCollected,
+    newBalance,
+    details
+  };
+}

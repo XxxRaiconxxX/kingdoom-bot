@@ -26,6 +26,7 @@ import {
   handleAceptarComercio,
   handleCancelarComercio
 } from './tradeHandler.js';
+import { handleNegocios, handleCobrarNegocios } from './businessHandler.js';
 import { parseGoldAmount } from '../economy.js';
 import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 
@@ -163,6 +164,7 @@ export async function handlePlayerMessage(msg) {
       treeSection('01. PERSONAJE & ECONOMÍA'),
       treeList([
         treeCommand('!perfil · !items · !vender', 'Perfil, mochila y venta a tienda.'),
+        treeCommand('🏪 !negocios · 💰 !cobrar', 'Producción pasiva y recaudación.'),
         treeCommand('🤝 !comerciar @user <deal>', 'Trueque directo entre aventureros.'),
         treeCommand('!oro [monto] [@user]', 'Consultar o transferir oro.'),
         treeCommand('!reclamar <cod> · !vinculo', 'Reclamar tesoro / enlace web.'),
@@ -560,6 +562,14 @@ export async function handlePlayerMessage(msg) {
       `Cierre: *${event.end_date || '-'}* - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro`,
       clipText(event.description || event.long_description || event.rewards, 500),
     ], { icon: '🎭' });
+  }
+
+  if (command === 'negocios' || command === 'misnegocios' || command === 'negocio') {
+    return await handleNegocios(msg, player);
+  }
+
+  if (command === 'cobrar' || command === 'recolectar' || command === 'recolectarnegocios' || command === 'cobrarnegocio') {
+    return await handleCobrarNegocios(msg, player, body);
   }
 
   if (command === 'items' || command === 'inventario' || command === 'mochila') {
