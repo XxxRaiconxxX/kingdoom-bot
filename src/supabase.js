@@ -3060,3 +3060,22 @@ export async function collectPlayerBusinessesGold(playerId, businessId = null) {
     details
   };
 }
+
+export async function upgradePlayerBusinessInDb(businessId, playerId, upgradeType, newValue, costGold) {
+  const { data, error } = await supabase.rpc('upgrade_player_business', {
+    p_business_id: businessId,
+    p_player_id: playerId,
+    p_upgrade_type: upgradeType,
+    p_new_value: newValue,
+    p_cost_gold: costGold
+  });
+
+  if (error) {
+    console.error('[upgradePlayerBusinessInDb RPC Error]', error.message);
+    throw new Error(`Error en la transacción RPC de Supabase: ${error.message}`);
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return row ?? { success: false, message: 'No se obtuvo respuesta del servidor.' };
+}
+

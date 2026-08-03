@@ -211,9 +211,10 @@ function applyInputBudget(history, systemPrompt, maxEstimatedInputTokens) {
   };
 }
 
-function buildGeminiContents(history) {
+function buildGeminiContents(history = []) {
+  const safeHistory = Array.isArray(history) ? history : [];
   let lastRole = null;
-  return history
+  return safeHistory
     .filter((msg, i) => {
       if (i === 0 && msg.role !== 'user') return false;
       return true;
@@ -227,8 +228,9 @@ function buildGeminiContents(history) {
     }, []);
 }
 
-function buildOpenAICompatibleMessages(history, systemPrompt) {
-  const normalizedHistory = history.map((msg) => ({
+function buildOpenAICompatibleMessages(history = [], systemPrompt) {
+  const safeHistory = Array.isArray(history) ? history : [];
+  const normalizedHistory = safeHistory.map((msg) => ({
     role: msg.role === 'assistant' ? 'assistant' : 'user',
     content: String(msg.content ?? ''),
   }));

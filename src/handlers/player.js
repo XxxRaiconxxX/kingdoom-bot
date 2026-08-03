@@ -27,6 +27,12 @@ import {
   handleCancelarComercio
 } from './tradeHandler.js';
 import { handleNegocios, handleCobrarNegocios } from './businessHandler.js';
+import {
+  handleNegociar,
+  handleContraofertar,
+  handleAceptarTrato,
+  handleCancelarTrato
+} from './businessNegotiationHandler.js';
 import { parseGoldAmount } from '../economy.js';
 import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 
@@ -165,6 +171,8 @@ export async function handlePlayerMessage(msg) {
       treeList([
         treeCommand('!perfil · !items · !vender', 'Perfil, mochila y venta a tienda.'),
         treeCommand('🏪 !negocios · 💰 !cobrar', 'Producción pasiva y recaudación.'),
+        treeCommand('🏛️ !negociar <neg> <tipo>', 'Ampliar negocio con el Fisco Real.'),
+        treeCommand('📜 !contraofertar · !aceptartrato', 'Regatear y firmar decretos reales.'),
         treeCommand('🤝 !comerciar @user <deal>', 'Trueque directo entre aventureros.'),
         treeCommand('!oro [monto] [@user]', 'Consultar o transferir oro.'),
         treeCommand('!reclamar <cod> · !vinculo', 'Reclamar tesoro / enlace web.'),
@@ -570,6 +578,22 @@ export async function handlePlayerMessage(msg) {
 
   if (command === 'cobrar' || command === 'recolectar' || command === 'recolectarnegocios' || command === 'cobrarnegocio') {
     return await handleCobrarNegocios(msg, player, body);
+  }
+
+  if (command === 'negociar' || command === 'ampliarnegocio' || command === 'mejorarnegocio') {
+    return await handleNegociar(msg, player, body);
+  }
+
+  if (command === 'contraofertar' || command === 'regatear') {
+    return await handleContraofertar(msg, player, body);
+  }
+
+  if (command === 'aceptartrato' || command === 'aceptarnegociacion' || command === 'firmartrato') {
+    return await handleAceptarTrato(msg, player);
+  }
+
+  if (command === 'cancelartrato' || command === 'rechazartrato') {
+    return await handleCancelarTrato(msg, player);
   }
 
   if (command === 'items' || command === 'inventario' || command === 'mochila') {

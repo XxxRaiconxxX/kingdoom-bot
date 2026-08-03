@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 03/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/negotiationStore.js`, `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `src/handlers/player.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementación de la IA Negociadora de Negocios y Ampliación Dinámica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`).
+*   **Cambios Clave:**
+    *   **[Procedimiento RPC en Supabase]:** Creación e integración de `upgrade_player_business` para cobro de oro y aumento atómico de nivel, producción (`gold_per_hour`) o capacidad (`max_storage`).
+    *   **[Gran Canciller del Fisco Real (IA Negociadora)]:** Módulo en `businessNegotiationHandler.js` impulsado por NVIDIA NIM Llama 70B / Gemini. Implementa el Canciller Real, un fiscal impositivo feroz enfocado en maximizar la rentabilidad de las arcas del Reino.
+    *   **[Guardrails Matemáticos & Regateo]:** Oferta de salida con sobreprecio ($135\%$), piso mínimo inflexible ($95\%$) y sanción con aumento de costo ($+5\%$) ante regateos insolentes o montos bajos.
+    *   **[Comandos & Menú !ayuda]:** Registro de comandos `!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato` e inclusión en el menú `!ayuda`.
+*   **Validación:** Pruebas atómicas en Supabase, verificación sintáctica ESM y prueba simulada de negociación completa en vivo con respuesta activa del Canciller Real.
+
 ### [Fecha: 31/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/handlers/businessHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación del esquema de cobro de fondos y consulta de negocios pasivos mediante el bot de WhatsApp (`!negocios`, `!cobrar`, `!recolectar`) y auditoría total de enrutamiento de comandos en menús de ayuda y administración.
