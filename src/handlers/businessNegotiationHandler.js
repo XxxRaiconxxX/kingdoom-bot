@@ -6,6 +6,7 @@ import {
 import {
   getActiveNegotiation,
   setActiveNegotiation,
+  appendNegotiationHistory,
   clearActiveNegotiation
 } from '../negotiationStore.js';
 import { askKingdoomAI } from '../ai.js';
@@ -30,9 +31,9 @@ Eres calculador, burocrático, imponente y fiscalmente despiadado. Manejas monto
 
 // Helper para calcular costos base y propuestas de mejora
 function calculateUpgradeParams(business, upgradeType) {
-  const level = Number(business.level || 1);
-  const gph = Number(business.gold_per_hour || 50);
-  const maxStorage = Number(business.max_storage || 1000);
+  const level = Math.max(1, Number(business.level || 1));
+  const gph = Math.max(10, Number(business.gold_per_hour || 50));
+  const maxStorage = Math.max(100, Number(business.max_storage || 1000));
 
   let costBase = 0;
   let newValue = 0;
@@ -63,31 +64,58 @@ function calculateUpgradeParams(business, upgradeType) {
   };
 }
 
-// 1. Comando !negociar <nombre_negocio> <produccion | capacidad>
+// Extrae montos de oro flexibles (ej: 150k, 1.5m, 150.000, 150000)
+function extractGoldAmount(text) {
+  if (!text) return null;
+  
+  const kMatch = text.match(/(\d+(?:[\.,]\d+)?)\s*k\b/i);
+  if (kMatch) {
+    const val = parseFloat(kMatch[1].replace(',', '.'));
+    if (!isNaN(val) && val > 0) return Math.round(val * 1000);
+  }
+
+  const mMatch = text.match(/(\d+(?:[\.,]\d+)?)\s*m\b/i);
+  if (mMatch) {
+    const val = parseFloat(mMatch[1].replace(',', '.'));
+    if (!isNaN(val) && val > 0) return Math.round(val * 1000000);
+  }
+
+  const numMatch = text.match(/\b\d[\d\.,]*\b/);
+  if (!numMatch) return null;
+
+  const cleanStr = numMatch[0].replace(/[\.,]/g, '');
+  const num = parseInt(cleanStr, 10);
+  if (Number.isSafeInteger(num) && num > 0) return num;
+
+  return null;
+}
+
+// 1. Comando !negociar <nombre_negocio> [produccion | capacidad]
 export async function handleNegociar(msg, player, body) {
   const args = body.trim().split(/\s+/);
   if (!args || args.length === 0 || !args[0]) {
-    return `⚠️ *Uso:* \`!negociar <nombre_negocio> <produccion | capacidad>\`\n*Ejemplo:* \`!negociar Herrería produccion\` o \`!negociar Taberna capacidad\``;
+    return `⚠️ *Uso:* \`!negociar <nombre_negocio> [produccion | capacidad]\`\n*Ejemplo:* \`!negociar Herrería produccion\` o \`!negociar Taberna capacidad\``;
   }
 
-  // Determinar tipo de mejora (último argumento o por defecto producción)
   let upgradeType = 'production';
-  const lastArg = args[args.length - 1].toLowerCase();
   let businessSearch = body.trim();
 
+  const lastArg = args[args.length - 1].toLowerCase();
   if (['capacidad', 'almacenamiento', 'deposito', 'depósito', 'storage'].includes(lastArg)) {
     upgradeType = 'storage';
-    businessSearch = args.slice(0, -1).join(' ').trim();
+    if (args.length > 1) {
+      businessSearch = args.slice(0, -1).join(' ').trim();
+    }
   } else if (['produccion', 'producción', 'oro', 'tasa', 'production'].includes(lastArg)) {
     upgradeType = 'production';
-    businessSearch = args.slice(0, -1).join(' ').trim();
+    if (args.length > 1) {
+      businessSearch = args.slice(0, -1).join(' ').trim();
+    }
   }
-
-  if (!businessSearch) businessSearch = body.trim();
 
   const businesses = await getPlayerBusinesses(player.id);
   if (!businesses || businesses.length === 0) {
-    return `❌ No posees ningún negocio ni propiedad activa en el reino para negociar amplación.`;
+    return `❌ No posees ningún negocio ni propiedad activa en el reino para negociar ampliación.`;
   }
 
   // Buscar coincidencia de negocio
@@ -98,7 +126,10 @@ export async function handleNegociar(msg, player, body) {
 
   const params = calculateUpgradeParams(targetBusiness, upgradeType);
 
-  // Crear sesión en negotiationStore
+  // Limpiar sesión anterior si existía
+  clearActiveNegotiation(player.id);
+
+  // Crear nueva sesión en negotiationStore
   const session = setActiveNegotiation(player.id, {
     playerId: player.id,
     businessId: targetBusiness.id,
@@ -111,7 +142,8 @@ export async function handleNegociar(msg, player, body) {
     ceilingCost: params.ceilingCost,
     currentOfferCost: params.initialOfferCost,
     labelType: params.labelType,
-    insolenceStrikes: 0
+    insolenceStrikes: 0,
+    conversationHistory: []
   });
 
   const promptCtx = CANCILLER_SYSTEM_PROMPT
@@ -123,12 +155,16 @@ Tipo de mejora: Aumentar ${params.labelType} de ${session.currentValue.toLocaleS
 Tu costo de salida oficial es de ${params.initialOfferCost.toLocaleString('es-PY')} oro. El piso mínimo confidencial es de ${params.floorCost.toLocaleString('es-PY')} oro.
 Preséntate imponente como el Gran Canciller del Fisco Real, justifica los altos costos burocráticos y fija el precio oficial en ${params.initialOfferCost.toLocaleString('es-PY')} oro.`;
 
+  appendNegotiationHistory(player.id, 'user', userQuery);
+
   try {
     const aiResponse = await askKingdoomAI(
-      [{ role: 'user', content: userQuery }],
+      session.conversationHistory,
       promptCtx,
       { temperature: 0.6 }
     );
+
+    appendNegotiationHistory(player.id, 'assistant', aiResponse);
 
     return heraldCard(`🏛️ Real Cancillería: ${targetBusiness.name}`, [
       aiResponse,
@@ -147,16 +183,6 @@ Preséntate imponente como el Gran Canciller del Fisco Real, justifica los altos
   }
 }
 
-function extractGoldAmount(text) {
-  if (!text) return null;
-  const match = text.match(/\b\d[\d\.]*\b/);
-  if (!match) return null;
-  const cleanStr = match[0].replace(/\./g, '');
-  const num = parseInt(cleanStr, 10);
-  if (Number.isSafeInteger(num) && num > 0) return num;
-  return null;
-}
-
 // 2. Comando !contraofertar <monto> [razón]
 export async function handleContraofertar(msg, player, body) {
   const session = getActiveNegotiation(player.id);
@@ -166,7 +192,7 @@ export async function handleContraofertar(msg, player, body) {
 
   const parsedAmount = extractGoldAmount(body) || parseGoldAmount(body);
   if (!parsedAmount || parsedAmount <= 0) {
-    return `⚠️ Especifica un monto válido de oro en tu contraoferta.\n*Ejemplo:* \`!contraofertar 140000 oro por pago en efectivo\``;
+    return `⚠️ Especifica un monto válido de oro en tu contraoferta.\n*Ejemplo:* \`!contraofertar 140k oro por pago al contado\``;
   }
 
   const offeredCost = parsedAmount;
@@ -188,7 +214,6 @@ export async function handleContraofertar(msg, player, body) {
     resultType = 'accepted';
   } else {
     // Oferta entre el piso y la oferta actual
-    // La IA cede parcialmente (se acerca a la mitad entre la oferta actual y lo pedido, tirando hacia arriba)
     const midPoint = Math.round((session.currentOfferCost + offeredCost) / 2);
     newOfferCost = Math.max(session.floorCost, Math.round(midPoint * 1.05));
     session.currentOfferCost = newOfferCost;
@@ -201,19 +226,23 @@ export async function handleContraofertar(msg, player, body) {
     .replace('$PISO_MINIMO', session.floorCost.toLocaleString('es-PY'))
     .replace('$OFERTA_ACTUAL', session.currentOfferCost.toLocaleString('es-PY'));
 
-  const userQuery = `El aventurero ${player.username} hace una contraoferta de ${offeredCost.toLocaleString('es-PY')} oro con la siguiente razón: "${body}".
+  const userQuery = `El aventurero ${player.username} hace una contraoferta de ${offeredCost.toLocaleString('es-PY')} oro con el mensaje: "${body}".
 Piso mínimo absoluto permitido: ${session.floorCost.toLocaleString('es-PY')} oro.
 Oferta anterior del Fisco: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
 Resultado del sistema: ${resultType.toUpperCase()}. Nueva tarifa fijada por el sistema: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
-Número de insolencias acumuladas: ${session.insolenceStrikes}.
+Insolencias acumuladas: ${session.insolenceStrikes}.
 Responde como el Gran Canciller del Fisco en consecuencia. Si es REJECTED_LOW, regáñalo duramente por deshonestidad y notifícale el aumento del costo. Si es NEGOCIATING o ACCEPTED, fija la nueva tarifa de ${session.currentOfferCost.toLocaleString('es-PY')} oro.`;
+
+  appendNegotiationHistory(player.id, 'user', userQuery);
 
   try {
     const aiResponse = await askKingdoomAI(
-      [{ role: 'user', content: userQuery }],
+      session.conversationHistory,
       promptCtx,
       { temperature: 0.6 }
     );
+
+    appendNegotiationHistory(player.id, 'assistant', aiResponse);
 
     return heraldCard(`🏛️ Real Cancillería: Contraoferta`, [
       aiResponse,

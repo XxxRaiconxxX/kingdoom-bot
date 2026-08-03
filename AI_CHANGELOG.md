@@ -6,12 +6,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 03/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/negotiationStore.js`, `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `src/handlers/player.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación de la IA Negociadora de Negocios y Ampliación Dinámica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`).
-*   **Cambios Clave:**
+*   **Resumen de Tareas:** Implementación de la IA Negociadora de Negocios y Ampliación Dinámica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`) y auditoría operativa de ineficiencias y corrección de bugs.
+*   **Cambios Clave & Correcciones de Auditoría:**
     *   **[Procedimiento RPC en Supabase]:** Creación e integración de `upgrade_player_business` para cobro de oro y aumento atómico de nivel, producción (`gold_per_hour`) o capacidad (`max_storage`).
     *   **[Gran Canciller del Fisco Real (IA Negociadora)]:** Módulo en `businessNegotiationHandler.js` impulsado por NVIDIA NIM Llama 70B / Gemini. Implementa el Canciller Real, un fiscal impositivo feroz enfocado en maximizar la rentabilidad de las arcas del Reino.
-    *   **[Guardrails Matemáticos & Regateo]:** Oferta de salida con sobreprecio ($135\%$), piso mínimo inflexible ($95\%$) y sanción con aumento de costo ($+5\%$) ante regateos insolentes o montos bajos.
-    *   **[Comandos & Menú !ayuda]:** Registro de comandos `!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato` e inclusión en el menú `!ayuda`.
+    *   **[Audit Fix - Parser de Números Flexible]:** Soporte mejorado en `extractGoldAmount` para sufijos como `150k`, `1.5M`, y formatos agrupados como `150.000` o `150,000`.
+    *   **[Audit Fix - Historial Multi-Turno]:** Preservación de `conversationHistory` en `negotiationStore.js` para que el Gran Canciller recuerde todas las ofertas y argumentos del jugador en la misma sesión.
+    *   **[Audit Fix - Parser de Argumentos de Negocio]:** Corrección del parsing de `businessSearch` cuando no se especifica el sufijo de tipo de mejora.
 *   **Validación:** Pruebas atómicas en Supabase, verificación sintáctica ESM y prueba simulada de negociación completa en vivo con respuesta activa del Canciller Real.
 
 ### [Fecha: 31/07/2026] - [Autor: Antigravity]

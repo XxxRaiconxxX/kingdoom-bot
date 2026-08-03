@@ -17,13 +17,29 @@ export function getActiveNegotiation(playerId) {
 }
 
 export function setActiveNegotiation(playerId, data) {
+  const existing = getActiveNegotiation(playerId);
   const session = {
+    conversationHistory: existing?.conversationHistory || [],
     ...data,
     expiresAt: Date.now() + NEGOTIATION_TTL_MS,
-    createdAt: Date.now()
+    createdAt: existing?.createdAt || Date.now()
   };
   activeNegotiations.set(playerId, session);
   return session;
+}
+
+export function appendNegotiationHistory(playerId, role, content) {
+  const session = getActiveNegotiation(playerId);
+  if (!session) return;
+  if (!Array.isArray(session.conversationHistory)) {
+    session.conversationHistory = [];
+  }
+  session.conversationHistory.push({ role, content });
+  // Limitar historial a los últimos 10 mensajes para ahorrar tokens
+  if (session.conversationHistory.length > 10) {
+    session.conversationHistory = session.conversationHistory.slice(-10);
+  }
+  activeNegotiations.set(playerId, session);
 }
 
 export function clearActiveNegotiation(playerId) {
