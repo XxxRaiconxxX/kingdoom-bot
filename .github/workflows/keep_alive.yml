@@ -1,0 +1,21 @@
+name: Keep-Alive Hugging Face Space
+
+on:
+  schedule:
+    # Se ejecuta automáticamente cada 15 minutos todos los días
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # Permite disparar la prueba manualmente desde GitHub Actions
+
+jobs:
+  ping-space:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Ping to HF Space
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://huggingface.co/spaces/axel785/kingdoom-whatsapp")
+          echo "HF Space Ping HTTP Status Code: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "✅ Hugging Face Space respondio activamente."
+          else
+            echo "⚠️ Aviso: HF Space respondio con status $STATUS"
+          fi

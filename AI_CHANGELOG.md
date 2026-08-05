@@ -4,6 +4,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 05/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `.github/workflows/keep_alive.yml`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementación del flujo de trabajo automatizado de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensión (sleeping mode) del bot alojado en Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
+*   **Cambios Clave:**
+    *   **[GitHub Actions Keep-Alive Workflow]:** Creación de `.github/workflows/keep_alive.yml` programado para ejecutarse cada 15 minutos (`*/15 * * * *`) enviando pings HTTP automáticos a Hugging Face Spaces.
+*   **Validación:** Verificación del archivo YAML y despliegue en GitHub.
+
 ### [Fecha: 03/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/negotiationStore.js`, `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `src/handlers/player.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación de la IA Negociadora de Negocios y Ampliación Dinámica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`) y auditoría operativa de ineficiencias y corrección de bugs.
