@@ -6,10 +6,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 05/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.github/workflows/keep_alive.yml`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación del flujo de trabajo automatizado de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensión (sleeping mode) del bot alojado en Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
+*   **Resumen de Tareas:** Implementación y optimización del flujo de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensión de Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
 *   **Cambios Clave:**
-    *   **[GitHub Actions Keep-Alive Workflow]:** Creación de `.github/workflows/keep_alive.yml` programado para ejecutarse cada 15 minutos (`*/15 * * * *`) enviando pings HTTP automáticos a Hugging Face Spaces.
-*   **Validación:** Verificación del archivo YAML y despliegue en GitHub.
+    *   **[GitHub Actions Keep-Alive Workflow]:** Creación y optimización de `.github/workflows/keep_alive.yml` a **cada 30 minutos** (`*/30 * * * *`). Esto consume exactamente 1,440 minutos/mes (utilizando solo el 72% de la cuota gratuita de 2,000 min/mes de GitHub) y mantiene el Space despierto 24/7 sin gastar nada.
+*   **Validación:** Verificación matemática de cuotas y despliegue en remotos.
+
+### [Fecha: 03/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 03/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/negotiationStore.js`, `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `src/handlers/player.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.

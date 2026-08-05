@@ -2,8 +2,8 @@ name: Keep-Alive Hugging Face Space
 
 on:
   schedule:
-    # Se ejecuta automáticamente cada 15 minutos todos los días
-    - cron: '*/15 * * * *'
+    # Se ejecuta automáticamente cada 30 minutos (1,440 min/mes = 100% dentro del límite gratis de 2,000 min)
+    - cron: '*/30 * * * *'
   workflow_dispatch: # Permite disparar la prueba manualmente desde GitHub Actions
 
 jobs:
