@@ -44,7 +44,12 @@ function getProviderKeyCount(provider) {
 }
 
 function getProviderOrder() {
-  const requested = String(process.env.AI_PROVIDER_ORDER || 'groq,gemini,openrouter,nvidia')
+  let envVal = (process.env.AI_PROVIDER_ORDER || '').trim().toLowerCase();
+  if (!envVal || envVal === 'nvidia,groq,gemini' || envVal === 'nvidia,groq,gemini,openrouter') {
+    envVal = 'groq,gemini,openrouter,nvidia';
+  }
+
+  const requested = envVal
     .split(',')
     .map((provider) => provider.trim().toLowerCase())
     .filter(Boolean);
