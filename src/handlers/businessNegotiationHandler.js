@@ -7,7 +7,9 @@ import {
   getActiveNegotiation,
   setActiveNegotiation,
   appendNegotiationHistory,
-  clearActiveNegotiation
+  clearActiveNegotiation,
+  setFiscoVeto,
+  getFiscoVeto
 } from '../negotiationStore.js';
 import { askKingdoomAI } from '../ai.js';
 import { heraldCard, heraldStat } from '../formatting.js';
@@ -21,15 +23,21 @@ Eres el Gran Canciller del Fisco y Real Hacienda de Aethelgardia. Representas la
 Para ti, todos los negocios privados de los aventureros son concesiones en suelo real. Tu meta número 1 es MAXIMIZAR la recaudación y la rentabilidad de las arcas del Reino.
 Eres calculador, burocrático, imponente y fiscalmente despiadado. Manejas montos muy elevados de oro.
 
-2. REGLAS DE NEGOCIACIÓN:
-- Estás negociando el contrato de ampliación de un negocio.
+2. FISCALIZACIÓN SECRETA DEL ORO (CONFIDENCIAL):
+Conoces confidencialmente que el aventurero posee exactamente $ORO_JUGADOR oro en su bolsa.
+- REGLA DE ORO: NUNCA reveles abiertamente esta cifra diciendo torpemente "sé que tienes X oro" ni seas burdo.
+- Usa este conocimiento en secreto para calibrar tu agresividad impositiva:
+  * Si el jugador es extremadamente afortunado/rico, mantén exigencias altas y firmes sin ceder fácilmente.
+  * Si su bolsa es justa pero cubre la oferta, apriétalo para exprimir hasta la última moneda que pueda costear sin romper la negociación de inmediato.
+
+3. REGLAS DE NEGOCIACIÓN Y ARGUMENTOS:
 - Jamás aceptes una oferta por debajo del PISO MÍNIMO ($PISO_MINIMO oro).
 - Si el jugador propone una cifra RIDÍCULAMENTE BAJA o te falta al respeto, indignate, rechaza con altivez y aplícale una penalización por insolencia notificándole el aumento del costo.
-- Si la contraoferta del jugador es razonable (entre $PISO_MINIMO y $OFERTA_ACTUAL), negocia duramente, cediendo muy poco y exigiendo razones de rol sólidas.
+- Si el jugador presenta un ARGUMENTO DE ROL CONVINCENTE (ej: pago al contado, lealtad a la corona, compra de insumos locales), reconoce su astucia sutilmente y cede un poco de oro acercándote al piso mínimo.
 - Mantén tus respuestas en español formal medieval/burocrático, concisas (máximo 120 palabras).
 - Termina siempre indicando las opciones de acción claras: '!aceptartrato' para sellar el decreto, '!contraofertar <monto>' o '!cancelartrato'.`;
 
-// Helper para calcular costos base y propuestas de mejora
+// Helper para calcular costos base, propuestas de mejora y retorno de inversión
 function calculateUpgradeParams(business, upgradeType) {
   const level = Math.max(1, Number(business.level || 1));
   const gph = Math.max(10, Number(business.gold_per_hour || 50));
@@ -38,16 +46,22 @@ function calculateUpgradeParams(business, upgradeType) {
   let costBase = 0;
   let newValue = 0;
   let labelType = '';
+  let deltaValue = 0;
+  let paybackDays = '0';
 
   if (upgradeType === 'production') {
     costBase = Math.round((gph * 80) + (maxStorage * 4) + (level * 15000));
     newValue = Math.round(gph * 1.35); // +35% producción
+    deltaValue = newValue - gph;
     labelType = 'Producción por hora';
+    paybackDays = (costBase / (deltaValue * 24)).toFixed(1);
   } else {
     // storage
     costBase = Math.round((maxStorage * 5) + (gph * 50) + (level * 12000));
     newValue = Math.round(maxStorage * 1.50); // +50% capacidad
+    deltaValue = newValue - maxStorage;
     labelType = 'Capacidad máxima de almacenamiento';
+    paybackDays = (costBase / (gph * 24)).toFixed(1);
   }
 
   const initialOfferCost = Math.round(costBase * 1.35);
@@ -59,7 +73,10 @@ function calculateUpgradeParams(business, upgradeType) {
     initialOfferCost,
     floorCost,
     ceilingCost,
+    currentValue: upgradeType === 'production' ? gph : maxStorage,
     newValue,
+    deltaValue,
+    paybackDays,
     labelType
   };
 }
@@ -67,7 +84,7 @@ function calculateUpgradeParams(business, upgradeType) {
 // Extrae montos de oro flexibles (ej: 150k, 1.5m, 150.000, 150000)
 function extractGoldAmount(text) {
   if (!text) return null;
-  
+
   const kMatch = text.match(/(\d+(?:[\.,]\d+)?)\s*k\b/i);
   if (kMatch) {
     const val = parseFloat(kMatch[1].replace(',', '.'));
@@ -92,25 +109,13 @@ function extractGoldAmount(text) {
 
 // 1. Comando !negociar <nombre_negocio> [produccion | capacidad]
 export async function handleNegociar(msg, player, body) {
-  const args = body.trim().split(/\s+/);
-  if (!args || args.length === 0 || !args[0]) {
-    return `⚠️ *Uso:* \`!negociar <nombre_negocio> [produccion | capacidad]\`\n*Ejemplo:* \`!negociar Herrería produccion\` o \`!negociar Taberna capacidad\``;
-  }
-
-  let upgradeType = 'production';
-  let businessSearch = body.trim();
-
-  const lastArg = args[args.length - 1].toLowerCase();
-  if (['capacidad', 'almacenamiento', 'deposito', 'depósito', 'storage'].includes(lastArg)) {
-    upgradeType = 'storage';
-    if (args.length > 1) {
-      businessSearch = args.slice(0, -1).join(' ').trim();
-    }
-  } else if (['produccion', 'producción', 'oro', 'tasa', 'production'].includes(lastArg)) {
-    upgradeType = 'production';
-    if (args.length > 1) {
-      businessSearch = args.slice(0, -1).join(' ').trim();
-    }
+  // Verificar veto del Fisco
+  const vetoMinutes = getFiscoVeto(player.id);
+  if (vetoMinutes) {
+    return heraldCard('📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔙𝔢𝔱𝔬 𝔡𝔢𝔩 ℜ𝔢𝔞𝔩 𝔉𝔦𝔰𝔠𝔬', [
+      ` ⛔ *Audiencia Denegada:* El Gran Canciller rechaza atenderte por tus pasadas insolencias e insultos tributarios.`,
+      ` ⏳ *Veto Impositivo Activo:* Debes esperar *${vetoMinutes} minuto(s)* para que el Fisco vuelva a recibir tus expedientes.`
+    ], { icon: '🚫' });
   }
 
   const businesses = await getPlayerBusinesses(player.id);
@@ -118,13 +123,63 @@ export async function handleNegociar(msg, player, body) {
     return `❌ No posees ningún negocio ni propiedad activa en el reino para negociar ampliación.`;
   }
 
-  // Buscar coincidencia de negocio
-  const targetBusiness = businesses.find(b =>
-    b.name.toLowerCase().includes(businessSearch.toLowerCase()) ||
-    b.business_type.toLowerCase().includes(businessSearch.toLowerCase())
-  ) || businesses[0];
+  const rawInput = body.trim();
+  const args = rawInput ? rawInput.split(/\s+/) : [];
+
+  let targetBusiness = null;
+  let upgradeType = 'production';
+
+  // Si el usuario no especificó argumentos
+  if (args.length === 0) {
+    if (businesses.length === 1) {
+      // Autoselección si tiene 1 solo negocio
+      targetBusiness = businesses[0];
+      upgradeType = 'production';
+    } else {
+      // Menú interactivo numerado si posee varios negocios
+      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭℯ𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
+        ' *Tus concesiones activas en suelo real:*',
+        '──────────────',
+        ...businesses.map((b, i) =>
+          `▸ *[${i + 1}] ${b.name}* (Nivel ${b.level || 1})\n   📊 ${b.gold_per_hour}/hr · 📦 max ${b.max_storage}\n   ↳ \`!negociar ${b.name} produccion\` | \`!negociar ${b.name} capacidad\``
+        ),
+        '\n💡 _Elige un negocio y el tipo de mejora para solicitar audiencia formal con el Fisco._'
+      ], { icon: '🏛️' });
+    }
+  } else {
+    // Analizar argumentos de búsqueda
+    const lastArg = args[args.length - 1].toLowerCase();
+    let businessSearch = rawInput;
+
+    if (['capacidad', 'almacenamiento', 'deposito', 'depósito', 'storage'].includes(lastArg)) {
+      upgradeType = 'storage';
+      if (args.length > 1) {
+        businessSearch = args.slice(0, -1).join(' ').trim();
+      }
+    } else if (['produccion', 'producción', 'oro', 'tasa', 'production'].includes(lastArg)) {
+      upgradeType = 'production';
+      if (args.length > 1) {
+        businessSearch = args.slice(0, -1).join(' ').trim();
+      }
+    }
+
+    targetBusiness = businesses.find((b) =>
+      b.name.toLowerCase().includes(businessSearch.toLowerCase()) ||
+      b.business_type.toLowerCase().includes(businessSearch.toLowerCase())
+    ) || (businesses.length === 1 ? businesses[0] : null);
+
+    if (!targetBusiness) {
+      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭℯ𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
+        `❌ No se encontró ningún negocio llamado "*${businessSearch}*".`,
+        '\n *Tus propiedades disponibles:*',
+        ...businesses.map((b) => `▸ *${b.name}* (Nivel ${b.level || 1}) ➔ \`!negociar ${b.name} produccion\``)
+      ], { icon: '⚠️' });
+    }
+  }
 
   const params = calculateUpgradeParams(targetBusiness, upgradeType);
+  const freshPlayer = await getPlayer(player.id);
+  const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
   // Limpiar sesión anterior si existía
   clearActiveNegotiation(player.id);
@@ -135,8 +190,10 @@ export async function handleNegociar(msg, player, body) {
     businessId: targetBusiness.id,
     businessName: targetBusiness.name,
     upgradeType,
-    currentValue: upgradeType === 'production' ? targetBusiness.gold_per_hour : targetBusiness.max_storage,
+    currentValue: params.currentValue,
     newValue: params.newValue,
+    deltaValue: params.deltaValue,
+    paybackDays: params.paybackDays,
     costBase: params.costBase,
     floorCost: params.floorCost,
     ceilingCost: params.ceilingCost,
@@ -147,13 +204,14 @@ export async function handleNegociar(msg, player, body) {
   });
 
   const promptCtx = CANCILLER_SYSTEM_PROMPT
+    .replace('$ORO_JUGADOR', playerGold.toLocaleString('es-PY'))
     .replace('$PISO_MINIMO', params.floorCost.toLocaleString('es-PY'))
     .replace('$OFERTA_ACTUAL', params.initialOfferCost.toLocaleString('es-PY'));
 
-  const userQuery = `El aventurero ${player.username} (Oro en bolsa: ${player.gold.toLocaleString('es-PY')}) solicita ampliar su negocio "${targetBusiness.name}" (Nivel ${targetBusiness.level || 1}).
-Tipo de mejora: Aumentar ${params.labelType} de ${session.currentValue.toLocaleString('es-PY')} a ${params.newValue.toLocaleString('es-PY')}.
-Tu costo de salida oficial es de ${params.initialOfferCost.toLocaleString('es-PY')} oro. El piso mínimo confidencial es de ${params.floorCost.toLocaleString('es-PY')} oro.
-Preséntate imponente como el Gran Canciller del Fisco Real, justifica los altos costos burocráticos y fija el precio oficial en ${params.initialOfferCost.toLocaleString('es-PY')} oro.`;
+  const userQuery = `El aventurero ${player.username} (Fortuna auditada en bolsa: ${playerGold.toLocaleString('es-PY')} oro) solicita la Real Cédula para ampliar su negocio "${targetBusiness.name}" (Nivel ${targetBusiness.level || 1}).
+Mejora solicitada: Aumentar ${params.labelType} de ${session.currentValue.toLocaleString('es-PY')} a ${params.newValue.toLocaleString('es-PY')} (+${params.deltaValue.toLocaleString('es-PY')}).
+Costo base de obra: ${params.costBase.toLocaleString('es-PY')} oro. Piso mínimo confidencial: ${params.floorCost.toLocaleString('es-PY')} oro. Tu tarifa de salida oficial: ${params.initialOfferCost.toLocaleString('es-PY')} oro.
+Preséntate imponente en audiencia medieval como el Gran Canciller de la Real Hacienda. Justifica la elevada tasa impositiva y fija la tarifa inicial oficial en ${params.initialOfferCost.toLocaleString('es-PY')} oro.`;
 
   appendNegotiationHistory(player.id, 'user', userQuery);
 
@@ -166,28 +224,45 @@ Preséntate imponente como el Gran Canciller del Fisco Real, justifica los altos
 
     appendNegotiationHistory(player.id, 'assistant', aiResponse);
 
-    return heraldCard(`🏛️ Real Cancillería: ${targetBusiness.name}`, [
+    const deltaLabel = upgradeType === 'production'
+      ? `+${params.deltaValue.toLocaleString('es-PY')} oro/hora (+35%)`
+      : `+${params.deltaValue.toLocaleString('es-PY')} espacio (+50%)`;
+
+    return heraldCard(`📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: ${targetBusiness.name}`, [
       aiResponse,
       '\n──────────────',
-      `📜 *Trato Pendiente:* ${params.labelType} ➔ *${params.newValue.toLocaleString('es-PY')}*`,
-      `💰 *Oferta del Fisco:* 🪙 *${params.initialOfferCost.toLocaleString('es-PY')} oro*`,
+      `✍️ *📜 Real Cédula en Trámite:* ${params.labelType}`,
+      `📊 *Beneficio Esperado:* *${params.currentValue.toLocaleString('es-PY')}* ➔ *${params.newValue.toLocaleString('es-PY')}* (${deltaLabel})`,
+      `⏳ *Retorno Estimado:* ~*${params.paybackDays} días* de producción pasiva`,
+      `💰 *Tarifa Oficial del Fisco:* 🪙 *${params.initialOfferCost.toLocaleString('es-PY')} oro*`,
       '\n💡 _Responde con `!aceptartrato`, `!contraofertar <monto>` o `!cancelartrato`._'
-    ], { icon: '⚖️' });
+    ], { icon: '✍️' });
   } catch (err) {
     console.error('[handleNegociar AI Error]', err);
-    return heraldCard(`🏛️ Real Cancillería: ${targetBusiness.name}`, [
-      ` (El Gran Canciller examina los planos de la ${targetBusiness.name})`,
-      ` Para autorizar la ampliación de ${params.labelType} a *${params.newValue.toLocaleString('es-PY')}*, el Fisco Real exige una tasa oficial de 🪙 *${params.initialOfferCost.toLocaleString('es-PY')} oro*.`,
-      '\n💡 _Escribe `!aceptartrato` para confirmar o `!cancelartrato` para salir._'
-    ], { icon: '⚖️' });
+    return heraldCard(`📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: ${targetBusiness.name}`, [
+      ` (El Gran Canciller examina con lupa los planos de la ${targetBusiness.name})`,
+      ` Para autorizar la cédula de ampliación de ${params.labelType} a *${params.newValue.toLocaleString('es-PY')}*, el Fisco Real fija la tasa en 🪙 *${params.initialOfferCost.toLocaleString('es-PY')} oro*.`,
+      '\n💡 _Escribe `!aceptartrato` para sellar la Real Cédula o `!cancelartrato` para salir._'
+    ], { icon: '✍️' });
   }
 }
 
-// 2. Comando !contraofertar <monto> [razón]
+// 2. Comando !contraofertar <monto> [argumento de rol]
 export async function handleContraofertar(msg, player, body) {
+  const vetoMinutes = getFiscoVeto(player.id);
+  if (vetoMinutes) {
+    return heraldCard('📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔙𝔢𝔱𝔬 𝔡𝔢𝔩 ℜ𝔢𝔞𝔩 𝔉𝔦𝔰𝔠𝔬', [
+      ` ⛔ *Audiencia Denegada:* Te encuentras bajo veto impositivo por insolencias pasadas.`,
+      ` ⏳ Tiempo restante de veto: *${vetoMinutes} minuto(s)*.`
+    ], { icon: '🚫' });
+  }
+
   const session = getActiveNegotiation(player.id);
   if (!session) {
-    return `❌ No tienes ninguna negociación de negocio activa. Inicia una con \`!negociar <negocio> <produccion|capacidad>\`.`;
+    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩ℯ𝔯í𝔞', [
+      '❌ No tienes ninguna audiencia de negociación activa.',
+      '💡 Inicia un expediente con `!negociar <nombre_negocio> [produccion|capacidad]`.'
+    ], { icon: '⚖️' });
   }
 
   const parsedAmount = extractGoldAmount(body) || parseGoldAmount(body);
@@ -195,27 +270,52 @@ export async function handleContraofertar(msg, player, body) {
     return `⚠️ Especifica un monto válido de oro en tu contraoferta.\n*Ejemplo:* \`!contraofertar 140k oro por pago al contado\``;
   }
 
-  const offeredCost = parsedAmount;
+  // Extraer el texto de argumento de rol
+  const rpArgument = body
+    .replace(/(\d+(?:[\.,]\d+)?)\s*[km]?/gi, '')
+    .replace(/\b(oro|contraofertar|oferta|tasa)\b/gi, '')
+    .trim();
 
-  // Evaluar contraoferta contra los guardrails
-  let resultType = 'normal'; // 'accepted', 'rejected_low', 'negotiating'
+  const offeredCost = parsedAmount;
+  const freshPlayer = await getPlayer(player.id);
+  const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
+
+  let resultType = 'normal';
   let newOfferCost = session.currentOfferCost;
 
   if (offeredCost < session.floorCost) {
-    // Insolencia: oferta por debajo del piso absoluto
     session.insolenceStrikes += 1;
+
+    // Verificar límite de insolencia (3 strikes = Ruptura + Veto de 10 min)
+    if (session.insolenceStrikes >= 3) {
+      setFiscoVeto(player.id, 10 * 60 * 1000);
+      clearActiveNegotiation(player.id);
+
+      return heraldCard('📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 ℛ𝔢𝔳𝔬𝔠𝔞𝔠𝔦ó𝔫 𝔶 𝔙𝔢𝔱𝔬', [
+        ` 💥 ¡EL GRAN CANCILLER HA PERDIDO LA PACIENCIA!`,
+        ` ¡Tus constantes burlas e insultos tributarios son inaceptables para la Corona! El expediente para *${session.businessName}* ha sido destruido en el fuego del Fisco.`,
+        ` ⛔ *Veto Impositivo Aplicado:* La Real Hacienda no recibirá tus solicitudes durante los próximos *10 minutos*.`
+      ], { icon: '⚡' });
+    }
+
     // Sanción: Aumenta la oferta del Fisco en 5% por insolencia
     newOfferCost = Math.min(session.ceilingCost, Math.round(session.currentOfferCost * 1.05));
     session.currentOfferCost = newOfferCost;
     resultType = 'rejected_low';
   } else if (offeredCost >= session.currentOfferCost) {
-    // El jugador ofreció igual o más de lo que pedía la IA
     session.currentOfferCost = offeredCost;
     resultType = 'accepted';
   } else {
-    // Oferta entre el piso y la oferta actual
+    // Oferta entre el piso y la tarifa actual
     const midPoint = Math.round((session.currentOfferCost + offeredCost) / 2);
     newOfferCost = Math.max(session.floorCost, Math.round(midPoint * 1.05));
+
+    // Si el jugador presentó un argumento de rol extenso, conceder un bono extra de hasta 3% hacia el piso
+    if (rpArgument.length > 5) {
+      const bonusDiscount = Math.round(newOfferCost * 0.03);
+      newOfferCost = Math.max(session.floorCost, newOfferCost - bonusDiscount);
+    }
+
     session.currentOfferCost = newOfferCost;
     resultType = 'negotiating';
   }
@@ -223,15 +323,16 @@ export async function handleContraofertar(msg, player, body) {
   setActiveNegotiation(player.id, session);
 
   const promptCtx = CANCILLER_SYSTEM_PROMPT
+    .replace('$ORO_JUGADOR', playerGold.toLocaleString('es-PY'))
     .replace('$PISO_MINIMO', session.floorCost.toLocaleString('es-PY'))
     .replace('$OFERTA_ACTUAL', session.currentOfferCost.toLocaleString('es-PY'));
 
-  const userQuery = `El aventurero ${player.username} hace una contraoferta de ${offeredCost.toLocaleString('es-PY')} oro con el mensaje: "${body}".
-Piso mínimo absoluto permitido: ${session.floorCost.toLocaleString('es-PY')} oro.
-Oferta anterior del Fisco: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
-Resultado del sistema: ${resultType.toUpperCase()}. Nueva tarifa fijada por el sistema: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
-Insolencias acumuladas: ${session.insolenceStrikes}.
-Responde como el Gran Canciller del Fisco en consecuencia. Si es REJECTED_LOW, regáñalo duramente por deshonestidad y notifícale el aumento del costo. Si es NEGOCIATING o ACCEPTED, fija la nueva tarifa de ${session.currentOfferCost.toLocaleString('es-PY')} oro.`;
+  const userQuery = `El aventurero ${player.username} (Oro auditado en bolsa: ${playerGold.toLocaleString('es-PY')}) presenta contraoferta de ${offeredCost.toLocaleString('es-PY')} oro.
+Argumento presentado: "${rpArgument || 'Sin argumento adicional'}".
+Piso mínimo confidencial: ${session.floorCost.toLocaleString('es-PY')} oro. Oferta previa del Fisco: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
+Resultado del sistema: ${resultType.toUpperCase()}. Nueva tarifa fijada por el Fisco: ${session.currentOfferCost.toLocaleString('es-PY')} oro.
+Insolencias acumuladas: ${session.insolenceStrikes}/3.
+Responde como el Gran Canciller. Si es REJECTED_LOW, repréndelo duramente por insolente. Si es NEGOCIATING o ACCEPTED, evalúa su argumento y fija la nueva tarifa oficial de ${session.currentOfferCost.toLocaleString('es-PY')} oro.`;
 
   appendNegotiationHistory(player.id, 'user', userQuery);
 
@@ -244,19 +345,21 @@ Responde como el Gran Canciller del Fisco en consecuencia. Si es REJECTED_LOW, r
 
     appendNegotiationHistory(player.id, 'assistant', aiResponse);
 
-    return heraldCard(`🏛️ Real Cancillería: Contraoferta`, [
+    return heraldCard(`📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: Contraoferta`, [
       aiResponse,
       '\n──────────────',
-      `📜 *Mejora:* ${session.labelType} ➔ *${session.newValue.toLocaleString('es-PY')}*`,
-      `💰 *Tarifa Actualizada:* 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*`,
+      `✍️ *📜 Real Cédula en Trámite:* ${session.labelType}`,
+      `📊 *Impacto:* ${session.currentValue.toLocaleString('es-PY')} ➔ *${session.newValue.toLocaleString('es-PY')}*`,
+      `💰 *Tarifa Actualizada del Fisco:* 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*`,
+      session.insolenceStrikes > 0 ? `⚠️ *Advertencia de Insolencia:* ${session.insolenceStrikes}/3 amonestaciones impositivas.` : '',
       '\n💡 _Responde con `!aceptartrato`, `!contraofertar <monto>` o `!cancelartrato`._'
     ], { icon: '⚖️' });
   } catch (err) {
     console.error('[handleContraofertar AI Error]', err);
-    return heraldCard(`🏛️ Real Cancillería: Contraoferta`, [
+    return heraldCard(`📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: Contraoferta`, [
       ` El Gran Canciller evalúa tu propuesta de 🪙 *${offeredCost.toLocaleString('es-PY')} oro*.`,
-      ` Tras revisar los costos mínimos, la Real Cancillería fija la oferta en 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*.`,
-      '\n💡 _Escribe `!aceptartrato` para sellar el decreto o `!cancelartrato` para salir._'
+      ` Tras ajustar los aranceles de la Corona, la Real Hacienda fija la tarifa en 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*.`,
+      '\n💡 _Escribe `!aceptartrato` para confirmar el decreto o `!cancelartrato` para salir._'
     ], { icon: '⚖️' });
   }
 }
@@ -265,7 +368,10 @@ Responde como el Gran Canciller del Fisco en consecuencia. Si es REJECTED_LOW, r
 export async function handleAceptarTrato(msg, player) {
   const session = getActiveNegotiation(player.id);
   if (!session) {
-    return `❌ No tienes ninguna propuesta ni negociación activa para aceptar.`;
+    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞', [
+      '❌ *Expediente Caducado:* No posees ninguna Real Cédula ni negociación vigente para aceptar.',
+      '💡 Abre un nuevo trámite con `!negociar <nombre_negocio> [produccion|capacidad]`.'
+    ], { icon: '⏳' });
   }
 
   // Verificar oro del jugador
@@ -273,7 +379,10 @@ export async function handleAceptarTrato(msg, player) {
   const currentGold = freshPlayer ? freshPlayer.gold : player.gold;
 
   if (currentGold < session.currentOfferCost) {
-    return `❌ *Fondos insuficientes.* Tu bolsa actual posee 🪙 *${currentGold.toLocaleString('es-PY')} oro*, pero el contrato exige 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*.`;
+    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: Fondos Insuficientes', [
+      ` ❌ Tu bolsa posee 🪙 *${currentGold.toLocaleString('es-PY')} oro*, pero la Real Cédula exige 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*.`,
+      ' 💡 Recauda más oro con `!cobrar` o presenta una `!contraofertar <monto>`.'
+    ], { icon: '⚠️' });
   }
 
   // Ejecutar RPC atómico en Supabase
@@ -292,16 +401,16 @@ export async function handleAceptarTrato(msg, player) {
 
     clearActiveNegotiation(player.id);
 
-    return heraldCard('🏗️ Ampliación Certificada por la Corona', [
-      heraldStat('Negocio', `*${session.businessName}* (Nivel ${result.new_level})`),
+    return heraldCard('🏗️ ℛ𝔢𝔞𝔩 ℭé𝔡𝔢𝔩𝔞 𝔡𝔢 𝔄𝔪𝔭𝔩𝔦𝔞𝔠𝔦ó𝔫 ℭ𝔢𝔯𝔱𝔦𝔬𝔦𝔠𝔞𝔡𝔞', [
+      heraldStat('Concesión Real', `*${session.businessName}* (Nivel ${result.new_level})`),
       heraldStat('Nueva ' + session.labelType, `*${result.new_value.toLocaleString('es-PY')}*`),
-      heraldStat('Inversión Realizada', `🪙 *-${session.currentOfferCost.toLocaleString('es-PY')} oro*`),
-      heraldStat('Nuevo Saldo en Bolsa', `🪙 *${result.new_gold.toLocaleString('es-PY')} oro*`),
-      '\n ¡El Real Fisco ha emitido el decreto y los maestros albañiles han completado la obra!'
+      heraldStat('Tasa Impositiva Abonada', `🪙 *-${session.currentOfferCost.toLocaleString('es-PY')} oro*`),
+      heraldStat('Saldo Restante en Bolsa', `🪙 *${result.new_gold.toLocaleString('es-PY')} oro*`),
+      '\n ¡El Real Fisco ha estampado el sello de la Corona y los maestros constructores han completado la obra!'
     ], { icon: '📜' });
   } catch (err) {
     console.error('[handleAceptarTrato Error]', err);
-    return `❌ Ocurrió un error al procesar el contrato en el servidor. Inténtalo de nuevo.`;
+    return `❌ Ocurrió un error al certificar la Real Cédula en el servidor. Inténtalo de nuevo.`;
   }
 }
 
@@ -309,12 +418,14 @@ export async function handleAceptarTrato(msg, player) {
 export async function handleCancelarTrato(msg, player) {
   const session = getActiveNegotiation(player.id);
   if (!session) {
-    return `❌ No tienes ninguna negociación de negocio activa que cancelar.`;
+    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞', [
+      '❌ No tienes ninguna audiencia de negociación activa que cancelar.'
+    ], { icon: '🚪' });
   }
 
   clearActiveNegotiation(player.id);
-  return heraldCard('🏛️ Real Cancillería', [
-    ` La negociación para la ampliación de *${session.businessName}* ha sido cancelada sin costo.`,
-    ' El Gran Canciller archiva los planos de obra.'
+  return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞', [
+    ` La Real Cédula de ampliación para *${session.businessName}* ha sido archivada sin costos adicionales.`,
+    ' El Gran Canciller guarda los planos en las bóvedas del Reino.'
   ], { icon: '🚪' });
 }

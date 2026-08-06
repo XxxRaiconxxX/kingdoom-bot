@@ -2,7 +2,9 @@
 // Cada negociación tiene una vigencia de 15 minutos.
 
 const activeNegotiations = new Map();
+const fiscoVetos = new Map();
 const NEGOTIATION_TTL_MS = 15 * 60 * 1000; // 15 minutos
+const VETO_TTL_MS = 10 * 60 * 1000; // 10 minutos de veto impositivo
 
 export function getActiveNegotiation(playerId) {
   const session = activeNegotiations.get(playerId);
@@ -45,3 +47,26 @@ export function appendNegotiationHistory(playerId, role, content) {
 export function clearActiveNegotiation(playerId) {
   activeNegotiations.delete(playerId);
 }
+
+export function setFiscoVeto(playerId, durationMs = VETO_TTL_MS) {
+  fiscoVetos.set(playerId, Date.now() + durationMs);
+}
+
+export function getFiscoVeto(playerId) {
+  const expiresAt = fiscoVetos.get(playerId);
+  if (!expiresAt) return null;
+
+  if (Date.now() > expiresAt) {
+    fiscoVetos.delete(playerId);
+    return null;
+  }
+
+  const remainingMs = expiresAt - Date.now();
+  const remainingMinutes = Math.max(1, Math.ceil(remainingMs / (60 * 1000)));
+  return remainingMinutes;
+}
+
+export function clearFiscoVeto(playerId) {
+  fiscoVetos.delete(playerId);
+}
+

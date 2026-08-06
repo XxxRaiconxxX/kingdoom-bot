@@ -5,6 +5,19 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/negotiationStore.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Pulido integral de la mecánica de negociación de negocios (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`), fiscalización secreta del oro por la IA y presentación manuscrita medieval.
+*   **Cambios Clave:**
+    1.  **[Selección Inteligente de Negocios]:** Autoselección si posee 1 solo negocio; menú interactivo numerado si posee múltiples propiedades y ejecuta `!negociar` a secas.
+    2.  **[Desglose Visual del Beneficio Real]:** Cálculo de incremento exacto y estimación de días de amortización pasiva ($ROI$).
+    3.  **[Fiscalización Secreta del Oro]:** El Gran Canciller conoce en secreto la fortuna en bolsa del jugador sin mencionarla abiertamente, adaptando la firmeza y agresividad de sus ofertas.
+    4.  **[Límite de Insolencia y Veto (3 Strikes)]:** Ruptura inmediata de negociación al 3er insulto impositivo con veto impositivo de 10 minutos (`fiscoVetoUntil`).
+    5.  **[Evaluación de Argumentos de Rol]:** Descuentos adicionales de hasta 3% en contraofertas si el jugador presenta una justificación narrativa válida.
+    6.  **[Expiración Elegante (TTL)]:** Respuestas estilizadas del Heraldo si el borrador caduca a los 15 minutos.
+    7.  **[Presentación Manuscrita & Pergamino Real]:** Tipografía estilizada Unicode (ej: `📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞`) y marcos ornamentados de Real Cédula.
+*   **Validación:** Sintaxis ESM comprobada y pruebas unitarias de flujo en vivo.
+
+### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/ai.js`, `.env`, `.env.example`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Rotación de proveedores de IA y soporte para OpenRouter.
 *   **Cambios Clave:**
