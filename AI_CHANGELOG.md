@@ -6,11 +6,11 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Soporte completo para peticiones masivas/imperiales de producción y almacenamiento (ej: `10k produccion` o `50k capacidad`) con cálculo impositivo proporcional de alto valor y escala de codicia del Canciller según el oro auditado.
+*   **Resumen de Tareas:** Corrección de colisión de atributos en contraofertas y eliminación de marcadores incompletos en el prompt del Gran Canciller.
 *   **Cambios Clave:**
-    1.  **[Cálculo Proporcional Masivo]:** `calculateUpgradeParams` ahora cotiza saltos proporcionales sin tope previo (ej: $+9.850$ produccion ➔ $+852.000$ oro costo base).
-    2.  **[Escala de Codicia Real]:** El Gran Canciller detecta fortunas mayores a $300k$ y $1M$ oro, aplicando un factor de sobretasa de hasta $160\%$ sobre la base para maximizar la recaudación.
-*   **Validación:** Prueba unitaria en vivo con $10.000$ de producción y $500.000$ oro verificada correctamente.
+    1.  **[Protección de Atributos]:** Prevenida la sobreescritura accidental de producción cuando el jugador menciona números de almacenamiento (`isStorageMatch` / `isProductionMatch`), manteniendo la integridad del trámite activo.
+    2.  **[Formato Estricto de IA]:** Regla en `CANCILLER_SYSTEM_PROMPT` para prohibir la emisión de placeholders de texto sin formatear (ej: `"un %"`).
+*   **Validación:** Sintaxis ESM verificada y prueba de ruteo limpia.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 

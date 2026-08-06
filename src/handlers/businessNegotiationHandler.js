@@ -35,6 +35,7 @@ Conoces confidencialmente que el aventurero posee exactamente $ORO_JUGADOR oro e
 - Si el jugador propone una cifra RIDÍCULAMENTE BAJA o te falta al respeto, indignate, rechaza con altivez y aplícale una penalización por insolencia notificándole el aumento del costo.
 - Si el jugador presenta un ARGUMENTO DE ROL CONVINCENTE (ej: pago al contado, lealtad a la corona, compra de insumos locales), reconoce su astucia sutilmente y cede un poco de oro acercándote al piso mínimo.
 - Mantén tus respuestas en español formal medieval/burocrático, concisas (máximo 120 palabras).
+- NUNCA dejes marcadores de texto o placeholders incompletos como "un %", "X oro" o "monto %". Expresa siempre números exactos o porcentajes precisos.
 - Termina siempre indicando las opciones de acción claras: '!aceptartrato' para sellar el decreto, '!contraofertar <monto>' o '!cancelartrato'.`;
 
 // Helper para calcular costos base, propuestas de mejora y retorno de inversión
@@ -315,10 +316,17 @@ export async function handleContraofertar(msg, player, body) {
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
   // Si el aventurero propone una meta personalizada en su contraoferta (ej: "producción a 10k" o "10000 de produccion")
+  const isStorageMatch = /\b(almacenamiento|almacen|deposito|depósito|capacidad|espacio)\b/i.test(body);
+  const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa)\b/i.test(body);
+
   const targetValMatch = body.match(/(?:aumente|suba|llegue|sea|a|con|quiero|alcanzar|meta|de)\s*(\d+(?:[\.,]\d+)?[km]?|\d+)\b/i);
   if (targetValMatch) {
     const proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
-    if (proposedVal && proposedVal > session.currentValue && proposedVal !== session.newValue) {
+    
+    // Evitar colisión de atributos: no sobrescribir producción con números de almacenamiento ni viceversa
+    const isContradictory = (isStorageMatch && session.upgradeType === 'production') || (isProductionMatch && session.upgradeType === 'storage');
+
+    if (!isContradictory && proposedVal && proposedVal > session.currentValue && proposedVal !== session.newValue) {
       const recalculated = calculateUpgradeParams(
         { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
         session.upgradeType,
@@ -327,7 +335,13 @@ export async function handleContraofertar(msg, player, body) {
       );
 
       session.newValue = proposedVal;
-      session.deltaValue = session.newValue - session.currentValue;
+      session.deltaValue = proposedVal - session.currentValue;
+      session.costBase = recalculated.costBase;
+      session.floorCost = recalculated.floorCost;
+      session.ceilingCost = recalculated.ceilingCost;
+      session.currentOfferCost = recalculated.initialOfferCost;
+      session.paybackDays = recalculated.paybackDays;
+      session.labelType = recalculated.labelType;
     }
   }
 
