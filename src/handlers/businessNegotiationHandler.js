@@ -38,10 +38,11 @@ Conoces confidencialmente que el aventurero posee exactamente $ORO_JUGADOR oro e
 - Termina siempre indicando las opciones de acción claras: '!aceptartrato' para sellar el decreto, '!contraofertar <monto>' o '!cancelartrato'.`;
 
 // Helper para calcular costos base, propuestas de mejora y retorno de inversión
-function calculateUpgradeParams(business, upgradeType) {
+function calculateUpgradeParams(business, upgradeType, customTargetValue = null, playerGold = 0) {
   const level = Math.max(1, Number(business.level || 1));
   const gph = Math.max(10, Number(business.gold_per_hour || 50));
   const maxStorage = Math.max(100, Number(business.max_storage || 1000));
+  const currentValue = upgradeType === 'production' ? gph : maxStorage;
 
   let costBase = 0;
   let newValue = 0;
@@ -49,31 +50,54 @@ function calculateUpgradeParams(business, upgradeType) {
   let deltaValue = 0;
   let paybackDays = '0';
 
-  if (upgradeType === 'production') {
-    costBase = Math.round((gph * 80) + (maxStorage * 4) + (level * 15000));
-    newValue = Math.round(gph * 1.35); // +35% producción
-    deltaValue = newValue - gph;
-    labelType = 'Producción por hora';
-    paybackDays = (costBase / (deltaValue * 24)).toFixed(1);
+  if (customTargetValue && customTargetValue > currentValue) {
+    newValue = customTargetValue;
+    deltaValue = newValue - currentValue;
+    if (upgradeType === 'production') {
+      labelType = 'Producción por hora (Ampliación Especial)';
+      // Costo proporcional al salto de producción: ~85 oro de base por cada +1 oro/hr + overhead de nivel
+      costBase = Math.round((deltaValue * 85) + (level * 15000));
+      paybackDays = (costBase / (deltaValue * 24)).toFixed(1);
+    } else {
+      labelType = 'Capacidad máxima de almacenamiento (Ampliación Especial)';
+      // Costo proporcional al salto de espacio: ~6 oro de base por cada +1 espacio + overhead de nivel
+      costBase = Math.round((deltaValue * 6) + (level * 12000));
+      paybackDays = (costBase / (gph * 24)).toFixed(1);
+    }
   } else {
-    // storage
-    costBase = Math.round((maxStorage * 5) + (gph * 50) + (level * 12000));
-    newValue = Math.round(maxStorage * 1.50); // +50% capacidad
-    deltaValue = newValue - maxStorage;
-    labelType = 'Capacidad máxima de almacenamiento';
-    paybackDays = (costBase / (gph * 24)).toFixed(1);
+    if (upgradeType === 'production') {
+      costBase = Math.round((gph * 80) + (maxStorage * 4) + (level * 15000));
+      newValue = Math.round(gph * 1.35); // +35% producción estándar
+      deltaValue = newValue - gph;
+      labelType = 'Producción por hora';
+      paybackDays = (costBase / (deltaValue * 24)).toFixed(1);
+    } else {
+      costBase = Math.round((maxStorage * 5) + (gph * 50) + (level * 12000));
+      newValue = Math.round(maxStorage * 1.50); // +50% capacidad estándar
+      deltaValue = newValue - maxStorage;
+      labelType = 'Capacidad máxima de almacenamiento';
+      paybackDays = (costBase / (gph * 24)).toFixed(1);
+    }
   }
 
-  const initialOfferCost = Math.round(costBase * 1.35);
+  // Codicia confidencial del Canciller basada en la fortuna auditada del jugador
+  let greedFactor = 1.35;
+  if (playerGold >= 1000000) {
+    greedFactor = 1.60; // 160% sobre costo base para magnates
+  } else if (playerGold >= 300000) {
+    greedFactor = 1.45; // 145% para aventureros adinerados
+  }
+
+  const initialOfferCost = Math.round(costBase * greedFactor);
   const floorCost = Math.round(costBase * 0.95);
-  const ceilingCost = Math.round(costBase * 1.60);
+  const ceilingCost = Math.round(costBase * 1.90);
 
   return {
     costBase,
     initialOfferCost,
     floorCost,
     ceilingCost,
-    currentValue: upgradeType === 'production' ? gph : maxStorage,
+    currentValue,
     newValue,
     deltaValue,
     paybackDays,
@@ -169,7 +193,7 @@ export async function handleNegociar(msg, player, body) {
     ) || (businesses.length === 1 ? businesses[0] : null);
 
     if (!targetBusiness) {
-      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭℯ𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
+      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔢𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
         `❌ No se encontró ningún negocio llamado "*${businessSearch}*".`,
         '\n *Tus propiedades disponibles:*',
         ...businesses.map((b) => `▸ *${b.name}* (Nivel ${b.level || 1}) ➔ \`!negociar ${b.name} produccion\``)
@@ -177,9 +201,20 @@ export async function handleNegociar(msg, player, body) {
     }
   }
 
-  const params = calculateUpgradeParams(targetBusiness, upgradeType);
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
+
+  // Extraer si el usuario solicitó un objetivo personalizado en la orden inicial (ej: !negociar 10k produccion)
+  const customTargetMatch = rawInput.match(/(\d+(?:[\.,]\d+)?[km]?|\d+)/i);
+  let customTargetInit = null;
+  if (customTargetMatch) {
+    const val = extractGoldAmount(customTargetMatch[1]) || parseInt(customTargetMatch[1].replace(/[\.,]/g, ''), 10);
+    if (Number.isFinite(val) && val > 0) {
+      customTargetInit = val;
+    }
+  }
+
+  const params = calculateUpgradeParams(targetBusiness, upgradeType, customTargetInit, playerGold);
 
   // Limpiar sesión anterior si existía
   clearActiveNegotiation(player.id);
@@ -208,10 +243,10 @@ export async function handleNegociar(msg, player, body) {
     .replace('$PISO_MINIMO', params.floorCost.toLocaleString('es-PY'))
     .replace('$OFERTA_ACTUAL', params.initialOfferCost.toLocaleString('es-PY'));
 
-  const userQuery = `El aventurero ${player.username} (Fortuna auditada en bolsa: ${playerGold.toLocaleString('es-PY')} oro) solicita la Real Cédula para ampliar su negocio "${targetBusiness.name}" (Nivel ${targetBusiness.level || 1}).
-Mejora solicitada: Aumentar ${params.labelType} de ${session.currentValue.toLocaleString('es-PY')} a ${params.newValue.toLocaleString('es-PY')} (+${params.deltaValue.toLocaleString('es-PY')}).
-Costo base de obra: ${params.costBase.toLocaleString('es-PY')} oro. Piso mínimo confidencial: ${params.floorCost.toLocaleString('es-PY')} oro. Tu tarifa de salida oficial: ${params.initialOfferCost.toLocaleString('es-PY')} oro.
-Preséntate imponente en audiencia medieval como el Gran Canciller de la Real Hacienda. Justifica la elevada tasa impositiva y fija la tarifa inicial oficial en ${params.initialOfferCost.toLocaleString('es-PY')} oro.`;
+  const userQuery = `El aventurero ${player.username} (Oro auditado en bolsa: ${playerGold.toLocaleString('es-PY')}) solicita la Real Cédula para ampliar su negocio "${targetBusiness.name}" (Nivel ${targetBusiness.level || 1}).
+Mejora: ${params.labelType} de ${params.currentValue.toLocaleString('es-PY')} a ${params.newValue.toLocaleString('es-PY')} (+${params.deltaValue.toLocaleString('es-PY')}).
+Tu tarifa oficial inicial: ${params.initialOfferCost.toLocaleString('es-PY')} oro. Piso mínimo confidencial: ${params.floorCost.toLocaleString('es-PY')} oro.
+Preséntate imponente y burocrático como el Gran Canciller de la Real Hacienda e impón la tarifa oficial en ${params.initialOfferCost.toLocaleString('es-PY')} oro.`;
 
   appendNegotiationHistory(player.id, 'user', userQuery);
 
@@ -225,8 +260,8 @@ Preséntate imponente en audiencia medieval como el Gran Canciller de la Real Ha
     appendNegotiationHistory(player.id, 'assistant', aiResponse);
 
     const deltaLabel = upgradeType === 'production'
-      ? `+${params.deltaValue.toLocaleString('es-PY')} oro/hora (+35%)`
-      : `+${params.deltaValue.toLocaleString('es-PY')} espacio (+50%)`;
+      ? `+${params.deltaValue.toLocaleString('es-PY')} oro/hora`
+      : `+${params.deltaValue.toLocaleString('es-PY')} espacio`;
 
     return heraldCard(`📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞: ${targetBusiness.name}`, [
       aiResponse,
@@ -276,20 +311,27 @@ export async function handleContraofertar(msg, player, body) {
     .replace(/\b(oro|contraofertar|oferta|tasa)\b/gi, '')
     .trim();
 
-  // Si el aventurero propone una meta personalizada de producción/almacenamiento en su contraoferta (ej: "producción aumente a 230")
-  const targetValMatch = body.match(/(?:aumente|suba|llegue|sea|a)\s*(\d{2,5})\b/i);
+  const freshPlayer = await getPlayer(player.id);
+  const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
+
+  // Si el aventurero propone una meta personalizada en su contraoferta (ej: "producción a 10k" o "10000 de produccion")
+  const targetValMatch = body.match(/(?:aumente|suba|llegue|sea|a|con|quiero|alcanzar|meta|de)\s*(\d+(?:[\.,]\d+)?[km]?|\d+)\b/i);
   if (targetValMatch) {
-    const proposedVal = parseInt(targetValMatch[1], 10);
-    // Si el valor propuesto está entre el actual y hasta 2.5x el valor base
-    if (proposedVal > session.currentValue && proposedVal <= Math.round(session.currentValue * 2.5)) {
+    const proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
+    if (proposedVal && proposedVal > session.currentValue && proposedVal !== session.newValue) {
+      const recalculated = calculateUpgradeParams(
+        { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
+        session.upgradeType,
+        proposedVal,
+        playerGold
+      );
+
       session.newValue = proposedVal;
       session.deltaValue = session.newValue - session.currentValue;
     }
   }
 
   const offeredCost = parsedAmount;
-  const freshPlayer = await getPlayer(player.id);
-  const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
   let resultType = 'normal';
   let newOfferCost = session.currentOfferCost;

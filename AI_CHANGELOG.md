@@ -5,12 +5,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Solución del fallo en `!aceptartrato` por columna `level` faltante en Supabase y soporte para metas personalizadas de producción/almacenamiento en contraofertas (ej: `!contraofertar 40000 pero que aumente a 230`).
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Soporte completo para peticiones masivas/imperiales de producción y almacenamiento (ej: `10k produccion` o `50k capacidad`) con cálculo impositivo proporcional de alto valor y escala de codicia del Canciller según el oro auditado.
 *   **Cambios Clave:**
-    1.  **[Fix Servidor / Supabase]:** Añadida la columna `level` a la tabla `businesses` (`ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS level integer NOT NULL DEFAULT 1`). Resuelto el error en `upgrade_player_business` al certificar cédulas con `!aceptartrato`.
-    2.  **[Flexibilidad del Canciller]:** Parser en `handleContraofertar` para detectar metas personalizadas propuestas por el jugador en rol (ej: `aumente a 230`), actualizando la meta del contrato en tiempo real si el Canciller aprueba el acuerdo.
-*   **Validación:** Consulta de esquema comprobada en Supabase y sintaxis ESM verificada.
+    1.  **[Cálculo Proporcional Masivo]:** `calculateUpgradeParams` ahora cotiza saltos proporcionales sin tope previo (ej: $+9.850$ produccion ➔ $+852.000$ oro costo base).
+    2.  **[Escala de Codicia Real]:** El Gran Canciller detecta fortunas mayores a $300k$ y $1M$ oro, aplicando un factor de sobretasa de hasta $160\%$ sobre la base para maximizar la recaudación.
+*   **Validación:** Prueba unitaria en vivo con $10.000$ de producción y $500.000$ oro verificada correctamente.
+
+### [Fecha: 06/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
