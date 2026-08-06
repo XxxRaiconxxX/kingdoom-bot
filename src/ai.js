@@ -5,10 +5,11 @@ import { sanitizeLogText } from './logSanitizer.js';
 const apiKeyCooldowns = new Map();
 const NVIDIA_API_BASE_URL = process.env.NVIDIA_API_BASE_URL || 'https://integrate.api.nvidia.com/v1';
 const GROQ_API_BASE_URL = process.env.GROQ_API_BASE_URL || 'https://api.groq.com/openai/v1';
-const SUPPORTED_AI_PROVIDERS = new Set(['gemini', 'nvidia', 'groq']);
+const OPENROUTER_API_BASE_URL = process.env.OPENROUTER_API_BASE_URL || 'https://openrouter.ai/api/v1';
+const SUPPORTED_AI_PROVIDERS = new Set(['groq', 'gemini', 'openrouter', 'nvidia']);
 
-if (!process.env.GEMINI_API_KEY) {
-  console.error('[ai] GEMINI_API_KEY no esta configurada. El Oraculo y el chat de IA no funcionaran.');
+if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY && !process.env.NVIDIA_API_KEY && !process.env.OPENROUTER_API_KEY) {
+  console.error('[ai] Ninguna clave de IA esta configurada. El Oraculo y la IA no funcionaran.');
 }
 
 function parseApiKeyList(value) {
@@ -30,15 +31,20 @@ function getGroqApiKeys() {
   return parseApiKeyList(process.env.GROQ_API_KEY);
 }
 
+function getOpenRouterApiKeys() {
+  return parseApiKeyList(process.env.OPENROUTER_API_KEY);
+}
+
 function getProviderKeyCount(provider) {
   if (provider === 'gemini') return getGeminiApiKeys().length;
   if (provider === 'nvidia') return getNvidiaApiKeys().length;
   if (provider === 'groq') return getGroqApiKeys().length;
+  if (provider === 'openrouter') return getOpenRouterApiKeys().length;
   return 0;
 }
 
 function getProviderOrder() {
-  const requested = String(process.env.AI_PROVIDER_ORDER || 'groq,gemini,nvidia')
+  const requested = String(process.env.AI_PROVIDER_ORDER || 'groq,gemini,openrouter,nvidia')
     .split(',')
     .map((provider) => provider.trim().toLowerCase())
     .filter(Boolean);
@@ -50,7 +56,7 @@ function getProviderOrder() {
     }
   }
 
-  return unique.length ? unique : ['groq', 'gemini', 'nvidia'];
+  return unique.length ? unique : ['groq', 'gemini', 'openrouter', 'nvidia'];
 }
 
 function getKeyFingerprint(key) {
@@ -644,6 +650,109 @@ async function askGroqAI(history, systemPrompt, options = {}) {
   throw lastError || new Error('Todas las claves Groq y modelos fallaron');
 }
 
+async function askOpenRouterAI(history, systemPrompt, options = {}) {
+  const keys = getOpenRouterApiKeys();
+  if (keys.length === 0) {
+    throw new Error('OPENROUTER_API_KEY no configurada');
+  }
+
+  const {
+    maxEstimatedInputTokens = null,
+    maxOutputTokens = 2048,
+    temperature = 0.85,
+  } = options;
+
+  const configuredModels = [
+    process.env.OPENROUTER_MODEL || 'meta-llama/llama-3.3-70b-instruct:free',
+    process.env.OPENROUTER_FALLBACK_MODEL || 'deepseek/deepseek-r1:free',
+  ].filter((model, index, arr) => model && arr.indexOf(model) === index);
+
+  let lastError = null;
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+
+    for (const modelName of configuredModels) {
+      const cooldown = readCooldown('openrouter', key, modelName);
+      if (cooldown) {
+        console.log(`[ai][openrouter] Saltando clave/modelo en cooldown (${cooldown.reason}) hasta ${new Date(cooldown.until).toISOString()}`);
+        lastError = lastError ?? new Error(`OpenRouter cooldown activo: ${cooldown.reason}`);
+        continue;
+      }
+
+      try {
+        const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
+        const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
+        const response = await fetch(`${OPENROUTER_API_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'HTTP-Referer': 'https://kingdoom.app',
+            'X-Title': 'Kingdoom AI',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: modelName,
+            messages,
+            max_tokens: maxOutputTokens,
+            temperature,
+            stream: false,
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(payload?.error?.message || payload?.message || `OpenRouter request failed with status ${response.status}`);
+          error.status = response.status;
+          error.errorDetails = payload?.error ? [payload.error] : payload;
+          throw error;
+        }
+
+        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        if (!text) {
+          throw new Error('Respuesta vacia desde OpenRouter');
+        }
+
+        logProviderSuccess('openrouter', key, modelName);
+        return text;
+      } catch (err) {
+        lastError = err;
+        console.error(`[ai][openrouter] Error con clave API index ${i} y modelo ${modelName}:`, err?.message ?? err);
+        if (err?.status) console.error('[ai][openrouter] HTTP Status:', err.status);
+        if (err?.errorDetails) console.error('[ai][openrouter] Details:', JSON.stringify(err.errorDetails));
+
+        const errorType = classifyAIError(err);
+        const retryDelayMs = parseRetryDelayMs(err);
+
+        if (errorType === 'key_invalid') {
+          writeCooldown('openrouter', key, modelName, errorType, 1000 * 60 * 60 * 12);
+        } else if (errorType === 'access_denied') {
+          writeCooldown('openrouter', key, modelName, errorType, 1000 * 60 * 60);
+        } else if (errorType === 'quota_exceeded') {
+          writeCooldown('openrouter', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 10);
+        } else if (errorType === 'service_unavailable') {
+          writeCooldown('openrouter', key, modelName, errorType, retryDelayMs ?? 1000 * 60 * 2, 'model');
+        }
+
+        const isProviderError = errorType === 'key_invalid'
+          || errorType === 'access_denied'
+          || errorType === 'quota_exceeded';
+
+        if (!isProviderError) {
+          console.log(`[ai][openrouter] Error de modelo o servicio (${err?.status || 'red'}). Intentando con el siguiente modelo de la lista...`);
+          continue;
+        }
+
+        if (i < keys.length - 1) {
+          console.log('[ai][openrouter] Error relacionado con la clave API. Pasando a la siguiente clave...');
+        }
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('Todas las claves OpenRouter y modelos fallaron');
+}
+
 export async function askKingdoomAI(history, systemPrompt, options = {}) {
   const providers = getProviderOrder();
   console.log(`[ai] Orden efectivo de proveedores: ${providers.join(' -> ')}`);
@@ -659,16 +768,20 @@ export async function askKingdoomAI(history, systemPrompt, options = {}) {
     console.log(`[ai] Intentando provider ${provider} con ${keyCount} clave(s) disponible(s).`);
 
     try {
+      if (provider === 'groq') {
+        return await askGroqAI(history, systemPrompt, options);
+      }
+
       if (provider === 'gemini') {
         return await askGeminiAI(history, systemPrompt, options);
       }
 
-      if (provider === 'nvidia') {
-        return await askNvidiaAI(history, systemPrompt, options);
+      if (provider === 'openrouter') {
+        return await askOpenRouterAI(history, systemPrompt, options);
       }
 
-      if (provider === 'groq') {
-        return await askGroqAI(history, systemPrompt, options);
+      if (provider === 'nvidia') {
+        return await askNvidiaAI(history, systemPrompt, options);
       }
     } catch (err) {
       lastError = err;

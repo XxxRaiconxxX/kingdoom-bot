@@ -4,6 +4,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 06/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/ai.js`, `.env`, `.env.example`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Rotación de proveedores de IA y soporte para OpenRouter.
+*   **Cambios Clave:**
+    *   **[Orden de Rotación de IA]:** Actualizada la jerarquía de redundancia a **`groq -> gemini -> openrouter -> nvidia`**.
+    *   **[Integración de OpenRouter]:** Incorporado `askOpenRouterAI` en `src/ai.js` con manejo de cooldowns y fallbacks para modelos libres/comerciales.
+*   **Validación:** Ejecución del flujo de rotación en vivo verificado exitosamente.
+
 ### [Fecha: 05/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.github/workflows/keep_alive.yml`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación y optimización del flujo de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensión de Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
