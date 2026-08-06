@@ -9,13 +9,14 @@ on:
 jobs:
   ping-space:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - name: Send Keep-Alive Ping to HF Space
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://huggingface.co/spaces/axel785/kingdoom-whatsapp")
+          STATUS=$(curl -k -s -L -o /dev/null -w "%{http_code}" --max-time 15 --connect-timeout 10 "https://huggingface.co/spaces/axel785/kingdoom-whatsapp")
           echo "HF Space Ping HTTP Status Code: $STATUS"
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
-            echo "✅ Hugging Face Space respondio activamente."
+            echo "✅ Hugging Face Space respondió activamente ($STATUS)."
           else
-            echo "⚠️ Aviso: HF Space respondio con status $STATUS"
+            echo "⚠️ Aviso: HF Space respondió con status $STATUS"
           fi
