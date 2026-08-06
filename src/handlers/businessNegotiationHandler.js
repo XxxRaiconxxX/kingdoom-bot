@@ -276,6 +276,17 @@ export async function handleContraofertar(msg, player, body) {
     .replace(/\b(oro|contraofertar|oferta|tasa)\b/gi, '')
     .trim();
 
+  // Si el aventurero propone una meta personalizada de producción/almacenamiento en su contraoferta (ej: "producción aumente a 230")
+  const targetValMatch = body.match(/(?:aumente|suba|llegue|sea|a)\s*(\d{2,5})\b/i);
+  if (targetValMatch) {
+    const proposedVal = parseInt(targetValMatch[1], 10);
+    // Si el valor propuesto está entre el actual y hasta 2.5x el valor base
+    if (proposedVal > session.currentValue && proposedVal <= Math.round(session.currentValue * 2.5)) {
+      session.newValue = proposedVal;
+      session.deltaValue = session.newValue - session.currentValue;
+    }
+  }
+
   const offeredCost = parsedAmount;
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;

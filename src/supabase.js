@@ -2972,7 +2972,7 @@ export async function getPlayerBusinesses(playerId) {
   if (!playerId) return [];
   const { data, error } = await supabase
     .from('businesses')
-    .select('id, name, description, business_type, icon, production_label, gold_per_hour, max_storage, status, last_collected_at, opened_at')
+    .select('id, name, description, business_type, icon, production_label, gold_per_hour, max_storage, level, status, last_collected_at, opened_at')
     .eq('player_id', playerId)
     .eq('status', 'active')
     .order('created_at', { ascending: false });

@@ -5,13 +5,19 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Solución del fallo en `!aceptartrato` por columna `level` faltante en Supabase y soporte para metas personalizadas de producción/almacenamiento en contraofertas (ej: `!contraofertar 40000 pero que aumente a 230`).
+*   **Cambios Clave:**
+    1.  **[Fix Servidor / Supabase]:** Añadida la columna `level` a la tabla `businesses` (`ALTER TABLE public.businesses ADD COLUMN IF NOT EXISTS level integer NOT NULL DEFAULT 1`). Resuelto el error en `upgrade_player_business` al certificar cédulas con `!aceptartrato`.
+    2.  **[Flexibilidad del Canciller]:** Parser en `handleContraofertar` para detectar metas personalizadas propuestas por el jugador en rol (ej: `aumente a 230`), actualizando la meta del contrato en tiempo real si el Canciller aprueba el acuerdo.
+*   **Validación:** Consulta de esquema comprobada en Supabase y sintaxis ESM verificada.
+
+### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección de enrutamiento de comandos al añadir el alias `!contraoferta` (sin "r" final) para que las respuestas del jugador sean procesadas por la **Real Cancillería** y no se caigan al chatbot general del Heraldo.
 *   **Cambios Clave:**
     *   **[Alias de Comandos]:** Agregados `!contraoferta`, `!negociacion`, `!aceptarcedula` y `!cancelarnegociacion` al manejador en `src/handlers/player.js`.
 *   **Validación:** Sintaxis verificada y ruteo corregido.
-
-### [Fecha: 06/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/negotiationStore.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
