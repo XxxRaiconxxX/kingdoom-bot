@@ -5,11 +5,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Corrección y forzado de la jerarquía de proveedores de IA para que Hugging Face Spaces u entornos con la variable de entorno antigua adopten automáticamente el nuevo orden deseado (`groq -> gemini -> openrouter -> nvidia`).
+*   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Corrección de enrutamiento de comandos al añadir el alias `!contraoferta` (sin "r" final) para que las respuestas del jugador sean procesadas por la **Real Cancillería** y no se caigan al chatbot general del Heraldo.
 *   **Cambios Clave:**
-    *   **[Forzado de Orden de IA]:** Actualizado `getProviderOrder()` en `src/ai.js` para interceptar valores heredados del Dashboard de Hugging Face (`nvidia,groq,gemini`) y reemplazarlos por **`groq -> gemini -> openrouter -> nvidia`**.
-*   **Validación:** Prueba en vivo del interceptor verificada correctamente.
+    *   **[Alias de Comandos]:** Agregados `!contraoferta`, `!negociacion`, `!aceptarcedula` y `!cancelarnegociacion` al manejador en `src/handlers/player.js`.
+*   **Validación:** Sintaxis verificada y ruteo corregido.
+
+### [Fecha: 06/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/negotiationStore.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.

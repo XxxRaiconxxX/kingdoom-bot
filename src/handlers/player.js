@@ -580,19 +580,19 @@ export async function handlePlayerMessage(msg) {
     return await handleCobrarNegocios(msg, player, body);
   }
 
-  if (command === 'negociar' || command === 'ampliarnegocio' || command === 'mejorarnegocio') {
+  if (command === 'negociar' || command === 'negociacion' || command === 'ampliarnegocio' || command === 'mejorarnegocio') {
     return await handleNegociar(msg, player, body);
   }
 
-  if (command === 'contraofertar' || command === 'regatear') {
+  if (command === 'contraofertar' || command === 'contraoferta' || command === 'regatear') {
     return await handleContraofertar(msg, player, body);
   }
 
-  if (command === 'aceptartrato' || command === 'aceptarnegociacion' || command === 'firmartrato') {
+  if (command === 'aceptartrato' || command === 'aceptarnegociacion' || command === 'firmartrato' || command === 'aceptarcedula') {
     return await handleAceptarTrato(msg, player);
   }
 
-  if (command === 'cancelartrato' || command === 'rechazartrato') {
+  if (command === 'cancelartrato' || command === 'rechazartrato' || command === 'cancelarnegociacion') {
     return await handleCancelarTrato(msg, player);
   }
 
