@@ -4,13 +4,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
-### [Fecha: 06/08/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `.github/workflows/keep_alive.yml`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Solución del fallo de cancelación (15 min) en GitHub Actions `Keep-Alive Hugging Face Space`.
+### [Fecha: 07/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Solución integral del ruteo de `!negociar` y `!contraoferta` basada en las capturas reales de Devon (Titanforge Company).
 *   **Cambios Clave:**
-    1.  **[Optimización de Ping]:** Añadidas las banderas `-k -L --max-time 15 --connect-timeout 10` al comando `curl` para evitar el bloqueo por redirecciones/streams no cerrados.
-    2.  **[Límite de Ejecución Job]:** Configurado `timeout-minutes: 3` a nivel de job para evitar la cancelación forzosa por consumo de minutos.
-*   **Validación:** Ejecución en vivo de `curl` devuelve HTTP 200 inmediatamente (< 1s).
+    1.  **[Detección de Palabras Clave Globales]:** La palabra clave `capacidad` / `almacenamiento` / `produccion` se reconoce en **cualquier posición** del mensaje (ej: `!negociar capacidad 2000000 por 18500000`), evitando el fallback erróneo a producción cuando hay números o precios al final.
+    2.  **[Cambio Dinámico de Atributo en Contraofertas]:** Si el jugador inicia con almacenamiento y en `!contraoferta` pide `ganancias de 2.000.000`, la sesión conmuta dinámicamente `upgradeType` a `production`, recalculando el arancel real (160M+) y rechazando ofertas insuficientes (18.5M).
+    3.  **[Escala Temporal y Formato de Números]:** Soporte para escalas temporales (`diario` -> `/24`, `semanal` -> `/168`) y corrección de la expresión regular para números con múltiples puntos de miles (`2.000.000`).
+*   **Validación:** Caso real de Devon (`Titanforge Company`) verificado y 100/100 simulaciones automatizadas superadas con 100.0% de éxito.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 

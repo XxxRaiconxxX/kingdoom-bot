@@ -12,6 +12,13 @@ import {
   getFiscoVeto
 } from '../negotiationStore.js';
 import { askKingdoomAI } from '../ai.js';
+
+async function callAI(history, prompt, options) {
+  if (process.env.MOCK_AI === 'true') {
+    return "Audiencia concedida por Su Excelencia el Gran Canciller del Fisco Real de Aethelgardia. Tu propuesta ha sido examinada.";
+  }
+  return await askKingdoomAI(history, prompt, options);
+}
 import { heraldCard, heraldStat } from '../formatting.js';
 import { parseGoldAmount } from '../economy.js';
 
@@ -172,21 +179,25 @@ export async function handleNegociar(msg, player, body) {
       ], { icon: '🏛️' });
     }
   } else {
-    // Analizar argumentos de búsqueda
-    const lastArg = args[args.length - 1].toLowerCase();
-    let businessSearch = rawInput;
+    // Detectar tipo de mejora en CUALQUIER posición del texto de entrada
+    const hasStorageKeyword = /\b(capacidad|almacenamiento|almacen|almacén|deposito|depósito|storage|espacio)\b/i.test(rawInput);
+    const hasProductionKeyword = /\b(produccion|producción|oro\/hr|gph|tasa|production|ganancia|ganancias)\b/i.test(rawInput);
 
-    if (['capacidad', 'almacenamiento', 'deposito', 'depósito', 'storage'].includes(lastArg)) {
+    if (hasStorageKeyword && !hasProductionKeyword) {
       upgradeType = 'storage';
-      if (args.length > 1) {
-        businessSearch = args.slice(0, -1).join(' ').trim();
-      }
-    } else if (['produccion', 'producción', 'oro', 'tasa', 'production'].includes(lastArg)) {
+    } else if (hasProductionKeyword && !hasStorageKeyword) {
       upgradeType = 'production';
-      if (args.length > 1) {
-        businessSearch = args.slice(0, -1).join(' ').trim();
-      }
+    } else if (hasStorageKeyword && hasProductionKeyword) {
+      const storageIdx = rawInput.search(/\b(capacidad|almacenamiento|almacen|almacén|deposito|depósito|storage|espacio)\b/i);
+      const prodIdx = rawInput.search(/\b(produccion|producción|oro\/hr|gph|tasa|production|ganancia|ganancias)\b/i);
+      upgradeType = storageIdx < prodIdx ? 'storage' : 'production';
     }
+
+    // Limpiar palabras clave numéricas y de tipo para aislar la búsqueda del nombre del negocio
+    const businessSearch = rawInput
+      .replace(/\b(capacidad|almacenamiento|almacen|almacén|deposito|depósito|storage|espacio|produccion|producción|oro\/hr|gph|tasa|production|ganancia|ganancias|por|a|con|de|oferta|contraoferta)\b/gi, '')
+      .replace(/(\d+(?:[\.,]\d+)?[km]?|\d+)/gi, '')
+      .trim();
 
     targetBusiness = businesses.find((b) =>
       b.name.toLowerCase().includes(businessSearch.toLowerCase()) ||
@@ -194,8 +205,8 @@ export async function handleNegociar(msg, player, body) {
     ) || (businesses.length === 1 ? businesses[0] : null);
 
     if (!targetBusiness) {
-      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔢𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
-        `❌ No se encontró ningún negocio llamado "*${businessSearch}*".`,
+      return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭℯ𝔫𝔰𝔬 𝔡𝔢 𝔓𝔯𝔬𝔭𝔦𝔢𝔡𝔞𝔡𝔢𝔰', [
+        `❌ No se encontró ningún negocio que coincida con tu solicitud.`,
         '\n *Tus propiedades disponibles:*',
         ...businesses.map((b) => `▸ *${b.name}* (Nivel ${b.level || 1}) ➔ \`!negociar ${b.name} produccion\``)
       ], { icon: '⚠️' });
@@ -205,13 +216,35 @@ export async function handleNegociar(msg, player, body) {
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
-  // Extraer si el usuario solicitó un objetivo personalizado en la orden inicial (ej: !negociar 10k produccion)
-  const customTargetMatch = rawInput.match(/(\d+(?:[\.,]\d+)?[km]?|\d+)/i);
+  // Extraer si el usuario solicitó un objetivo personalizado en la orden inicial (ej: !negociar capacidad 2000000 por 18500000)
+  const numbersInInput = [...rawInput.matchAll(/(\d+(?:[\.,]\d+)?[km]?|\d+)/gi)];
   let customTargetInit = null;
-  if (customTargetMatch) {
-    const val = extractGoldAmount(customTargetMatch[1]) || parseInt(customTargetMatch[1].replace(/[\.,]/g, ''), 10);
-    if (Number.isFinite(val) && val > 0) {
-      customTargetInit = val;
+  let initialPlayerOffer = null;
+
+  if (numbersInInput.length > 0) {
+    const rawVal1 = numbersInInput[0][1];
+    const val1 = extractGoldAmount(rawVal1) || parseInt(rawVal1.replace(/[\.,]/g, ''), 10);
+    if (Number.isFinite(val1) && val1 > 0) {
+      // Verificar escala temporal si aplica (diario -> /24, semanal -> /168)
+      if (upgradeType === 'production') {
+        if (/\b(diario|diaria|al día|por día|día)\b/i.test(rawInput)) {
+          customTargetInit = Math.round(val1 / 24);
+        } else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(rawInput)) {
+          customTargetInit = Math.round(val1 / 168);
+        } else {
+          customTargetInit = val1;
+        }
+      } else {
+        customTargetInit = val1;
+      }
+    }
+
+    if (numbersInInput.length > 1 && /\b(por|ofrezco|pago|doy|con tarifa)\b/i.test(rawInput)) {
+      const rawVal2 = numbersInInput[1][1];
+      const val2 = extractGoldAmount(rawVal2) || parseInt(rawVal2.replace(/[\.,]/g, ''), 10);
+      if (Number.isFinite(val2) && val2 > 0) {
+        initialPlayerOffer = val2;
+      }
     }
   }
 
@@ -252,7 +285,7 @@ Preséntate imponente y burocrático como el Gran Canciller de la Real Hacienda 
   appendNegotiationHistory(player.id, 'user', userQuery);
 
   try {
-    const aiResponse = await askKingdoomAI(
+    const aiResponse = await callAI(
       session.conversationHistory,
       promptCtx,
       { temperature: 0.6 }
@@ -315,18 +348,36 @@ export async function handleContraofertar(msg, player, body) {
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
-  // Si el aventurero propone una meta personalizada en su contraoferta (ej: "producción a 10k" o "10000 de produccion")
+  // Si el aventurero propone una meta personalizada en su contraoferta (ej: "producción a 10k", "ganancias de 2.000.000" o "10000 de produccion")
   const isStorageMatch = /\b(almacenamiento|almacen|deposito|depósito|capacidad|espacio)\b/i.test(body);
-  const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa)\b/i.test(body);
+  const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa|ganancia|ganancias)\b/i.test(body);
 
-  const targetValMatch = body.match(/(?:aumente|suba|llegue|sea|a|con|quiero|alcanzar|meta|de)\s*(\d+(?:[\.,]\d+)?[km]?|\d+)\b/i);
+  let targetValMatch = body.match(/(?:ganancia|ganancias|produccion|producción|almacenamiento|almacen|deposito|depósito|capacidad|espacio|impacto|beneficio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+  if (!targetValMatch) {
+    targetValMatch = body.match(/(?:aumente|suba|llegue|sea|con|quiero|alcanzar|meta)\s*(\d[\d\.,]*[km]?|\d+)/i);
+  }
   if (targetValMatch) {
-    const proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
+    let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
     
-    // Evitar colisión de atributos: no sobrescribir producción con números de almacenamiento ni viceversa
-    const isContradictory = (isStorageMatch && session.upgradeType === 'production') || (isProductionMatch && session.upgradeType === 'storage');
+    // Si el usuario especifica explícitamente un atributo en la contraoferta, permitir cambiar session.upgradeType
+    if (isProductionMatch && session.upgradeType !== 'production') {
+      session.upgradeType = 'production';
+      session.labelType = 'Producción por hora';
+    } else if (isStorageMatch && session.upgradeType !== 'storage') {
+      session.upgradeType = 'storage';
+      session.labelType = 'Capacidad máxima de almacenamiento';
+    }
 
-    if (!isContradictory && proposedVal && proposedVal > session.currentValue && proposedVal !== session.newValue) {
+    // Comprobar escala temporal (diaria -> /24, semanal -> /168) para producción
+    if (session.upgradeType === 'production') {
+      if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) {
+        proposedVal = Math.round(proposedVal / 24);
+      } else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) {
+        proposedVal = Math.round(proposedVal / 168);
+      }
+    }
+
+    if (proposedVal && proposedVal > 0) {
       const recalculated = calculateUpgradeParams(
         { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
         session.upgradeType,
@@ -404,7 +455,7 @@ Responde como el Gran Canciller. Si es REJECTED_LOW, repréndelo duramente por i
   appendNegotiationHistory(player.id, 'user', userQuery);
 
   try {
-    const aiResponse = await askKingdoomAI(
+    const aiResponse = await callAI(
       session.conversationHistory,
       promptCtx,
       { temperature: 0.6 }
