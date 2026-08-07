@@ -222,10 +222,10 @@ function applyInputBudget(history, systemPrompt, maxEstimatedInputTokens) {
   };
 }
 
-function buildGeminiContents(history = []) {
+function buildGeminiContents(history = [], fallbackPrompt = '') {
   const safeHistory = Array.isArray(history) ? history : [];
   let lastRole = null;
-  return safeHistory
+  const filtered = safeHistory
     .filter((msg, i) => {
       if (i === 0 && msg.role !== 'user') return false;
       return true;
@@ -237,6 +237,12 @@ function buildGeminiContents(history = []) {
       acc.push({ role, parts: [{ text: msg.content }] });
       return acc;
     }, []);
+
+  if (!filtered.length && fallbackPrompt) {
+    filtered.push({ role: 'user', parts: [{ text: fallbackPrompt }] });
+  }
+
+  return filtered;
 }
 
 function buildOpenAICompatibleMessages(history = [], systemPrompt) {
@@ -374,7 +380,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
           console.warn(`[ai] Se recorto el payload para mantenerse dentro del presupuesto estimado de ${maxEstimatedInputTokens} tokens.`);
         }
 
-        let contents = buildGeminiContents(budgeted.history);
+        let contents = buildGeminiContents(budgeted.history, budgeted.systemPrompt);
         if (!contents.length) throw new Error('Historial de mensajes vacio o invalido');
 
         if (maxEstimatedInputTokens) {
@@ -392,7 +398,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
                 console.warn(`[ai] Payload ajustado tras countTokens oficial para bajar de ${officialTokenCount} a <= ${maxEstimatedInputTokens}.`);
               }
               budgeted = tightened;
-              contents = buildGeminiContents(budgeted.history);
+              contents = buildGeminiContents(budgeted.history, budgeted.systemPrompt);
               if (!contents.length) throw new Error('Historial de mensajes vacio o invalido tras el recorte oficial de tokens');
             }
           }
