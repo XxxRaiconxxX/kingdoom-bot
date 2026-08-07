@@ -3061,7 +3061,42 @@ export async function collectPlayerBusinessesGold(playerId, businessId = null) {
   };
 }
 
-export async function upgradePlayerBusinessInDb(businessId, playerId, upgradeType, newValue, costGold) {
+export async function upgradePlayerBusinessInDb(businessId, playerId, upgradeType, newValue, costGold, secondaryUpgrade = null) {
+  if (upgradeType === 'dual' && secondaryUpgrade) {
+    const { data, error } = await supabase.rpc('upgrade_player_business', {
+      p_business_id: businessId,
+      p_player_id: playerId,
+      p_upgrade_type: secondaryUpgrade.primaryType || 'production',
+      p_new_value: secondaryUpgrade.primaryValue,
+      p_cost_gold: costGold
+    });
+
+    if (error) {
+      console.error('[upgradePlayerBusinessInDb RPC Error]', error.message);
+      throw new Error(`Error en la transacción RPC de Supabase: ${error.message}`);
+    }
+
+    const updatePayload = {};
+    if (secondaryUpgrade.secondaryType === 'production') {
+      updatePayload.gold_per_hour = secondaryUpgrade.secondaryValue;
+    } else if (secondaryUpgrade.secondaryType === 'storage') {
+      updatePayload.max_storage = secondaryUpgrade.secondaryValue;
+    }
+
+    const { error: secError } = await supabase
+      .from('businesses')
+      .update(updatePayload)
+      .eq('id', businessId)
+      .eq('player_id', playerId);
+
+    if (secError) {
+      console.error('[upgradePlayerBusinessInDb Secondary Error]', secError.message);
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    return row ?? { success: true, message: 'Mejora combinada completada exitosamente.' };
+  }
+
   const { data, error } = await supabase.rpc('upgrade_player_business', {
     p_business_id: businessId,
     p_player_id: playerId,

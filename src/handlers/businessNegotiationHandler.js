@@ -113,6 +113,50 @@ function calculateUpgradeParams(business, upgradeType, customTargetValue = null,
   };
 }
 
+// Helper para calcular paquetes de mejoras combinadas (Producción + Almacenamiento simultáneos)
+function calculateDualUpgradeParams(business, customProdTarget, customStorTarget, playerGold = 0) {
+  const level = Math.max(1, Number(business.level || 1));
+  const gph = Math.max(10, Number(business.gold_per_hour || 50));
+  const maxStorage = Math.max(100, Number(business.max_storage || 1000));
+
+  const newProd = (customProdTarget && customProdTarget > gph) ? customProdTarget : Math.round(gph * 1.35);
+  const newStor = (customStorTarget && customStorTarget > maxStorage) ? customStorTarget : Math.round(maxStorage * 1.50);
+
+  const deltaProd = newProd - gph;
+  const deltaStor = newStor - maxStorage;
+
+  const costProd = Math.round((deltaProd * 85) + (level * 10000));
+  const costStor = Math.round((deltaStor * 6) + (level * 8000));
+  const costBase = Math.max(25000, costProd + costStor);
+
+  let greedFactor = 1.35;
+  if (playerGold >= 1000000) {
+    greedFactor = 1.60;
+  } else if (playerGold >= 300000) {
+    greedFactor = 1.45;
+  }
+
+  const initialOfferCost = Math.round(costBase * greedFactor);
+  const floorCost = Math.round(costBase * 0.95);
+  const ceilingCost = Math.round(costBase * 1.90);
+  const paybackDays = (costBase / (deltaProd * 24)).toFixed(1);
+
+  return {
+    costBase,
+    initialOfferCost,
+    floorCost,
+    ceilingCost,
+    currentProd: gph,
+    newProd,
+    deltaProd,
+    currentStor: maxStorage,
+    newStor,
+    deltaStor,
+    paybackDays,
+    labelType: 'Paquete Real Combinado (Producción + Almacenamiento)'
+  };
+}
+
 // Extrae montos de oro flexibles (ej: 150k, 1.5m, 150.000, 150000)
 function extractGoldAmount(text) {
   if (!text) return null;
@@ -352,47 +396,90 @@ export async function handleContraofertar(msg, player, body) {
   const isStorageMatch = /\b(almacenamiento|almacen|deposito|depósito|capacidad|espacio)\b/i.test(body);
   const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa|ganancia|ganancias)\b/i.test(body);
 
-  let targetValMatch = body.match(/(?:ganancia|ganancias|produccion|producción|almacenamiento|almacen|deposito|depósito|capacidad|espacio|impacto|beneficio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
-  if (!targetValMatch) {
-    targetValMatch = body.match(/(?:aumente|suba|llegue|sea|con|quiero|alcanzar|meta)\s*(\d[\d\.,]*[km]?|\d+)/i);
-  }
-  if (targetValMatch) {
-    let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
-    
-    // Si el usuario especifica explícitamente un atributo en la contraoferta, permitir cambiar session.upgradeType
-    if (isProductionMatch && session.upgradeType !== 'production') {
-      session.upgradeType = 'production';
-      session.labelType = 'Producción por hora';
-    } else if (isStorageMatch && session.upgradeType !== 'storage') {
-      session.upgradeType = 'storage';
-      session.labelType = 'Capacidad máxima de almacenamiento';
+  if (isProductionMatch && isStorageMatch) {
+    const prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+    const storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+
+    let prodTarget = null;
+    let storTarget = null;
+
+    if (prodTargetMatch) {
+      let pVal = extractGoldAmount(prodTargetMatch[1]) || parseInt(prodTargetMatch[1].replace(/[\.,]/g, ''), 10);
+      if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) pVal = Math.round(pVal / 24);
+      else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) pVal = Math.round(pVal / 168);
+      prodTarget = pVal;
     }
 
-    // Comprobar escala temporal (diaria -> /24, semanal -> /168) para producción
-    if (session.upgradeType === 'production') {
-      if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) {
-        proposedVal = Math.round(proposedVal / 24);
-      } else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) {
-        proposedVal = Math.round(proposedVal / 168);
+    if (storTargetMatch) {
+      storTarget = extractGoldAmount(storTargetMatch[1]) || parseInt(storTargetMatch[1].replace(/[\.,]/g, ''), 10);
+    }
+
+    const businessObj = {
+      level: 1,
+      gold_per_hour: session.currentProd || session.currentValue || 50,
+      max_storage: session.currentStor || session.currentValue || 1000
+    };
+
+    const dualParams = calculateDualUpgradeParams(businessObj, prodTarget, storTarget, playerGold);
+
+    session.upgradeType = 'dual';
+    session.primaryType = 'production';
+    session.newProductionValue = dualParams.newProd;
+    session.newStorageValue = dualParams.newStor;
+    session.deltaValue = dualParams.deltaProd;
+    session.secondaryDeltaValue = dualParams.deltaStor;
+    session.currentProd = dualParams.currentProd;
+    session.currentStor = dualParams.currentStor;
+    session.costBase = dualParams.costBase;
+    session.floorCost = dualParams.floorCost;
+    session.ceilingCost = dualParams.ceilingCost;
+    session.currentOfferCost = dualParams.initialOfferCost;
+    session.paybackDays = dualParams.paybackDays;
+    session.labelType = dualParams.labelType;
+    session.newValue = dualParams.newProd;
+  } else {
+    let targetValMatch = body.match(/(?:ganancia|ganancias|produccion|producción|almacenamiento|almacen|deposito|depósito|capacidad|espacio|impacto|beneficio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+    if (!targetValMatch) {
+      targetValMatch = body.match(/(?:aumente|suba|llegue|sea|con|quiero|alcanzar|meta)\s*(\d[\d\.,]*[km]?|\d+)/i);
+    }
+    if (targetValMatch) {
+      let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
+      
+      // Si el usuario especifica explícitamente un atributo en la contraoferta, permitir cambiar session.upgradeType
+      if (isProductionMatch && session.upgradeType !== 'production') {
+        session.upgradeType = 'production';
+        session.labelType = 'Producción por hora';
+      } else if (isStorageMatch && session.upgradeType !== 'storage') {
+        session.upgradeType = 'storage';
+        session.labelType = 'Capacidad máxima de almacenamiento';
       }
-    }
 
-    if (proposedVal && proposedVal > 0) {
-      const recalculated = calculateUpgradeParams(
-        { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
-        session.upgradeType,
-        proposedVal,
-        playerGold
-      );
+      // Comprobar escala temporal (diaria -> /24, semanal -> /168) para producción
+      if (session.upgradeType === 'production') {
+        if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) {
+          proposedVal = Math.round(proposedVal / 24);
+        } else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) {
+          proposedVal = Math.round(proposedVal / 168);
+        }
+      }
 
-      session.newValue = proposedVal;
-      session.deltaValue = proposedVal - session.currentValue;
-      session.costBase = recalculated.costBase;
-      session.floorCost = recalculated.floorCost;
-      session.ceilingCost = recalculated.ceilingCost;
-      session.currentOfferCost = recalculated.initialOfferCost;
-      session.paybackDays = recalculated.paybackDays;
-      session.labelType = recalculated.labelType;
+      if (proposedVal && proposedVal > 0) {
+        const recalculated = calculateUpgradeParams(
+          { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
+          session.upgradeType,
+          proposedVal,
+          playerGold
+        );
+
+        session.newValue = proposedVal;
+        session.deltaValue = proposedVal - session.currentValue;
+        session.costBase = recalculated.costBase;
+        session.floorCost = recalculated.floorCost;
+        session.ceilingCost = recalculated.ceilingCost;
+        session.currentOfferCost = recalculated.initialOfferCost;
+        session.paybackDays = recalculated.paybackDays;
+        session.labelType = recalculated.labelType;
+      }
     }
   }
 
@@ -505,12 +592,20 @@ export async function handleAceptarTrato(msg, player) {
 
   // Ejecutar RPC atómico en Supabase
   try {
+    const secondaryPayload = session.upgradeType === 'dual' ? {
+      primaryType: 'production',
+      primaryValue: session.newProductionValue,
+      secondaryType: 'storage',
+      secondaryValue: session.newStorageValue
+    } : null;
+
     const result = await upgradePlayerBusinessInDb(
       session.businessId,
       player.id,
       session.upgradeType,
       session.newValue,
-      session.currentOfferCost
+      session.currentOfferCost,
+      secondaryPayload
     );
 
     if (!result.success) {

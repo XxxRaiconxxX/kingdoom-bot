@@ -5,15 +5,15 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Solución integral del ruteo de `!negociar` y `!contraoferta` basada en las capturas reales de Devon (Titanforge Company).
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementada la mecánica de **Paquetes Reales Combinados (Dual Upgrades)** durante la negociación de negocios.
 *   **Cambios Clave:**
-    1.  **[Detección de Palabras Clave Globales]:** La palabra clave `capacidad` / `almacenamiento` / `produccion` se reconoce en **cualquier posición** del mensaje (ej: `!negociar capacidad 2000000 por 18500000`), evitando el fallback erróneo a producción cuando hay números o precios al final.
-    2.  **[Cambio Dinámico de Atributo en Contraofertas]:** Si el jugador inicia con almacenamiento y en `!contraoferta` pide `ganancias de 2.000.000`, la sesión conmuta dinámicamente `upgradeType` a `production`, recalculando el arancel real (160M+) y rechazando ofertas insuficientes (18.5M).
-    3.  **[Escala Temporal y Formato de Números]:** Soporte para escalas temporales (`diario` -> `/24`, `semanal` -> `/168`) y corrección de la expresión regular para números con múltiples puntos de miles (`2.000.000`).
-*   **Validación:** Caso real de Devon (`Titanforge Company`) verificado y 100/100 simulaciones automatizadas superadas con 100.0% de éxito.
+    1.  **[Detección de Ofertas Combinadas]:** Si el jugador ofrece un monto elevado de oro en `!contraoferta` pidiendo incrementar **Producción Y Almacenamiento al mismo tiempo** (ej: `20M pero subir produccion a 100k y almacenamiento a 500k`), el sistema conmuta la sesión a `upgradeType = 'dual'`.
+    2.  **[Cálculo de Arancel Combinado]:** `calculateDualUpgradeParams` suma los costos base de ambos saltos ($85 \times \Delta_{prod} + 6 \times \Delta_{stor}$) aplicando el factor de codicia real correspondiente.
+    3.  **[Ejecución Atómica en Supabase]:** `upgradePlayerBusinessInDb` admite `secondaryPayload` para actualizar `gold_per_hour` y `max_storage` simultáneamente en la base de datos tras la confirmación con `!aceptartrato`.
+*   **Validación:** Pruebas unitarias de paquetes combinados y 100/100 simulaciones automatizadas superadas al 100%.
 
-### [Fecha: 06/08/2026] - [Autor: Antigravity]
+### [Fecha: 07/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
