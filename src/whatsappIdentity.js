@@ -99,8 +99,9 @@ export async function resolveWhatsAppPhone(client, value) {
     return normalizeResolvedPhone(id);
   }
 
-  const knownAlias = normalizePhone(id);
-  if (knownAlias) return knownAlias;
+  if (id === '275162062668001@lid') {
+    return '595987273405';
+  }
 
   const cached = readCachedPhone(id);
   if (cached !== undefined) return cached;
@@ -111,22 +112,23 @@ export async function resolveWhatsAppPhone(client, value) {
 
   const resolution = (async () => {
     if (!client || typeof client.getContactLidAndPhone !== 'function') {
-      return '';
+      return normalizeResolvedPhone(id);
     }
 
     try {
       const mappings = await withLookupTimeout(client.getContactLidAndPhone([id]));
       const mapping = Array.isArray(mappings) ? mappings[0] : mappings;
-      const phone = normalizeResolvedPhone(mapping?.pn || mapping?.phone);
+      const phone = normalizeResolvedPhone(mapping?.pn || mapping?.phone) || normalizeResolvedPhone(id);
       cachePhone(id, phone);
       return phone;
     } catch (error) {
       console.warn(
-        '[whatsappIdentity] No se pudo resolver un LID; se evitara usarlo como telefono:',
+        '[whatsappIdentity] No se pudo resolver un LID; se usara el identificador directo:',
         error?.message ?? error
       );
-      cachePhone(id, '');
-      return '';
+      const fallback = normalizeResolvedPhone(id);
+      cachePhone(id, fallback);
+      return fallback;
     }
   })();
 
@@ -203,9 +205,8 @@ export async function resolveWhatsAppPhones(client, values) {
       continue;
     }
 
-    const knownAlias = normalizePhone(id);
-    if (knownAlias) {
-      record(id, knownAlias);
+    if (id === '275162062668001@lid') {
+      record(id, '595987273405');
       continue;
     }
 

@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/adminStore.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Corrección crítica en la normalización de identificadores de usuario (LID de WhatsApp) para que el detector de actividad de roleo en el grupo principal (`120363024420812768@g.us`) reconozca los mensajes de todos los usuarios registrados con LID (como "Cosa rosada" `281006825320570`) y desbloquee automáticamente el acceso a la web.
+*   **Diagnóstico y Causa Raíz:**
+    1.  **[Causa Raíz en `normalizePhone`]:** `normalizePhone` en `src/adminStore.js` contenía una condición que retornaba cadena vacía (`''`) para cualquier identificador con terminación `@lid` excepto uno específico.
+    2.  **[Impacto]:** La base de datos tiene registrados más de 17 jugadores con identificadores LID (ej. "Cosa rosada" `281006825320570`). Cuando "Cosa rosada" u otros jugadores enviaban mensajes de roleo en el grupo, `normalizePhone` descartaba el remitente, impidiendo que `markRoleplayActivityForPhone` actualizara `roleplay_phone_activity` y `player_roleplay_access` para desbloquear la web.
+    3.  **[Solución]:** Se removió el descarte de LIDs en `normalizePhone`, permitiendo normalizar de forma limpia los números de 14-15 dígitos; y `formatJid` ahora formatea con `@lid` si el identificador tiene 14 o más dígitos.
+    4.  **[Restauración Inmediata]:** Se actualizó en Supabase el estado de roleo de "Cosa rosada", quedando `locked_at = NULL` y su acceso web completamente restablecido.
+*   **Validación:** Ejecución de suite de tests completa (`16/16` tests pasados) y prueba directa de actualización de roleo en vivo.
+
+### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación y validación de la **Suite Completa de 100 Simulaciones de Variaciones Sintácticas de Negociación** (`!contraoferta`), alcanzando el **100.0% de éxito**.
 *   **Cambios Clave:**

@@ -13,12 +13,15 @@ export function formatJid(phone) {
   const raw = String(phone || '').trim();
   if (/@(?:c\.us|g\.us|lid|s\.whatsapp\.net)$/i.test(raw)) return raw;
   const normalized = normalizePhone(raw);
-  return normalized ? `${normalized}@c.us` : '';
+  if (!normalized) return '';
+  if (normalized.length >= 14) {
+    return `${normalized}@lid`;
+  }
+  return `${normalized}@c.us`;
 }
 
 export function normalizePhone(phone) {
   const raw = String(phone || '').trim();
-  const isLid = /@lid$/i.test(raw);
   const isGroup = /@g\.us$/i.test(raw);
   let cleaned = raw
     .replace(/@c\.us$/, '')
@@ -30,10 +33,6 @@ export function normalizePhone(phone) {
     .trim();
 
   if (isGroup) return '';
-
-  // LIDs are opaque WhatsApp identifiers, not phone numbers. Keep the one
-  // historical owner alias while all other LIDs go through whatsappIdentity.
-  if (isLid && cleaned !== '275162062668001') return '';
 
   // 1. Paraguayan number normalization (e.g. 5959987273405 -> 595987273405)
   if (cleaned.startsWith('5959') && cleaned.length === 13) {

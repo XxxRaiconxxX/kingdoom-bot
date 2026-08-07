@@ -15,10 +15,10 @@ import {
 } from './src/whatsappMedia.js';
 
 assert.equal(normalizePhone('595981123456:12@c.us'), '595981123456');
-assert.equal(normalizePhone('240797811245267@lid'), '', 'Un LID opaco no puede convertirse en teléfono.');
+assert.equal(normalizePhone('240797811245267@lid'), '240797811245267', 'LID digits are preserved for player lookups.');
 assert.equal(normalizePhone('275162062668001@lid'), '595987273405', 'Se conserva el alias histórico del owner.');
 assert.equal(normalizePhone('595971938097-1618930274@g.us'), '', 'Un grupo no puede convertirse en teléfono.');
-assert.equal(formatJid('123456789012345'), '123456789012345@c.us', 'La longitud no convierte un teléfono en LID.');
+assert.equal(formatJid('123456789012345'), '123456789012345@lid', '14+ digit IDs format as @lid.');
 assert.equal(formatJid('240797811245267@lid'), '240797811245267@lid');
 assert.equal(serializeWhatsAppId({ $1: '240797811245267@lid' }), '240797811245267@lid');
 

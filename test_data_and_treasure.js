@@ -15,7 +15,7 @@ assert.equal(normalizePhone('595981123456@c.us'), '595981123456');
 assert.equal(normalizePhone('595981123456:12@c.us'), '595981123456');
 assert.equal(normalizePhone('595981123456:4@s.whatsapp.net'), '595981123456');
 assert.equal(normalizePhone('549341123456:9@c.us'), '549341123456');
-assert.equal(normalizePhone('240797811245267@lid'), '');
+assert.equal(normalizePhone('240797811245267@lid'), '240797811245267');
 console.log('✅ normalizePhone multi-device JID test passed!');
 
 // 2. Test Treasure claim feedback builder
