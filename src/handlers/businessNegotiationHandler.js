@@ -383,10 +383,11 @@ export async function handleContraofertar(msg, player, body) {
     return `⚠️ Especifica un monto válido de oro en tu contraoferta.\n*Ejemplo:* \`!contraofertar 140k oro por pago al contado\``;
   }
 
-  // Extraer el texto de argumento de rol
+  // Extraer el texto de argumento de rol de forma limpia sin romper palabras como "mi"
   const rpArgument = body
-    .replace(/(\d+(?:[\.,]\d+)?)\s*[km]?/gi, '')
-    .replace(/\b(oro|contraofertar|oferta|tasa)\b/gi, '')
+    .replace(/\b\d+([.,]\d+)?\s*[kKmMbB]?\b/g, '')
+    .replace(/\b(oro|contraofertar|contraoferta|oferta|tasa)\b/gi, '')
+    .replace(/\s+/g, ' ')
     .trim();
 
   const freshPlayer = await getPlayer(player.id);
@@ -413,7 +414,10 @@ export async function handleContraofertar(msg, player, body) {
     let storTarget = session.upgradeType === 'storage' ? session.newValue : null;
 
     if (isStorageMatch) {
-      const storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      let storTargetMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km%]?|\d+)\s*(?:mi|de|en|del)?\s*(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)/i);
+      if (!storTargetMatch) {
+        storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      }
       if (parsedPercent) {
         storTarget = Math.round(currentStor * (1 + parsedPercent / 100));
       } else if (storTargetMatch) {
@@ -423,7 +427,10 @@ export async function handleContraofertar(msg, player, body) {
     }
 
     if (isProductionMatch) {
-      const prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      let prodTargetMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km%]?|\d+)\s*(?:mi|de|en|del)?\s*(?:produccion|producción|oro\/hora|gph|ganancias|ganancia)/i);
+      if (!prodTargetMatch) {
+        prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      }
       if (parsedPercent && !isStorageMatch) {
         prodTarget = Math.round(currentProd * (1 + parsedPercent / 100));
       } else if (prodTargetMatch) {
@@ -458,10 +465,19 @@ export async function handleContraofertar(msg, player, body) {
     session.labelType = dualParams.labelType;
     session.newValue = dualParams.newProd;
   } else {
-    let targetValMatch = body.match(/(?:ganancia|ganancias|produccion|producción|almacenamiento|almacen|deposito|depósito|capacidad|espacio|impacto|beneficio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+    // 1. Número ANTES de la palabra clave: ej: "subiendo a 2000000 mi almacenamiento", "a 2.000.000 de capacidad"
+    let targetValMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km]?|\d+)\s*(?:mi|de|en|del)?\s*(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio|produccion|producción|oro\/hora|gph|ganancias|ganancia)/i);
+
+    // 2. Número DESPUÉS de la palabra clave: ej: "almacenamiento a 2000000", "capacidad de 2M", "produccion a 50k"
     if (!targetValMatch) {
-      targetValMatch = body.match(/(?:aumente|suba|llegue|sea|con|quiero|alcanzar|meta)\s*(\d[\d\.,]*[km]?|\d+)/i);
+      targetValMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio|produccion|producción|oro\/hora|gph|ganancias|ganancia|impacto|beneficio|meta)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km]?|\d+)/i);
     }
+
+    // 3. Fallback general con verbos de incremento: ej: "subiendo a 2000000", "subir a 100k"
+    if (!targetValMatch) {
+      targetValMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|sea|con|quiero|alcanzar|meta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+    }
+
     if (targetValMatch) {
       let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
 

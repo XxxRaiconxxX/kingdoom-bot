@@ -6,12 +6,11 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Solución del caso de Alexander (Captura de WhatsApp) con contraofertas porcentuales y adición del segundo atributo (`un 25% mas de capacidad`).
+*   **Resumen de Tareas:** Solución del caso de Alexander (`!contraoferta 30000000 pero subiendo a 2000000 mi almacenamiento`).
 *   **Cambios Clave:**
-    1.  **[Parseo de Porcentajes `%`]:** Reconocimiento automático de peticiones porcentuales (ej: `un 25% mas`, `+25%`) recalculando la meta como `valorActual * 1.25`.
-    2.  **[Fusión Automática de Atributos en Contraoferta]:** Si el jugador está negociando Producción y en `!contraoferta` pide agregar Capacidad (o viceversa), el trámite conmuta a **Paquete Real Combinado (Dual Upgrade)** conservando la mejora de producción y añadiendo el incremento del almacenamiento.
-    3.  **[Despliegue Visual del Card]:** `📊 Impacto:` muestra el desglose dual completo (`Producción: X ➔ Y · Almacén: A ➔ B`).
-*   **Validación:** Caso exacto de la captura verificado y suite de 100 simulaciones automatizadas pasada al 100%.
+    1.  **[Detección de Metas Antepuestas a la Palabra Clave]:** Soporte para frases donde el valor objetivo precede a la palabra clave (ej: `subiendo a 2000000 mi almacenamiento`), asignando correctamente `2.000.000` como nuevo espacio objetivo.
+    2.  **[Limpieza con Límites de Palabra en `rpArgument`]:** Eliminación de montos numéricos con límites de palabra (`\b\d+\b`), evitando que se recorte la letra `m` de palabras como `mi almacenamiento` (evitando errores como `pero subiendo a i almacenamiento`).
+*   **Validación:** Caso exacto de la captura verificado y suite de 100 simulaciones automatizadas superadas con 100.0% de éxito.
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 
