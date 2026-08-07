@@ -5,13 +5,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
-*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementada la mecánica de **Paquetes Reales Combinados (Dual Upgrades)** durante la negociación de negocios.
+*   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Solución del caso de Alexander (Captura de WhatsApp) con contraofertas porcentuales y adición del segundo atributo (`un 25% mas de capacidad`).
 *   **Cambios Clave:**
-    1.  **[Detección de Ofertas Combinadas]:** Si el jugador ofrece un monto elevado de oro en `!contraoferta` pidiendo incrementar **Producción Y Almacenamiento al mismo tiempo** (ej: `20M pero subir produccion a 100k y almacenamiento a 500k`), el sistema conmuta la sesión a `upgradeType = 'dual'`.
-    2.  **[Cálculo de Arancel Combinado]:** `calculateDualUpgradeParams` suma los costos base de ambos saltos ($85 \times \Delta_{prod} + 6 \times \Delta_{stor}$) aplicando el factor de codicia real correspondiente.
-    3.  **[Ejecución Atómica en Supabase]:** `upgradePlayerBusinessInDb` admite `secondaryPayload` para actualizar `gold_per_hour` y `max_storage` simultáneamente en la base de datos tras la confirmación con `!aceptartrato`.
-*   **Validación:** Pruebas unitarias de paquetes combinados y 100/100 simulaciones automatizadas superadas al 100%.
+    1.  **[Parseo de Porcentajes `%`]:** Reconocimiento automático de peticiones porcentuales (ej: `un 25% mas`, `+25%`) recalculando la meta como `valorActual * 1.25`.
+    2.  **[Fusión Automática de Atributos en Contraoferta]:** Si el jugador está negociando Producción y en `!contraoferta` pide agregar Capacidad (o viceversa), el trámite conmuta a **Paquete Real Combinado (Dual Upgrade)** conservando la mejora de producción y añadiendo el incremento del almacenamiento.
+    3.  **[Despliegue Visual del Card]:** `📊 Impacto:` muestra el desglose dual completo (`Producción: X ➔ Y · Almacén: A ➔ B`).
+*   **Validación:** Caso exacto de la captura verificado y suite de 100 simulaciones automatizadas pasada al 100%.
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 

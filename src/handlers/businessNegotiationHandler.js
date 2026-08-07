@@ -392,32 +392,52 @@ export async function handleContraofertar(msg, player, body) {
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
-  // Si el aventurero propone una meta personalizada en su contraoferta (ej: "producción a 10k", "ganancias de 2.000.000" o "10000 de produccion")
+  // Si el aventurero propone una meta personalizada, porcentaje o paquete combinado en su contraoferta
   const isStorageMatch = /\b(almacenamiento|almacen|deposito|depósito|capacidad|espacio)\b/i.test(body);
   const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa|ganancia|ganancias)\b/i.test(body);
 
-  if (isProductionMatch && isStorageMatch) {
-    const prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
-    const storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+  const percentMatch = body.match(/(\d+(?:[\.,]\d+)?)\s*%/);
+  let parsedPercent = null;
+  if (percentMatch) {
+    parsedPercent = parseFloat(percentMatch[1].replace(',', '.'));
+  }
 
-    let prodTarget = null;
-    let storTarget = null;
+  const isAddingStorageToProd = (session.upgradeType === 'production' && isStorageMatch);
+  const isAddingProdToStorage = (session.upgradeType === 'storage' && isProductionMatch);
 
-    if (prodTargetMatch) {
-      let pVal = extractGoldAmount(prodTargetMatch[1]) || parseInt(prodTargetMatch[1].replace(/[\.,]/g, ''), 10);
-      if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) pVal = Math.round(pVal / 24);
-      else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) pVal = Math.round(pVal / 168);
-      prodTarget = pVal;
+  if ((isProductionMatch && isStorageMatch) || isAddingStorageToProd || isAddingProdToStorage) {
+    const currentProd = session.currentProd || (session.upgradeType === 'production' ? session.currentValue : 50);
+    const currentStor = session.currentStor || (session.upgradeType === 'storage' ? session.currentValue : 1000);
+
+    let prodTarget = session.upgradeType === 'production' ? session.newValue : null;
+    let storTarget = session.upgradeType === 'storage' ? session.newValue : null;
+
+    if (isStorageMatch) {
+      const storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      if (parsedPercent) {
+        storTarget = Math.round(currentStor * (1 + parsedPercent / 100));
+      } else if (storTargetMatch) {
+        const parsedVal = extractGoldAmount(storTargetMatch[1]) || parseInt(storTargetMatch[1].replace(/[\.,]/g, ''), 10);
+        if (parsedVal > 0) storTarget = parsedVal > currentStor ? parsedVal : Math.round(currentStor * (1 + parsedVal / 100));
+      }
     }
 
-    if (storTargetMatch) {
-      storTarget = extractGoldAmount(storTargetMatch[1]) || parseInt(storTargetMatch[1].replace(/[\.,]/g, ''), 10);
+    if (isProductionMatch) {
+      const prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
+      if (parsedPercent && !isStorageMatch) {
+        prodTarget = Math.round(currentProd * (1 + parsedPercent / 100));
+      } else if (prodTargetMatch) {
+        let pVal = extractGoldAmount(prodTargetMatch[1]) || parseInt(prodTargetMatch[1].replace(/[\.,]/g, ''), 10);
+        if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) pVal = Math.round(pVal / 24);
+        else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) pVal = Math.round(pVal / 168);
+        if (pVal > 0) prodTarget = pVal > currentProd ? pVal : Math.round(currentProd * (1 + pVal / 100));
+      }
     }
 
     const businessObj = {
       level: 1,
-      gold_per_hour: session.currentProd || session.currentValue || 50,
-      max_storage: session.currentStor || session.currentValue || 1000
+      gold_per_hour: currentProd,
+      max_storage: currentStor
     };
 
     const dualParams = calculateDualUpgradeParams(businessObj, prodTarget, storTarget, playerGold);
@@ -444,6 +464,10 @@ export async function handleContraofertar(msg, player, body) {
     }
     if (targetValMatch) {
       let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
+
+      if (parsedPercent) {
+        proposedVal = Math.round(session.currentValue * (1 + parsedPercent / 100));
+      }
       
       // Si el usuario especifica explícitamente un atributo en la contraoferta, permitir cambiar session.upgradeType
       if (isProductionMatch && session.upgradeType !== 'production') {
@@ -554,7 +578,7 @@ Responde como el Gran Canciller. Si es REJECTED_LOW, repréndelo duramente por i
       aiResponse,
       '\n──────────────',
       `✍️ *📜 Real Cédula en Trámite:* ${session.labelType}`,
-      `📊 *Impacto:* ${session.currentValue.toLocaleString('es-PY')} ➔ *${session.newValue.toLocaleString('es-PY')}*`,
+      `📊 *Impacto:* ${session.upgradeType === 'dual' ? `Producción: *${session.currentProd.toLocaleString('es-PY')}* ➔ *${session.newProductionValue.toLocaleString('es-PY')}* (+${session.deltaValue.toLocaleString('es-PY')}/hr) · Almacén: *${session.currentStor.toLocaleString('es-PY')}* ➔ *${session.newStorageValue.toLocaleString('es-PY')}* (+${session.secondaryDeltaValue.toLocaleString('es-PY')} espacio)` : `${session.currentValue.toLocaleString('es-PY')} ➔ *${session.newValue.toLocaleString('es-PY')}*`}`,
       `💰 *Tarifa Actualizada del Fisco:* 🪙 *${session.currentOfferCost.toLocaleString('es-PY')} oro*`,
       session.insolenceStrikes > 0 ? `⚠️ *Advertencia de Insolencia:* ${session.insolenceStrikes}/3 amonestaciones impositivas.` : '',
       '\n💡 _Responde con `!aceptartrato`, `!contraofertar <monto>` o `!cancelartrato`._'
