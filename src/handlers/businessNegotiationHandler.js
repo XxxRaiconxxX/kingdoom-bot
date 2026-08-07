@@ -58,9 +58,9 @@ function calculateUpgradeParams(business, upgradeType, customTargetValue = null,
   let deltaValue = 0;
   let paybackDays = '0';
 
-  if (customTargetValue && customTargetValue > currentValue) {
-    newValue = customTargetValue;
-    deltaValue = newValue - currentValue;
+  if (customTargetValue && customTargetValue > 0) {
+    newValue = customTargetValue > currentValue ? customTargetValue : (customTargetValue >= 1000 ? customTargetValue : Math.round(currentValue * 1.5));
+    deltaValue = Math.max(10, newValue - currentValue);
     if (upgradeType === 'production') {
       labelType = 'Producción por hora (Ampliación Especial)';
       // Costo proporcional al salto de producción: ~85 oro de base por cada +1 oro/hr + overhead de nivel
@@ -119,11 +119,11 @@ function calculateDualUpgradeParams(business, customProdTarget, customStorTarget
   const gph = Math.max(10, Number(business.gold_per_hour || 50));
   const maxStorage = Math.max(100, Number(business.max_storage || 1000));
 
-  const newProd = (customProdTarget && customProdTarget > gph) ? customProdTarget : Math.round(gph * 1.35);
-  const newStor = (customStorTarget && customStorTarget > maxStorage) ? customStorTarget : Math.round(maxStorage * 1.50);
+  const newProd = (customProdTarget && customProdTarget > 0) ? (customProdTarget > gph ? customProdTarget : (customProdTarget >= 100 ? customProdTarget : Math.round(gph * (1 + customProdTarget / 100)))) : Math.round(gph * 1.35);
+  const newStor = (customStorTarget && customStorTarget > 0) ? (customStorTarget > maxStorage ? customStorTarget : (customStorTarget >= 1000 ? customStorTarget : Math.round(maxStorage * (1 + customStorTarget / 100)))) : Math.round(maxStorage * 1.50);
 
-  const deltaProd = newProd - gph;
-  const deltaStor = newStor - maxStorage;
+  const deltaProd = Math.max(10, newProd - gph);
+  const deltaStor = Math.max(10, newStor - maxStorage);
 
   const costProd = Math.round((deltaProd * 85) + (level * 10000));
   const costStor = Math.round((deltaStor * 6) + (level * 8000));
@@ -303,6 +303,8 @@ export async function handleNegociar(msg, player, body) {
     businessId: targetBusiness.id,
     businessName: targetBusiness.name,
     upgradeType,
+    currentProd: Number(targetBusiness.gold_per_hour || 50),
+    currentStor: Number(targetBusiness.max_storage || 1000),
     currentValue: params.currentValue,
     newValue: params.newValue,
     deltaValue: params.deltaValue,
@@ -360,22 +362,96 @@ Preséntate imponente y burocrático como el Gran Canciller de la Real Hacienda 
   }
 }
 
-// 2. Comando !contraofertar <monto> [argumento de rol]
-export async function handleContraofertar(msg, player, body) {
-  const vetoMinutes = getFiscoVeto(player.id);
-  if (vetoMinutes) {
-    return heraldCard('📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔙𝔢𝔱𝔬 𝔡𝔢𝔩 ℜ𝔢𝔞𝔩 𝔉𝔦𝔰𝔠𝔬', [
-      ` ⛔ *Audiencia Denegada:* Te encuentras bajo veto impositivo por insolencias pasadas.`,
-      ` ⏳ Tiempo restante de veto: *${vetoMinutes} minuto(s)*.`
-    ], { icon: '🚫' });
+// Parser universal de metas numéricas para producción, almacenamiento y paquetes duales
+function parseBusinessUpgradeTargets(body, currentProd, currentStor, currentUpgradeType) {
+  let prodTarget = null;
+  let storTarget = null;
+
+  const isStorageMatch = /\b(almacenamiento|almacen|almacén|deposito|depósito|capacidad|espacio|bóvedas|bovedas)\b/i.test(body);
+  const isProductionMatch = /\b(produccion|producción|oro\/hora|oro\/hr|oro por hora|oro\/día|gph|tasa de oro|tasa|ganancia|ganancias|beneficio)\b/i.test(body);
+
+  const percentMatch = body.match(/(\d+(?:[\.,]\d+)?)\s*%/);
+  const parsedPercent = percentMatch ? parseFloat(percentMatch[1].replace(',', '.')) : null;
+
+  // 1. Extraer meta de producción
+  const prodRegexes = [
+    // a) Palabra clave seguida de verbos y número: "produccion a 80k", "ganancias queden en 90k", "tasa de oro pase a 115k"
+    /(?:produccion|producción|ganancia|ganancias|gph|tasa de oro|tasa|beneficio|oro\/hora|oro\/hr)\s*(?:por hora|por hr|del negocio|del imperio|de mi negocio)?\s*(?:sea|suba|suban|aumente|aumenten|llegue|lleguen|alcance|alcanzan|alcanza|deje|dejen|quede|queden|pase|pasen|este|esten|debe llegar a|debe llegar|deba llegar)?\s*(?:en|a|de|hasta)?\s*(?:los|las|el|la|mi|mis|un|una|su|sus)?\s*(\d[\d\.,]*[km]?|\d+)\b/i,
+    // b) Número con unidad inmediata o conector explícito: "105k de oro por hora", "50k gph", "720.000 de oro al día", "100k oro/hr", "80k de ganancia", "100k de produccion"
+    /(\d[\d\.,]*[km]?|\d+)\s*(?:de\s+|por\s+|en\s+)?(?:oro\/hora|oro\/hr|gph|oro por hora|de oro por hora|de ganancia|de ganancias|de produccion|de producción|de tasa de oro|de tasa|a la semana|al día|de oro al día|de oro a la semana|diarios|diarias|semanales)\b/i,
+    // c) Verbo de incremento seguido de número y palabra clave: "subiendo a 50k de produccion", "llegar a 100k de ganancia"
+    /(?:subiendo|subir|suba|suban|aumentando|aumentar|aumente|aumenten|llegando|llegar|llegue|lleguen|dejando|dejar|deje|dejen|poniendo|poner|ponga|alcanzando|alcanzar|alcance|alcanzan|eleve|eleven|elevando|elevar|fijar|fijas|fijen|quedar|quede|queden|otorgar|otorgues|pides|quiero|sea|si|para|con|y|a|de|en|hasta)\s*(?:a|de|en|hasta)?\s*(?:los|las|el|la|mi|mis|un|una|su|sus)?\s*(\d[\d\.,]*[km]?|\d+)\s*(?:el|la|los|las|mi|mis|de|en|del|su|sus)?\s*(?:produccion|producción|ganancia|ganancias|gph|tasa de oro|tasa|beneficio|oro\/hora|oro\/hr)/i
+  ];
+
+  for (const rx of prodRegexes) {
+    const m = body.match(rx);
+    if (m) {
+      let val = extractGoldAmount(m[1]) || parseInt(m[1].replace(/[\.,]/g, ''), 10);
+      if (val > 0) {
+        if (/\b(diario|diaria|diarios|diarias|al día|por día|día)\b/i.test(body)) {
+          val = Math.round(val / 24);
+        } else if (/\b(semanal|semana|semanales|a la semana|por semana)\b/i.test(body)) {
+          val = Math.round(val / 168);
+        }
+        prodTarget = val;
+        break;
+      }
+    }
   }
 
+  // 2. Extraer meta de almacenamiento
+  const storRegexes = [
+    // a) Palabra clave seguida de verbos y número: "almacenamiento a 400k", "espacio aumente a 1.650.000", "capacidad del imperio a 1.6M"
+    /(?:almacenamiento|almacen|almacén|deposito|depósito|capacidad|espacio|bóvedas|bovedas)\s*(?:del imperio|de mi negocio|del negocio|total)?\s*(?:sea|suba|suban|aumente|aumenten|llegue|lleguen|alcance|alcanzan|alcanza|deje|dejen|quede|queden|pase|pasen|este|esten)?\s*(?:en|a|de|hasta)?\s*(?:los|las|el|la|mi|mis|un|una|su|sus)?\s*(\d[\d\.,]*[km]?|\d+)\b/i,
+    // b) Número con unidad inmediata o conector explícito: "1M de almacén", "500k de espacio", "1.000.000 en el almacén", "2.000.000 de almacenamiento"
+    /(\d[\d\.,]*[km]?|\d+)\s*(?:de|en|en el|en la|de la|del)\s+(?:espacio|almacenamiento|capacidad|deposito|depósito|almacén|almacen|espacio total|unidades)\b/i,
+    // c) Verbo de incremento seguido de número y palabra clave: "subiendo a 1.800.000 el almacén", "llegando a 2M de capacidad"
+    /(?:subiendo|subir|suba|suban|aumentando|aumentar|aumente|aumenten|llegando|llegar|llegue|lleguen|dejando|dejar|deje|dejen|poniendo|poner|ponga|alcanzando|alcanzar|alcance|alcanzan|eleve|eleven|elevando|elevar|fijar|fijas|fijen|quedar|quede|queden|otorgar|otorgues|pides|quiero|sea|si|para|con|y|a|de|en|hasta)\s*(?:a|de|en|hasta)?\s*(?:los|las|el|la|mi|mis|un|una|su|sus)?\s*(\d[\d\.,]*[km]?|\d+)\s*(?:el|la|los|las|mi|mis|de|en|del|su|sus)?\s*(?:almacenamiento|almacen|almacén|deposito|depósito|capacidad|espacio|bóvedas|bovedas|unidades)/i
+  ];
+
+  for (const rx of storRegexes) {
+    const m = body.match(rx);
+    if (m) {
+      let val = extractGoldAmount(m[1]) || parseInt(m[1].replace(/[\.,]/g, ''), 10);
+      if (val > 0) {
+        storTarget = val;
+        break;
+      }
+    }
+  }
+
+  // Si hay porcentajes aplicados
+  if (parsedPercent) {
+    if (isStorageMatch || currentUpgradeType === 'storage') {
+      storTarget = Math.round(currentStor * (1 + parsedPercent / 100));
+    }
+    if (isProductionMatch || currentUpgradeType === 'production') {
+      prodTarget = Math.round(currentProd * (1 + parsedPercent / 100));
+    }
+  }
+
+  const isDual = (isProductionMatch && isStorageMatch) ||
+                 (currentUpgradeType === 'production' && isStorageMatch) ||
+                 (currentUpgradeType === 'storage' && isProductionMatch);
+
+  return {
+    prodTarget,
+    storTarget,
+    isDual,
+    isProductionMatch,
+    isStorageMatch,
+    parsedPercent
+  };
+}
+
+// 2. Comando !contraofertar / !contraoferta
+export async function handleContraofertar(msg, player, body) {
   const session = getActiveNegotiation(player.id);
   if (!session) {
-    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩ℯ𝔯í𝔞', [
-      '❌ No tienes ninguna audiencia de negociación activa.',
-      '💡 Inicia un expediente con `!negociar <nombre_negocio> [produccion|capacidad]`.'
-    ], { icon: '⚖️' });
+    return heraldCard('📜 ℛ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞', [
+      '❌ *Expediente Caducado:* No posees ninguna Real Cédula ni negociación vigente.',
+      '💡 Abre un nuevo trámite con `!negociar <nombre_negocio> [produccion|capacidad]`.'
+    ], { icon: '⏳' });
   }
 
   const parsedAmount = extractGoldAmount(body) || parseGoldAmount(body);
@@ -393,53 +469,14 @@ export async function handleContraofertar(msg, player, body) {
   const freshPlayer = await getPlayer(player.id);
   const playerGold = freshPlayer ? freshPlayer.gold : player.gold;
 
-  // Si el aventurero propone una meta personalizada, porcentaje o paquete combinado en su contraoferta
-  const isStorageMatch = /\b(almacenamiento|almacen|deposito|depósito|capacidad|espacio)\b/i.test(body);
-  const isProductionMatch = /\b(produccion|producción|oro\/hora|gph|tasa|ganancia|ganancias)\b/i.test(body);
+  const currentProd = session.currentProd || (session.upgradeType === 'production' ? session.currentValue : 50);
+  const currentStor = session.currentStor || (session.upgradeType === 'storage' ? session.currentValue : 1000);
 
-  const percentMatch = body.match(/(\d+(?:[\.,]\d+)?)\s*%/);
-  let parsedPercent = null;
-  if (percentMatch) {
-    parsedPercent = parseFloat(percentMatch[1].replace(',', '.'));
-  }
+  const targets = parseBusinessUpgradeTargets(body, currentProd, currentStor, session.upgradeType);
 
-  const isAddingStorageToProd = (session.upgradeType === 'production' && isStorageMatch);
-  const isAddingProdToStorage = (session.upgradeType === 'storage' && isProductionMatch);
-
-  if ((isProductionMatch && isStorageMatch) || isAddingStorageToProd || isAddingProdToStorage) {
-    const currentProd = session.currentProd || (session.upgradeType === 'production' ? session.currentValue : 50);
-    const currentStor = session.currentStor || (session.upgradeType === 'storage' ? session.currentValue : 1000);
-
-    let prodTarget = session.upgradeType === 'production' ? session.newValue : null;
-    let storTarget = session.upgradeType === 'storage' ? session.newValue : null;
-
-    if (isStorageMatch) {
-      let storTargetMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km%]?|\d+)\s*(?:mi|de|en|del)?\s*(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)/i);
-      if (!storTargetMatch) {
-        storTargetMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
-      }
-      if (parsedPercent) {
-        storTarget = Math.round(currentStor * (1 + parsedPercent / 100));
-      } else if (storTargetMatch) {
-        const parsedVal = extractGoldAmount(storTargetMatch[1]) || parseInt(storTargetMatch[1].replace(/[\.,]/g, ''), 10);
-        if (parsedVal > 0) storTarget = parsedVal > currentStor ? parsedVal : Math.round(currentStor * (1 + parsedVal / 100));
-      }
-    }
-
-    if (isProductionMatch) {
-      let prodTargetMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km%]?|\d+)\s*(?:mi|de|en|del)?\s*(?:produccion|producción|oro\/hora|gph|ganancias|ganancia)/i);
-      if (!prodTargetMatch) {
-        prodTargetMatch = body.match(/(?:ganancia|ganancias|produccion|producción|oro\/hora|gph|tasa)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km%]?|\d+)/i);
-      }
-      if (parsedPercent && !isStorageMatch) {
-        prodTarget = Math.round(currentProd * (1 + parsedPercent / 100));
-      } else if (prodTargetMatch) {
-        let pVal = extractGoldAmount(prodTargetMatch[1]) || parseInt(prodTargetMatch[1].replace(/[\.,]/g, ''), 10);
-        if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) pVal = Math.round(pVal / 24);
-        else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) pVal = Math.round(pVal / 168);
-        if (pVal > 0) prodTarget = pVal > currentProd ? pVal : Math.round(currentProd * (1 + pVal / 100));
-      }
-    }
+  if (targets.isDual) {
+    let finalProd = targets.prodTarget || (session.upgradeType === 'production' ? session.newValue : Math.round(currentProd * 1.35));
+    let finalStor = targets.storTarget || (session.upgradeType === 'storage' ? session.newValue : Math.round(currentStor * 1.50));
 
     const businessObj = {
       level: 1,
@@ -447,7 +484,7 @@ export async function handleContraofertar(msg, player, body) {
       max_storage: currentStor
     };
 
-    const dualParams = calculateDualUpgradeParams(businessObj, prodTarget, storTarget, playerGold);
+    const dualParams = calculateDualUpgradeParams(businessObj, finalProd, finalStor, playerGold);
 
     session.upgradeType = 'dual';
     session.primaryType = 'production';
@@ -465,61 +502,35 @@ export async function handleContraofertar(msg, player, body) {
     session.labelType = dualParams.labelType;
     session.newValue = dualParams.newProd;
   } else {
-    // 1. Número ANTES de la palabra clave: ej: "subiendo a 2000000 mi almacenamiento", "a 2.000.000 de capacidad"
-    let targetValMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|con|a|de|hasta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km]?|\d+)\s*(?:mi|de|en|del)?\s*(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio|produccion|producción|oro\/hora|gph|ganancias|ganancia)/i);
+    let proposedVal = session.upgradeType === 'production' ? targets.prodTarget : targets.storTarget;
 
-    // 2. Número DESPUÉS de la palabra clave: ej: "almacenamiento a 2000000", "capacidad de 2M", "produccion a 50k"
-    if (!targetValMatch) {
-      targetValMatch = body.match(/(?:almacenamiento|almacen|deposito|depósito|capacidad|espacio|produccion|producción|oro\/hora|gph|ganancias|ganancia|impacto|beneficio|meta)\s*(?:sea|suba|aumente|de|a|en|hasta|deje|llegue|llegando)?\s*(\d[\d\.,]*[km]?|\d+)/i);
+    // Conmutar upgradeType si el usuario menciona explícitamente el otro atributo
+    if (targets.isProductionMatch && session.upgradeType !== 'production') {
+      session.upgradeType = 'production';
+      session.labelType = 'Producción por hora';
+      proposedVal = targets.prodTarget;
+    } else if (targets.isStorageMatch && session.upgradeType !== 'storage') {
+      session.upgradeType = 'storage';
+      session.labelType = 'Capacidad máxima de almacenamiento';
+      proposedVal = targets.storTarget;
     }
 
-    // 3. Fallback general con verbos de incremento: ej: "subiendo a 2000000", "subir a 100k"
-    if (!targetValMatch) {
-      targetValMatch = body.match(/(?:subiendo|subir|suba|aumentando|aumentar|aumente|llegando|llegar|llegue|dejando|dejar|deje|poniendo|poner|ponga|alcanzando|alcanzar|eleve|elevando|elevar|sea|con|quiero|alcanzar|meta)\s*(?:a|de|en|hasta)?\s*(\d[\d\.,]*[km]?|\d+)/i);
-    }
+    if (proposedVal && proposedVal > 0) {
+      const recalculated = calculateUpgradeParams(
+        { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
+        session.upgradeType,
+        proposedVal,
+        playerGold
+      );
 
-    if (targetValMatch) {
-      let proposedVal = extractGoldAmount(targetValMatch[1]) || parseInt(targetValMatch[1].replace(/[\.,]/g, ''), 10);
-
-      if (parsedPercent) {
-        proposedVal = Math.round(session.currentValue * (1 + parsedPercent / 100));
-      }
-      
-      // Si el usuario especifica explícitamente un atributo en la contraoferta, permitir cambiar session.upgradeType
-      if (isProductionMatch && session.upgradeType !== 'production') {
-        session.upgradeType = 'production';
-        session.labelType = 'Producción por hora';
-      } else if (isStorageMatch && session.upgradeType !== 'storage') {
-        session.upgradeType = 'storage';
-        session.labelType = 'Capacidad máxima de almacenamiento';
-      }
-
-      // Comprobar escala temporal (diaria -> /24, semanal -> /168) para producción
-      if (session.upgradeType === 'production') {
-        if (/\b(diario|diaria|al día|por día|día)\b/i.test(body)) {
-          proposedVal = Math.round(proposedVal / 24);
-        } else if (/\b(semanal|semana|a la semana|por semana)\b/i.test(body)) {
-          proposedVal = Math.round(proposedVal / 168);
-        }
-      }
-
-      if (proposedVal && proposedVal > 0) {
-        const recalculated = calculateUpgradeParams(
-          { level: 1, gold_per_hour: session.currentValue, max_storage: session.currentValue },
-          session.upgradeType,
-          proposedVal,
-          playerGold
-        );
-
-        session.newValue = proposedVal;
-        session.deltaValue = proposedVal - session.currentValue;
-        session.costBase = recalculated.costBase;
-        session.floorCost = recalculated.floorCost;
-        session.ceilingCost = recalculated.ceilingCost;
-        session.currentOfferCost = recalculated.initialOfferCost;
-        session.paybackDays = recalculated.paybackDays;
-        session.labelType = recalculated.labelType;
-      }
+      session.newValue = proposedVal;
+      session.deltaValue = proposedVal - session.currentValue;
+      session.costBase = recalculated.costBase;
+      session.floorCost = recalculated.floorCost;
+      session.ceilingCost = recalculated.ceilingCost;
+      session.currentOfferCost = recalculated.initialOfferCost;
+      session.paybackDays = recalculated.paybackDays;
+      session.labelType = recalculated.labelType;
     }
   }
 

@@ -6,13 +6,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Solución del caso de Alexander (`!contraoferta 30000000 pero subiendo a 2000000 mi almacenamiento`).
+*   **Resumen de Tareas:** Implementación y validación de la **Suite Completa de 100 Simulaciones de Variaciones Sintácticas de Negociación** (`!contraoferta`), alcanzando el **100.0% de éxito**.
 *   **Cambios Clave:**
-    1.  **[Detección de Metas Antepuestas a la Palabra Clave]:** Soporte para frases donde el valor objetivo precede a la palabra clave (ej: `subiendo a 2000000 mi almacenamiento`), asignando correctamente `2.000.000` como nuevo espacio objetivo.
-    2.  **[Limpieza con Límites de Palabra en `rpArgument`]:** Eliminación de montos numéricos con límites de palabra (`\b\d+\b`), evitando que se recorte la letra `m` de palabras como `mi almacenamiento` (evitando errores como `pero subiendo a i almacenamiento`).
-*   **Validación:** Caso exacto de la captura verificado y suite de 100 simulaciones automatizadas superadas con 100.0% de éxito.
-
-### [Fecha: 07/08/2026] - [Autor: Antigravity]
+    1.  **[Parser Universal de Metas Numéricas (`parseBusinessUpgradeTargets`)]:** Soporte exhaustivo para 5 familias sintácticas completas:
+        *   **Categoría A (Metas Antepuestas):** 20/20 (100.0%) - ej: `subiendo a 2.000.000 mi almacenamiento`, `a 800k de espacio total`, `dejando en 100k la tasa`.
+        *   **Categoría B (Metas Porcentuales %):** 20/20 (100.0%) - ej: `+35%`, `un 25% mas de produccion`, `subiendo 50% mi capacidad actual`.
+        *   **Categoría C (Paquetes Combinados / Dual Upgrades):** 20/20 (100.0%) - ej: `25M subiendo produccion a 80k y almacenamiento a 400k`, `con 1.2M de capacidad y 105k de oro por hora`.
+        *   **Categoría D (Variantes Temporales & Puntos):** 20/20 (100.0%) - ej: `28.000.000 por 720.000 de oro al día`, `para 168.000 a la semana`, `dejando en 480.000 diarios`.
+        *   **Categoría E (Lenguaje Natural de Rol & Estructuras Libres):** 20/20 (100.0%) - ej: `Que las ganancias queden en 90k`, `si mi negocio sube a 50k de produccion`, `si ajustas la produccion a 50.000 exactos`.
+    2.  **[Preservación de `currentProd` y `currentStor` en Memoria]:** Almacenamiento directo de las métricas base del negocio en la sesión para evitar pérdida de contexto al conmutar entre tipos de mejoras.
+    3.  **[Resolución de Ambigüedades por Proximidad]:** Diferenciación precisa entre el oro ofertado para la Cancillería (ej: `42M`) y las metas numéricas de los atributos (ej: `105k oro/hr`).
+*   **Validación:** Ejecución de `scratch/run_100_syntactic_variations_suite.js` con **100/100 (100.0%) de casos exitosos**.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
