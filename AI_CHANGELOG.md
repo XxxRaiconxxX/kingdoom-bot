@@ -5,6 +5,30 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/loreRaces.js`, `src/colosseumStore.js`, `src/handlers/colosseumHandler.js`, `src/handlers/player.js`, `src/index.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementación integral del sistema de **Coliseo de Razas y PvP con Apuestas por Cita en WhatsApp**:
+    1.  **[Indexador y Catálogo de Razas (`src/loreRaces.js`)]:**
+        *   Carga y análisis de más de 55 razas oficiales organizadas en 4 regiones (*Kaelum-Gard*, *Nexo de Arcania*, *Los Páramos*, *Oakhaven*).
+        *   Extracción de atributos D&D (FUE, DES, CON, ARC, RES, pasivas, habilidades con CD) y métricas físicas/numéricas (kN de impacto, m/s de sprint, ms de reacción, Joules de resistencia HP y MW mágicos).
+        *   Generador de gladiadores únicos con nombres, epítetos, armas y balanceo de cuotas (`odds` de 1.30x a 4.50x).
+    2.  **[Almacén en Memoria y Apuestas por Cita (`src/colosseumStore.js`)]:**
+        *   Manejo de sesiones activas del Coliseo (`betting`, `fighting`, `completed`).
+        *   Registro de Message IDs de presentación para permitir apuestas automáticas por respuesta citada directa (`findColosseumBetTargetByQuotedId`).
+        *   Protección contra apuestas en ambos bandos y cálculo exacto de multiplicadores de ganancia.
+    3.  **[Manejador de Combate y Narrativa Turno a Turno (`src/handlers/colosseumHandler.js`)]:**
+        *   Comando `!coliseo [minutos]` que lanza el anuncio y las fichas técnicas de Gladiador A y Gladiador B en el grupo principal.
+        *   Comando `!apostar <monto>` y citas directas para apostar oro con deducción atómica en Supabase (`action: 'colosseum_bet'`).
+        *   Combate continuo asalto por asalto en el grupo de roleo (`120363024420812768@g.us`) hasta que el HP de uno de los gladiadores cae a 0.
+        *   Narración marcial dinámica impulsada por IA (`askKingdoomAI`) con réplicas defensivas citadas, cálculo de daño y barras de salud HP.
+        *   Cadencia temporal realista (60 a 90 segundos entre asaltos).
+        *   Liquidación de ganancias y acreditación automática de oro en Supabase (`action: 'colosseum_payout'`) para todos los apostadores ganadores.
+*   **Validación:**
+    *   Suite `test_colosseum_flow.js` creada y ejecutada con éxito (5/5 pruebas pasadas).
+    *   Suite global `npm test` ejecutada: **24/24 suites pasadas (100% OK)**.
+    *   Verificación de tipos TypeScript en `Kingdoom-sync`: **`npx tsc --noEmit` completado con 0 errores**.
+*   **Riesgos / Advertencias:** Ninguno detectado.
+
+### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección crítica en la normalización de identificadores de usuario (LID de WhatsApp) para que el detector de actividad de roleo en el grupo principal (`120363024420812768@g.us`) reconozca los mensajes de todos los usuarios registrados con LID (como "Cosa rosada" `281006825320570`) y desbloquee automáticamente el acceso a la web.
 *   **Diagnóstico y Causa Raíz:**

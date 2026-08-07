@@ -26,6 +26,35 @@ import {
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
+import http from 'http';
+import fs from 'fs';
+import pkg from 'whatsapp-web.js';
+const { Client, LocalAuth, Message } = pkg;
+import qrcodeImage from 'qrcode';
+import 'dotenv/config';
+import { handlePlayerMessage } from './handlers/player.js';
+import { handleAdminCommand } from './handlers/admin.js';
+import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
+import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
+import { buildPlayerLifecycleConfig, handleGroupLeave, handleGroupRejoin } from './handlers/playerLifecycle.js';
+import {
+  registerPlayer,
+  getPlayer,
+  getPlayersByPhone,
+  touchPlayerActivity,
+  markRoleplayActivityForPhone,
+  getPlayerRoleplayAccess,
+  isRoleplayAccessCurrentlyLocked,
+  getRoleplayLockWindowDays,
+  updateGold,
+  getRestrictedGroupCommandViolationsForDay,
+  recordRestrictedGroupCommandViolation,
+  botStateSupabase,
+  getUnresolvedBets,
+  resolveBet,
+} from './supabase.js';
+import { startScheduler } from './scheduler.js';
+import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
 import {
   canRunAdminCommand,
   isKnownAdminCommand,
@@ -49,6 +78,8 @@ import {
   isTreasureAnnouncementText,
   isTreasureClaimText,
 } from './handlers/treasure.js';
+import { findColosseumBetTargetByQuotedId } from './colosseumStore.js';
+import { handleApostarColiseo } from './handlers/colosseumHandler.js';
 import { getMarketForgeSession } from './marketForgeStore.js';
 import { startAuctionsRealtime } from './handlers/auctionsRealtime.js';
 import { findActiveQuotedMessageKey, safeGetQuotedDetails } from './targetResolver.js';
@@ -82,8 +113,6 @@ import { ResilientRemoteAuth, VersionedFileRemoteAuthStore } from './remoteAuth.
 import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
 import { isLidWhatsAppId, resolveMessageSenderPhone } from './whatsappIdentity.js';
 import { hasQuotedMessageMetadata } from './whatsappDelivery.js';
-
-const { Client, LocalAuth, Message } = pkg;
 
 function createMessageView(originalMsg, overrides = {}) {
   const wrapped = Object.create(originalMsg);
@@ -2397,6 +2426,17 @@ client.on('message', async (msg) => {
             context: 'treasure_claim',
             mentions: resolvedSenderPhone ? [formatJid(resolvedSenderPhone)] : [],
           });
+        }
+        return;
+      }
+
+      const colosseumTarget = quotedId ? findColosseumBetTargetByQuotedId(quotedId) : null;
+      if (colosseumTarget) {
+        const colosseumReply = await handleApostarColiseo(routedMsg, client, text, {
+          targetExplicit: colosseumTarget,
+        });
+        if (colosseumReply) {
+          await sendBotText(msg, colosseumReply, { context: 'colosseum_bet' });
         }
         return;
       }

@@ -33,6 +33,7 @@ import {
   handleAceptarTrato,
   handleCancelarTrato
 } from './businessNegotiationHandler.js';
+import { handleColiseo, handleApostarColiseo } from './colosseumHandler.js';
 import { parseGoldAmount } from '../economy.js';
 import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 
@@ -614,6 +615,14 @@ export async function handlePlayerMessage(msg) {
 
   if (command === 'cancelarcomercio' || command === 'rechazarcomercio') {
     return await handleCancelarComercio(msg, player);
+  }
+
+  if (command === 'coliseo' || command === 'arena' || command === 'gladiadores' || command === 'torneo') {
+    return await handleColiseo(msg, client, body);
+  }
+
+  if (command === 'apostar' || command === 'apostarcoliseo' || command === 'apuesta' || command === 'apuestacoliseo') {
+    return await handleApostarColiseo(msg, client, body);
   }
 
   if (command === 'subasta' || command === 'subastas') {
