@@ -115,7 +115,7 @@ function formatEventRow(event) {
   return `• *${event.title}* - ${formatStatus(event.status)} - 🎁 ${Number(event.participation_reward_gold ?? 0).toLocaleString('es-PY')} oro`;
 }
 
-export async function handlePlayerMessage(msg) {
+export async function handlePlayerMessage(msg, client = null) {
   const sender = msg.author || msg.from;
   const chatId = msg.from;
   const rawText = String(msg.body ?? '').trim();

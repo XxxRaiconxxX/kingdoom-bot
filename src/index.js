@@ -2803,11 +2803,17 @@ client.on('message', async (msg) => {
           'pujar',
           'puja',
           'retirarse',
+          'coliseo',
+          'arena',
+          'gladiadores',
+          'torneo',
+          'apostar',
+          'apostarcoliseo',
         ].includes(command)
       ) {
-        reply = await handlePlayerMessage(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
+        reply = await handlePlayerMessage(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)), client);
       } else {
-        reply = await handlePlayerMessage(routedMsg);
+        reply = await handlePlayerMessage(routedMsg, client);
       }
     }
 
