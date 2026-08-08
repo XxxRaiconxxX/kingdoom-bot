@@ -187,6 +187,7 @@ export async function handlePlayerMessage(msg, client = null) {
         treeCommand('🎲 !dados <monto> [x4]', 'Dados del destino.'),
         treeCommand('🎁 !cofre [xN] · 🕸️ !trampa <m>', 'Abrir cofres / arriesgar oro.'),
         treeCommand('🃏 !21 <monto> · 🔮 !oraculo', 'Blackjack / Gran Oráculo.'),
+        treeCommand('⚔️ !coliseo [min] · 🎟️ !apostar <monto>', 'Torneo PvP de razas en arena.'),
       ]),
       '',
       treeSection('03. MERCADO & SUBASTAS'),
