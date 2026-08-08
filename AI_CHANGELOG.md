@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 08/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Corrección crítica del error de arranque en Hugging Face Space (`ReferenceError: Message is not defined at src/index.js:102:1`):
+    1.  **[Causa Raíz]:** Existía una declaración duplicada de constantes en el encabezado de `src/index.js` que causaba colisión de identificadores en ESM de Node.js al levantar el supervisor en el contenedor de Hugging Face.
+    2.  **[Solución]:** Se limpiaron y desduplicaron todos los imports al inicio del módulo, se estructuraron de forma segura las referencias `Client`, `LocalAuth`, `Message` desde `whatsapp-web.js` (`pkg.Message || pkg.default?.Message`) y se aseguró el parche del prototipo con encadenamiento opcional `if (Message?.prototype)`.
+*   **Validación:**
+    *   Verificación directa de importación ESM con `node -e` exitosa (`INDEX_IMPORT_SUCCESS`).
+    *   Ejecución de la suite completa `npm test`: **24/24 suites pasadas (100% OK)**.
+*   **Riesgos / Advertencias:** Ninguno detectado.
+
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/loreRaces.js`, `src/colosseumStore.js`, `src/handlers/colosseumHandler.js`, `src/handlers/player.js`, `src/index.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación integral del sistema de **Coliseo de Razas y PvP con Apuestas por Cita en WhatsApp**:

@@ -26,35 +26,6 @@ import {
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
-import http from 'http';
-import fs from 'fs';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, Message } = pkg;
-import qrcodeImage from 'qrcode';
-import 'dotenv/config';
-import { handlePlayerMessage } from './handlers/player.js';
-import { handleAdminCommand } from './handlers/admin.js';
-import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
-import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
-import { buildPlayerLifecycleConfig, handleGroupLeave, handleGroupRejoin } from './handlers/playerLifecycle.js';
-import {
-  registerPlayer,
-  getPlayer,
-  getPlayersByPhone,
-  touchPlayerActivity,
-  markRoleplayActivityForPhone,
-  getPlayerRoleplayAccess,
-  isRoleplayAccessCurrentlyLocked,
-  getRoleplayLockWindowDays,
-  updateGold,
-  getRestrictedGroupCommandViolationsForDay,
-  recordRestrictedGroupCommandViolation,
-  botStateSupabase,
-  getUnresolvedBets,
-  resolveBet,
-} from './supabase.js';
-import { startScheduler } from './scheduler.js';
-import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
 import {
   canRunAdminCommand,
   isKnownAdminCommand,
@@ -114,6 +85,10 @@ import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
 import { isLidWhatsAppId, resolveMessageSenderPhone } from './whatsappIdentity.js';
 import { hasQuotedMessageMetadata } from './whatsappDelivery.js';
 
+const Client = pkg.Client || pkg.default?.Client || pkg;
+const LocalAuth = pkg.LocalAuth || pkg.default?.LocalAuth;
+const Message = pkg.Message || pkg.default?.Message;
+
 function createMessageView(originalMsg, overrides = {}) {
   const wrapped = Object.create(originalMsg);
   for (const [key, value] of Object.entries(overrides)) {
@@ -128,7 +103,7 @@ function createMessageView(originalMsg, overrides = {}) {
 }
 
 // monkey-patch reply to prevent silent failures with @lid senders or long text
-if (Message && Message.prototype) {
+if (Message?.prototype) {
   const originalReply = Message.prototype.reply;
   Message.prototype.reply = async function (content, chatId, options = {}) {
     const sender = this.author || this.from;
