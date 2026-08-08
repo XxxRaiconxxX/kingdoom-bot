@@ -26,35 +26,6 @@ import {
 } from './supabase.js';
 import { startScheduler } from './scheduler.js';
 import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
-import http from 'http';
-import fs from 'fs';
-import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, Message } = pkg;
-import qrcodeImage from 'qrcode';
-import 'dotenv/config';
-import { handlePlayerMessage } from './handlers/player.js';
-import { handleAdminCommand } from './handlers/admin.js';
-import { handleCofre, handleDados, handleOraculo, handleTrampa } from './handlers/games.js';
-import { buildWelcomeConfig, handleGroupWelcome, sendLatestApk } from './handlers/welcome.js';
-import { buildPlayerLifecycleConfig, handleGroupLeave, handleGroupRejoin } from './handlers/playerLifecycle.js';
-import {
-  registerPlayer,
-  getPlayer,
-  getPlayersByPhone,
-  touchPlayerActivity,
-  markRoleplayActivityForPhone,
-  getPlayerRoleplayAccess,
-  isRoleplayAccessCurrentlyLocked,
-  getRoleplayLockWindowDays,
-  updateGold,
-  getRestrictedGroupCommandViolationsForDay,
-  recordRestrictedGroupCommandViolation,
-  botStateSupabase,
-  getUnresolvedBets,
-  resolveBet,
-} from './supabase.js';
-import { startScheduler } from './scheduler.js';
-import { isOwner, isAdminUser, isStaffUser, normalizePhone, formatJid } from './adminStore.js';
 import {
   canRunAdminCommand,
   isKnownAdminCommand,
