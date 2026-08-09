@@ -59,13 +59,16 @@ const match = createColosseumMatch({
 assert.equal(getActiveColosseumMatch().id, match.id);
 
 setColosseumMessageIds(match.id, {
-  announcementMsgId: 'msg_announcement_100',
-  fighterAMsgId: 'msg_fighter_a_101',
-  fighterBMsgId: 'msg_fighter_b_102',
+  announcementMsgId: 'false_main-group@g.us_3EB0000_author@c.us',
+  fighterAMsgId: 'false_main-group@g.us_3EB0101_author@c.us',
+  fighterBMsgId: 'false_main-group@g.us_3EB0102_author@c.us',
 });
 
-assert.equal(findColosseumBetTargetByQuotedId('msg_fighter_a_101'), 'A');
-assert.equal(findColosseumBetTargetByQuotedId('msg_fighter_b_102'), 'B');
+assert.equal(findColosseumBetTargetByQuotedId('false_main-group@g.us_3EB0101_author@c.us'), 'A');
+assert.equal(findColosseumBetTargetByQuotedId('3EB0101'), 'A');
+assert.equal(findColosseumBetTargetByQuotedId('3EB0102'), 'B');
+assert.equal(findColosseumBetTargetByQuotedId('unknown_id', '🪓 LUCHADOR B\n👑 KAELEN'), 'B');
+assert.equal(findColosseumBetTargetByQuotedId('unknown_id', `🗡️ LUCHADOR A\n👑 ${fighterA.name}`), 'A');
 assert.equal(findColosseumBetTargetByQuotedId('random_msg_999'), null);
 
 const bet1 = recordColosseumBet(match, {
@@ -147,7 +150,7 @@ const mockClient = {
 };
 
 const fakeMsg = {
-  from: '120363024420812768@g.us',
+  from: '120363410116763398@g.us',
   author: '595987273405',
   body: '!coliseo 1',
 };

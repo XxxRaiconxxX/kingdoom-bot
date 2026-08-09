@@ -316,7 +316,7 @@ const COMMAND_PROCESSING_WARN_MS = Math.max(
 const RESTRICTED_MINIGAME_GROUP_ID = '595971938097-1618930274@g.us';
 const RESTRICTED_MINIGAME_SCOPE_KEY = 'main';
 const RESTRICTED_MINIGAME_COMMANDS = new Set(['cofre', 'trampa', '21']);
-const ROLEPLAY_ACTIVITY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363024420812768@g.us';
+const ROLEPLAY_ACTIVITY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363410116763398@g.us';
 const ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS = Math.max(
   60 * 1000,
   Number.parseInt(process.env.ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS ?? '900000', 10) || 900000
@@ -2405,7 +2405,9 @@ client.on('message', async (msg) => {
         return;
       }
 
-      const colosseumTarget = quotedId ? findColosseumBetTargetByQuotedId(quotedId) : null;
+      const colosseumTarget = (quotedId || quotedDetails?.body)
+        ? findColosseumBetTargetByQuotedId(quotedId, quotedDetails?.body)
+        : null;
       if (colosseumTarget) {
         const colosseumReply = await handleApostarColiseo(routedMsg, client, text, {
           targetExplicit: colosseumTarget,

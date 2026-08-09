@@ -12,7 +12,7 @@ export function createColosseumMatch(options = {}) {
     fighterA,
     fighterB,
     chatId,
-    roleplayChatId = '120363024420812768@g.us',
+    roleplayChatId = '120363410116763398@g.us',
     bettingDurationMs = 3 * 60 * 1000,
     combatIntervalMs = 60 * 1000,
   } = options;
@@ -58,15 +58,45 @@ export function setColosseumMessageIds(matchId, messageIds = {}) {
   return activeColosseumMatch;
 }
 
-export function findColosseumBetTargetByQuotedId(quotedMsgId) {
-  if (!activeColosseumMatch || !quotedMsgId) return null;
-  const cleanQuoted = String(quotedMsgId._serialized || quotedMsgId || '').trim();
+export function findColosseumBetTargetByQuotedId(quotedMsgId, quotedBody = null) {
+  if (!activeColosseumMatch) return null;
 
-  const msgA = String(activeColosseumMatch.fighterAMsgId?._serialized || activeColosseumMatch.fighterAMsgId || '').trim();
-  const msgB = String(activeColosseumMatch.fighterBMsgId?._serialized || activeColosseumMatch.fighterBMsgId || '').trim();
+  const extractStanzaId = (val) => {
+    if (!val) return '';
+    const str = String(val._serialized || val.id || val || '').trim();
+    const match = str.match(/^(?:true|false)_[^_]+_([^_]+)(?:_|$)/i);
+    return match ? match[1] : str;
+  };
 
-  if (cleanQuoted && cleanQuoted === msgA) return 'A';
-  if (cleanQuoted && cleanQuoted === msgB) return 'B';
+  const quotedStanza = extractStanzaId(quotedMsgId);
+  const stanzaA = extractStanzaId(activeColosseumMatch.fighterAMsgId);
+  const stanzaB = extractStanzaId(activeColosseumMatch.fighterBMsgId);
+
+  if (quotedStanza) {
+    if (stanzaA && quotedStanza === stanzaA) return 'A';
+    if (stanzaB && quotedStanza === stanzaB) return 'B';
+
+    const cleanQuoted = String(quotedMsgId?._serialized || quotedMsgId || '').trim();
+    const msgA = String(activeColosseumMatch.fighterAMsgId?._serialized || activeColosseumMatch.fighterAMsgId || '').trim();
+    const msgB = String(activeColosseumMatch.fighterBMsgId?._serialized || activeColosseumMatch.fighterBMsgId || '').trim();
+
+    if (cleanQuoted && msgA && (cleanQuoted.includes(msgA) || msgA.includes(cleanQuoted))) return 'A';
+    if (cleanQuoted && msgB && (cleanQuoted.includes(msgB) || msgB.includes(cleanQuoted))) return 'B';
+  }
+
+  if (quotedBody && typeof quotedBody === 'string') {
+    const upperBody = quotedBody.toUpperCase();
+    const nameA = String(activeColosseumMatch.fighterA?.name || '').toUpperCase();
+    const nameB = String(activeColosseumMatch.fighterB?.name || '').toUpperCase();
+
+    if (upperBody.includes('LUCHADOR A') || (nameA && upperBody.includes(nameA))) {
+      return 'A';
+    }
+    if (upperBody.includes('LUCHADOR B') || (nameB && upperBody.includes(nameB))) {
+      return 'B';
+    }
+  }
+
   return null;
 }
 

@@ -18,7 +18,7 @@ import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 import { safeGetQuotedDetails } from '../targetResolver.js';
 import { normalizePhone, formatJid } from '../adminStore.js';
 
-const ROLEPLAY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363024420812768@g.us';
+const ROLEPLAY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363410116763398@g.us';
 const DEFAULT_BETTING_MINUTES = 3;
 const DEFAULT_COMBAT_INTERVAL_MS = Math.max(
   1000,
@@ -39,6 +39,74 @@ function renderHpBar(current, max) {
   const filled = '█'.repeat(percent);
   const empty = '░'.repeat(10 - percent);
   return `[${filled}${empty}] ${safeCurrent}/${max} HP`;
+}
+
+function formatSkillOrTrait(text) {
+  if (!text) return '';
+  const colonIndex = text.indexOf(':');
+  if (colonIndex !== -1) {
+    const title = text.slice(0, colonIndex).trim();
+    const desc = text.slice(colonIndex + 1).trim();
+    return `*${title}*\n${desc}`;
+  }
+  const parenMatch = text.match(/^([^(]+)\(([^)]+)\)\.?$/);
+  if (parenMatch) {
+    const title = parenMatch[1].trim();
+    let desc = parenMatch[2].trim();
+    desc = desc.replace(/,\s*/g, ' → ');
+    return `*${title}*\n${desc}`;
+  }
+  return text;
+}
+
+function formatFighterCard(fighter, label, icon) {
+  const border = `${icon}━━━━━━━━━━━━━━━━${icon}`;
+  const rawEpithet = (fighter.epithet || '').replace(/^"|"$/g, '');
+  const passiveFormatted = formatSkillOrTrait(fighter.passiveTrait);
+  const skillFormatted = formatSkillOrTrait(fighter.specialSkill);
+
+  return [
+    border,
+    `   LUCHADOR ${label}`,
+    border,
+    '',
+    `👑 *${fighter.name.toUpperCase()}*`,
+    `_"${rawEpithet}"_`,
+    '',
+    `🏛️ _Raza y Facción_`,
+    `${fighter.raceName} · ${fighter.faction}`,
+    '',
+    `🛡️ _Arma_`,
+    `${fighter.weapon}`,
+    '',
+    `⚖️ _Complexión_`,
+    `${fighter.height} · ${fighter.weight}`,
+    '',
+    `━━━ 📊 ATRIBUTOS ━━━`,
+    `FUE ${fighter.stats.str} │ DES ${fighter.stats.dex} │ CON ${fighter.stats.con}`,
+    `ARC ${fighter.stats.arc} │ RES ${fighter.stats.res}`,
+    '',
+    `━━━ 📈 COMBATE ━━━`,
+    `💥 ${fighter.metrics.forceKn} kN de impacto`,
+    `🏃 ${fighter.metrics.speedMs} m/s`,
+    `⚡ ${fighter.metrics.reactionMs} ms de reacción`,
+    '',
+    `🩸 *Salud Máxima:* ${fighter.maxHp} HP`,
+    '',
+    `⚔️ _Rasgo Pasivo_`,
+    passiveFormatted,
+    '',
+    `✨ _Habilidad Especial_`,
+    skillFormatted,
+    '',
+    `💰 *Multiplicador de Ganancia:* ${fighter.odds}x`,
+    '',
+    border,
+    '',
+    `👉 Cita este mensaje con`,
+    `*"!apostar <monto>"*`,
+    `para apostar por este gladiador`,
+  ].join('\n');
 }
 
 export async function handleColiseo(msg, client, body = '') {
@@ -84,36 +152,10 @@ export async function handleColiseo(msg, client, body = '') {
   ], { icon: '🏛️' });
 
   // 2. Ficha Técnica de Gladiador A
-  const fighterAText = [
-    `🗡️ ─── [LUCHADOR A: ${fighterA.fullName.toUpperCase()}] ─── 🗡️`,
-    `👑 Nombre: *${fighterA.name}* ${fighterA.epithet}`,
-    `🏛️ Raza y Facción: *${fighterA.raceName}* (${fighterA.faction})`,
-    `⚖️ Complexión: *${fighterA.height}* · *${fighterA.weight}*`,
-    `🛡️ Arma: *${fighterA.weapon}*`,
-    `📊 Atributos RPG: FUE ${fighterA.stats.str} | DES ${fighterA.stats.dex} | CON ${fighterA.stats.con} | ARC ${fighterA.stats.arc} | RES ${fighterA.stats.res}`,
-    `📈 Métricas de Combate: ${fighterA.metrics.forceKn} kN de impacto · ${fighterA.metrics.speedMs} m/s · ${fighterA.metrics.reactionMs} ms reacción`,
-    `🩸 Salud Máxima: *${fighterA.maxHp} HP*`,
-    `⚔️ Rasgo Pasivo: ${fighterA.passiveTrait}`,
-    `✨ Habilidad Especial: ${fighterA.specialSkill}`,
-    `💰 Multiplicador de Ganancia: *${fighterA.odds}x*`,
-    `\n👉 *CITA ESTE MENSAJE CON "!apostar <monto>" PARA APOSTAR POR ESTE GLADIADOR*`,
-  ].join('\n');
+  const fighterAText = formatFighterCard(fighterA, 'A', '🗡️');
 
   // 3. Ficha Técnica de Gladiador B
-  const fighterBText = [
-    `🪓 ─── [LUCHADOR B: ${fighterB.fullName.toUpperCase()}] ─── 🪓`,
-    `👑 Nombre: *${fighterB.name}* ${fighterB.epithet}`,
-    `🏛️ Raza y Facción: *${fighterB.raceName}* (${fighterB.faction})`,
-    `⚖️ Complexión: *${fighterB.height}* · *${fighterB.weight}*`,
-    `🛡️ Arma: *${fighterB.weapon}*`,
-    `📊 Atributos RPG: FUE ${fighterB.stats.str} | DES ${fighterB.stats.dex} | CON ${fighterB.stats.con} | ARC ${fighterB.stats.arc} | RES ${fighterB.stats.res}`,
-    `📈 Métricas de Combate: ${fighterB.metrics.forceKn} kN de impacto · ${fighterB.metrics.speedMs} m/s · ${fighterB.metrics.reactionMs} ms reacción`,
-    `🩸 Salud Máxima: *${fighterB.maxHp} HP*`,
-    `⚔️ Rasgo Pasivo: ${fighterB.passiveTrait}`,
-    `✨ Habilidad Especial: ${fighterB.specialSkill}`,
-    `💰 Multiplicador de Ganancia: *${fighterB.odds}x*`,
-    `\n👉 *CITA ESTE MENSAJE CON "!apostar <monto>" PARA APOSTAR POR ESTE GLADIADOR*`,
-  ].join('\n');
+  const fighterBText = formatFighterCard(fighterB, 'B', '🪓');
 
   try {
     const sentAnnouncement = await client.sendMessage(msg.from, announcementText);
@@ -155,8 +197,8 @@ export async function handleApostarColiseo(msg, client, commandBody = '', option
   // Check if message is quoting one of the fighter cards
   if (!target && hasQuotedMessageMetadata(msg)) {
     const quoted = await safeGetQuotedDetails(msg);
-    if (quoted?.id) {
-      target = findColosseumBetTargetByQuotedId(quoted.id);
+    if (quoted) {
+      target = findColosseumBetTargetByQuotedId(quoted.id, quoted.body);
     }
   }
 
@@ -278,15 +320,34 @@ export async function startColosseumCombat(client, matchId) {
   await client.sendMessage(active.chatId, closingText).catch(() => null);
 
   // 2. Inicio del Combate en Grupo de Roleo
+  const rawEpithetA = (active.fighterA.epithet || '').replace(/^"|"$/g, '');
+  const rawEpithetB = (active.fighterB.epithet || '').replace(/^"|"$/g, '');
+
   const introArenaText = [
-    `⚔️ ─── 𝕰𝕷 𝕮𝕺𝕷𝕴𝕾𝕰𝕺 𝕯𝕰 𝕷𝕬𝕾 𝕽𝕬𝖅𝕬𝕾 𝕳𝕬 𝕮𝕺𝕸𝕰𝕹𝖅𝕬𝕯𝕺 ─── ⚔️`,
-    `Las puertas de hierro forjado se abren con estruendo sobre las arenas doradas.`,
-    `En la esquina norte: *${active.fighterA.fullName}* empuñando *${active.fighterA.weapon}*.`,
-    `En la esquina sur: *${active.fighterB.fullName}* empuñando *${active.fighterB.weapon}*.`,
-    `\n*¡Los contendientes lucharán hasta que uno caiga a 0 HP!*`,
+    '⚔️━━━━━━━━━━━━━━━━━━━━⚔️',
+    '𝕰𝕷 𝕮𝕺𝕷𝕴𝕾𝕰𝕺 𝕯𝕰 𝕷𝕬𝕾',
+    '𝕽𝕬𝖅𝕬𝕾 𝕳𝕬 𝕮𝕺𝕸𝕰𝕹𝖅𝕬𝕯𝕺',
+    '⚔️━━━━━━━━━━━━━━━━━━━━⚔️',
+    '',
+    '_Las puertas de hierro forjado se abren',
+    'con estruendo sobre las arenas doradas._',
+    '',
+    '🔵 *ESQUINA NORTE*',
+    `*${active.fighterA.name}* — _${rawEpithetA}_`,
+    `🗡️ ${active.fighterA.weapon}`,
+    '',
+    '🔴 *ESQUINA SUR*',
+    `*${active.fighterB.name}* — _${rawEpithetB}_`,
+    `🪓 ${active.fighterB.weapon}`,
+    '',
+    '⚔️━━━━━━━━━━━━━━━━━━━━⚔️',
+    '',
+    '🩸 *¡Los contendientes lucharán',
+    'hasta que uno caiga a 0 HP!*',
+    '',
   ].join('\n');
 
-  let lastSentMsg = await client.sendMessage(active.roleplayChatId, introArenaText).catch(() => null);
+  await client.sendMessage(active.roleplayChatId, introArenaText).catch(() => null);
 
   // Combat simulation loop until one falls to 0 HP
   let roundNum = 1;
@@ -304,14 +365,63 @@ export async function startColosseumCombat(client, matchId) {
     // Generate dynamic martial roleplay narrative with AI or built-in procedural engine
     const combatNarrative = await generateCombatExchange(attacker, defender, roundNum);
 
-    // Message 1: Attacker Roleplay
-    const attackText = `⚔️ [ASALTO ${roundNum} · ${attacker.name.toUpperCase()}]\n${combatNarrative.attack}`;
+    if (combatNarrative.hasError) {
+      const errorNotice = [
+        `⚠️ *[AVISO DE COLISEO: Falla en Oráculo de IA]*`,
+        `Se detectó un problema en la generación narrativa por IA:`,
+        `\`${combatNarrative.errorMessage}\``,
+        `📌 *Detalles en Logs:* Revisa los registros del servidor. Se continúa con la simulación procedural de combate.`,
+      ].join('\n');
+      await client.sendMessage(active.roleplayChatId, errorNotice).catch(() => null);
+    }
+
+    const rawEpithetAttacker = (attacker.epithet || '').replace(/^"|"$/g, '');
+    const rawEpithetDefender = (defender.epithet || '').replace(/^"|"$/g, '');
+
+    // Message 1: Attacker Structured Roleplay
+    const attackText = [
+      `⚔️ [ASALTO ${roundNum} · ${attacker.name.toUpperCase()}]`,
+      '',
+      `┍━━━━━━━━━┙💥┕━━━━━━━━━┑`,
+      `╔═══❖•°❲⚔️❳°•❖═══╗`,
+      `  ${attacker.name} — "${rawEpithetAttacker}"`,
+      `╚═══❖•°❲⚔️❳ °❖═══╝`,
+      `┕━━━━━━━━━┑⚔️┍━━━━━━━━━┙`,
+      `《Ambientación de la Arena》`,
+      `> ${combatNarrative.ambientation}`,
+      '',
+      `_*|Intencionalidad / Ataque|*_`,
+      `_${combatNarrative.attackNarrative}_`,
+      '',
+      `|⚔️|➥ 💭 (${combatNarrative.attackerThought})`,
+      '',
+      `|⚔️|➥ 💬 — ${combatNarrative.attackerDialogue}`,
+    ].join('\n');
+
     const sentAttackMsg = await client.sendMessage(active.roleplayChatId, attackText).catch(() => null);
 
     await sleep(Math.min(3000, active.combatIntervalMs / 10));
 
-    // Message 2: Defender Reaction (as a quoted response if message ID available)
-    const defendText = `🛡️ [REACCIÓN · ${defender.name.toUpperCase()}]\n${combatNarrative.defense}`;
+    // Message 2: Defender Reaction Structured Roleplay
+    const defendText = [
+      `🛡️ [REACCIÓN · ${defender.name.toUpperCase()}]`,
+      '',
+      `┍━━━━━━━━━┙🛡️┕━━━━━━━━━┑`,
+      `╔═══❖•°❲🛡️❳°•❖═══╗`,
+      `  ${defender.name} — "${rawEpithetDefender}"`,
+      `╚═══❖•°❲🛡️❳ °❖═══╝`,
+      `┕━━━━━━━━━┑🛡️┍━━━━━━━━━┙`,
+      `《Respuesta Táctica》`,
+      `> ${combatNarrative.tacticalResponse}`,
+      '',
+      `_*|Contraataque / Defensa|*_`,
+      `_${combatNarrative.defenseNarrative}_`,
+      '',
+      `|🛡️|➥ 💭 (${combatNarrative.defenderThought})`,
+      '',
+      `|🛡️|➥ 💬 — ${combatNarrative.defenderDialogue}`,
+    ].join('\n');
+
     if (sentAttackMsg?.id?._serialized) {
       await client.sendMessage(active.roleplayChatId, defendText, {
         quotedMessageId: sentAttackMsg.id._serialized,
@@ -403,53 +513,146 @@ export async function startColosseumCombat(client, matchId) {
   await client.sendMessage(active.chatId, decreeText).catch(() => null);
 }
 
-async function generateCombatExchange(attacker, defender, roundNum) {
-  const prompt = `Simula el Asalto ${roundNum} de un combate de gladiadores en un coliseo de fantasía medieval oscura (universo Kingdoom).
-Atacante: ${attacker.fullName} | Raza: ${attacker.raceName} (${attacker.faction}) | Arma: ${attacker.weapon} | FUE: ${attacker.stats.str}, DES: ${attacker.stats.dex}, Impacto: ${attacker.metrics.forceKn} kN, Rasgo: ${attacker.passiveTrait}, Habilidad: ${attacker.specialSkill}.
-Defensor: ${defender.fullName} | Raza: ${defender.raceName} (${defender.faction}) | Arma: ${defender.weapon} | CON: ${defender.stats.con}, RES: ${defender.stats.res}, Velocidad: ${defender.metrics.speedMs} m/s, Reacción: ${defender.metrics.reactionMs} ms, Rasgo: ${defender.passiveTrait}.
+function generateProceduralFallbackExchange(attacker, defender, roundNum, err = null) {
+  if (err) {
+    console.error(`[generateCombatExchange.error] Error en IA (Asalto ${roundNum}):`, err.stack || err.message || err);
+  }
 
-Genera un JSON con exactamente este formato:
+  const baseDmg = Math.round(18 + (attacker.stats.str * 2.2) + (attacker.weaponBonusAtk || 0) - (defender.stats.con * 1.1));
+  const finalDmg = Math.max(15, Math.min(45, baseDmg + Math.floor(Math.random() * 8)));
+
+  const ambientations = [
+    `El zumbido electromagnético y la energía mística del combate cortan el aire del coliseo Imperial. El calor de la contienda evapora las microgotas de agua estancada entre los bloques de basalto, pero la atmósfera del recinto comienza a espesarse de forma antinatural. La mampostería derruida y el suelo abisal responden a una frecuencia sorda, mientras la densidad del aire alrededor de los pilares de piedra se vuelve quebradiza preparando el escenario para el choque.`,
+    `Ondas de presión arcana y vapor ionizado brotan de la tierra sacudida de la arena. Las grietas subterráneas liberan filtraciones de calor mientras los destellos de luz solar filtrados por la cúpula hacen oscilar sombras grotescas sobre la cimentación de mithril. Toda la estructura del coliseo retumba ante el inminente impacto entre la facción ${attacker.faction} y la guardia defensiva de ${defender.faction}.`,
+    `Un silencio denso precede a la fractura de la piedra. Chispas de energía elemental y polvo de basalto orbitan erráticamente en el aire alrededor de las botas de los combatientes. El rozamiento del aire ionizado genera una barrera de refracción física que altera los coeficientes de fricción del suelo y desafía la solidez de los puntos de apoyo.`,
+  ];
+
+  const attackNarratives = [
+    `${attacker.name} contempla el despliegue del rival con compostura gélida. Sin perder un solo instante, desplaza su pie de apoyo a ${attacker.metrics.speedMs} m/s sobre las losas agrietadas y desata una ráfaga devastadora con su ${attacker.weapon}. Impregnando cada movimiento de una potencia cinética calculada de ${attacker.metrics.forceKn} kN, avanza proyectando una estela de fuerza física pura dirigida a quebrantar los puntos ciegos de la guardia enemiga.`,
+    `Canalizando el poder innato de su raza (${attacker.raceName}) y ejecutando su técnica especial *${attacker.specialSkill}*, ${attacker.name} ajusta su centro de gravedad en una postura marcial impecable. Con una aceleración explosiva de ${attacker.metrics.speedMs} m/s, descarga su ${attacker.weapon} proyectando ondas de choque que agrietan la piedra abisal e impactan directamente en el flanco del oponente.`,
+    `${attacker.name} extiende su brazo principal coordinando cada músculo y articulación mecánica con precisión milimétrica. Tras escanear la mampostería y los desniveles del suelo, inicia una acometida continua con su ${attacker.weapon}, combinando fintas de velocidad extrema y estocadas cargadas con ${attacker.metrics.forceKn} kN de impacto directo.`,
+  ];
+
+  const attackerThoughts = [
+    `Un impacto de ${attacker.metrics.forceKn} kN a este ángulo romperá la constante gravitacional y el centro de masa del rival, siempre que sus reflejos no logren superar la ventana de ${defender.metrics.reactionMs} ms.`,
+    `Su armadura y densidad física son elevadas, pero el coeficiente de fricción del basalto está a mi favor. Si no reajusta su algoritmo de estabilidad inmediatamente, su guardia colapsará en esta ráfaga.`,
+    `Sobreestima la firmeza de la piedra sobre la que se yergue. Mi software ha previsto cada vector de escape; el escenario mismo se convertirá en su mayor enemigo en este asalto.`,
+  ];
+
+  const attackerDialogues = [
+    `Un arma elegante y una postura rígida son herramientas inútiles cuando la masa del suelo y la fricción obedecen a mi impulso. ¡Demuéstrame cómo resistes el peso de ${attacker.faction}!`,
+    `Acomoda tus algoritmos a un espacio donde la estructura no es fija. Tu velocidad de ${defender.metrics.speedMs} m/s no salvará tu armadura del acero.`,
+    `Demasiado predecible. La firmeza de las arenas doradas acaba de terminar bajo tus pies.`,
+  ];
+
+  const tacticalResponses = [
+    `El impacto kinetico desata una alteración de vectores en cadena: los pesados bloques de piedra fracturada que flanquean el área multiplican su masa aparente, hundiéndose violentamente en el suelo para agrietar la cimentación abisal y distorsionar el punto de apoyo del defensor.`,
+    `Simultáneamente, la onda de choque invierte la constante gravitacional local sobre las lascas de piedra suelta y las microgotas de agua, creando una barrera flotante de vapor ionizado que arruina la solidez del terreno para la postura de combate.`,
+    `La vibración telúrica resuena a través de la mampostería derruida, quebrando la línea de visión directa y dejando una estela de fricción reducida sobre las baldosas de basalto.`,
+  ];
+
+  const defenseNarratives = [
+    `${defender.name} procesa la amenaza en apenas ${defender.metrics.reactionMs} ms de reacción instintiva. Lejos de ceder el terreno, inclina el torso e interpone la pesada guardia de su ${defender.weapon} para contener la embestida de ${attacker.metrics.forceKn} kN. Aunque la estructura de su armadura absorbe la mayor parte de la fricción cinética, el brutal desgaste de ${finalDmg} HP hace crujir sus ligamentos y desplaza su centro de apoyo dos metros hacia atrás.`,
+    `Demostrando el temple de su facción (${defender.faction}), ${defender.name} activa su rasgo pasivo *${defender.passiveTrait}* en el último instante. A pesar de recibir un impacto directo de ${finalDmg} de daño en su fuselaje defensivo, utiliza la propia inercia del golpe para girar sobre su eje y reajustar su equilibrio en el centro de la sala.`,
+    `${defender.name} maniobra con agilidad felina a través de las lascas de piedra levitantes. Aunque el tajo de ${attacker.name} logra rozar su armadura infringiendo ${finalDmg} HP de daño por abrasión, ${defender.name} sostiene la postura e inicia la canalización de su réplica táctica.`,
+  ];
+
+  const defenderThoughts = [
+    `La magnitud del impacto (${attacker.metrics.forceKn} kN) excede los parámetros habituales... debo reconfigurar de inmediato los algoritmos de masa y disipación de calor para no perder la cimentación.`,
+    `Cálculo de daño recibido: ${finalDmg} de daño directo. Su impulso ha sido registrado en mi matriz táctica; el siguiente vector de ataque será completamente predecible.`,
+    `Un impacto contundente que altera la fricción de mi calzado, pero mi centro de gravedad permanece intacto. Es momento de ejecutar el contraataque.`,
+  ];
+
+  const defenderDialogues = [
+    `Herramientas fascinantes y un despliegue de fuerza considerable... Sin embargo, el cálculo más perfecto se desmorona cuando las constantes del entorno cambian. ¡Veamos cómo responde tu software a mi réplica!`,
+    `Un golpe elegante para un terreno predecible. Sin embargo, sobreestimas la fragilidad de mi defensa. Mi turno.`,
+    `Tu impulso ha sido absorbido. Reajusta tu postura antes de que el terreno bajo tus pies se convierta en tu propia trampa.`,
+  ];
+
+  const idxA = roundNum % attackNarratives.length;
+  const idxD = roundNum % defenseNarratives.length;
+
+  return {
+    ambientation: ambientations[idxA],
+    attackNarrative: attackNarratives[idxA],
+    attackerThought: attackerThoughts[idxA],
+    attackerDialogue: attackerDialogues[idxA],
+    tacticalResponse: tacticalResponses[idxD],
+    defenseNarrative: defenseNarratives[idxD],
+    defenderThought: defenderThoughts[idxD],
+    defenderDialogue: defenderDialogues[idxD],
+    damage: finalDmg,
+    buff: roundNum === 2 ? 'Impulso Táctico' : null,
+    nerf: finalDmg > 28 ? 'Guardia Fracturada' : null,
+    tacticalSituation: `${attacker.name} presiona con ventaja táctica en el centro de la arena.`,
+    hasError: Boolean(err),
+    errorMessage: err ? (err.message || String(err)) : null,
+  };
+}
+
+async function generateCombatExchange(attacker, defender, roundNum) {
+  const prompt = `Simula el Asalto ${roundNum} de un combate PvP en el Coliseo Imperial de Kingdoom en formato de rol literario estructurado y amplio (alrededor de 300 palabras en total con narrativa literaria extendida y profunda).
+
+ATACANTE: ${attacker.name} (${attacker.fullName})
+- Raza: ${attacker.raceName} (${attacker.faction})
+- Arma: ${attacker.weapon}
+- Atributos: FUE ${attacker.stats.str}, DES ${attacker.stats.dex}, CON ${attacker.stats.con}, ARC ${attacker.stats.arc}, RES ${attacker.stats.res}
+- Métricas: Fuerza ${attacker.metrics.forceKn} kN, Vel ${attacker.metrics.speedMs} m/s, Reacción ${attacker.metrics.reactionMs} ms
+- Rasgo Pasivo: ${attacker.passiveTrait}
+- Habilidad Especial: ${attacker.specialSkill}
+
+DEFENSOR: ${defender.name} (${defender.fullName})
+- Raza: ${defender.raceName} (${defender.faction})
+- Arma: ${defender.weapon}
+- Atributos: FUE ${defender.stats.str}, DES ${defender.stats.dex}, CON ${defender.stats.con}, ARC ${defender.stats.arc}, RES ${defender.stats.res}
+- Métricas: Fuerza ${defender.metrics.forceKn} kN, Vel ${defender.metrics.speedMs} m/s, Reacción ${defender.metrics.reactionMs} ms
+- Rasgo Pasivo: ${defender.passiveTrait}
+- Habilidad Especial: ${defender.specialSkill}
+
+Genera un JSON estrictamente válido con exactamente este esquema:
 {
-  "attack": "Texto de 2 a 3 líneas del atacante ejecutando su golpe o habilidad especial con prosa marcial inmersiva.",
-  "defense": "Texto de 2 a 3 líneas del defensor reaccionando, bloqueando o recibiendo el impacto.",
+  "ambientation": "Descripción inmersiva de 3 a 5 líneas del entorno, la atmósfera, la física de la sala, vapor, basalto o magia residual.",
+  "attackNarrative": "Descripción en prosa literaria extensa de 6 a 9 líneas del atacante ejecutando su golpe, desplazamiento de pies o habilidad especial con lujo de detalles tácticos y físicos.",
+  "attackerThought": "Monólogo interno táctico amplio del atacante evaluando el terreno, los vectores de movimiento o la guardia del enemigo.",
+  "attackerDialogue": "Línea de diálogo desafiante, técnica o letal del atacante.",
+  "tacticalResponse": "Descripción inmersiva de 3 a 5 líneas de cómo reacciona la arena, el suelo y la física del espacio ante el impacto.",
+  "defenseNarrative": "Descripción en prosa literaria extensa de 6 a 9 líneas del defensor maniobrando, bloqueando, absorbiendo la energía o sufriendo desgaste en la armadura.",
+  "defenderThought": "Monólogo interno táctico amplio del defensor adaptando sus algoritmos/magia al impacto recibido y preparando su réplica.",
+  "defenderDialogue": "Línea de diálogo de réplica, frialdad o resistencia del defensor.",
   "damage": número entero de daño entre 15 y 45,
-  "buff": "Buff ganado por el atacante (ej. 'Postura Firme', 'Sed de Sangre') o null",
-  "nerf": "Herida sufrida por el defensor (ej. 'Hombro Luxado', 'Corte en Muslo') o null",
-  "tacticalSituation": "Frase corta del estado en la arena"
+  "buff": "Buff ganado por el atacante (ej. 'Impulso Táctico', 'Furia Resonante') o null",
+  "nerf": "Herida/nerf sufrido por el defensor (ej. 'Guardia Fracturada', 'Corte de Viento') o null",
+  "tacticalSituation": "Frase corta de la situación táctica tras el choque"
 }`;
 
   try {
     const rawAiResponse = await askKingdoomAI([], prompt, {
-      maxOutputTokens: 500,
-      temperature: 0.8,
+      maxOutputTokens: 1200,
+      temperature: 0.85,
     });
 
     const jsonMatch = rawAiResponse.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       return {
-        attack: parsed.attack || `${attacker.name} avanza con paso pesado y descarga un tajo frontal con su ${attacker.weapon}.`,
-        defense: parsed.defense || `${defender.name} interpone su guardia pero el impacto de ${attacker.metrics.forceKn} kN lo hace retroceder tambaleante.`,
+        ambientation: parsed.ambientation || `El choque electromagnético entre ${attacker.name} y ${defender.name} retumba en los bloques de basalto del coliseo.`,
+        attackNarrative: parsed.attackNarrative || `${attacker.name} avanza a ${attacker.metrics.speedMs} m/s descargando un tajo masivo con su ${attacker.weapon}.`,
+        attackerThought: parsed.attackerThought || `Un impacto directo de ${attacker.metrics.forceKn} kN quebrará su centro de masa.`,
+        attackerDialogue: parsed.attackerDialogue || `¡Demuéstrame si tu armadura soporta el peso del acero!`,
+        tacticalResponse: parsed.tacticalResponse || `Ondas de presión se expanden levantando lascas de piedra suelta alrededor de ${defender.name}.`,
+        defenseNarrative: parsed.defenseNarrative || `${defender.name} reacciona en ${defender.metrics.reactionMs} ms interponiendo su ${defender.weapon} para contener la embestida.`,
+        defenderThought: parsed.defenderThought || `El cálculo de impacto requiere estabilizar los algoritmos de defensa inmediatamente.`,
+        defenderDialogue: parsed.defenderDialogue || `Un golpe contundente, pero la piedra aún no ha cedido.`,
         damage: Number.isFinite(parsed.damage) ? Math.max(12, Math.min(50, parsed.damage)) : 25,
         buff: parsed.buff || null,
         nerf: parsed.nerf || null,
-        tacticalSituation: parsed.tacticalSituation || 'El público ruge ante el choque de metal y sangre.',
+        tacticalSituation: parsed.tacticalSituation || `${attacker.name} mantiene la iniciativa en el foso de arena.`,
+        hasError: false,
       };
     }
   } catch (err) {
-    console.warn('[generateCombatExchange.ai] Fallback procedural:', err.message);
+    return generateProceduralFallbackExchange(attacker, defender, roundNum, err);
   }
 
-  // High-fidelity procedural fallback
-  const baseDmg = Math.round(18 + (attacker.stats.str * 2.2) + (attacker.weaponBonusAtk) - (defender.stats.con * 1.1));
-  const finalDmg = Math.max(15, Math.min(45, baseDmg + Math.floor(Math.random() * 8)));
-
-  return {
-    attack: `${attacker.name} canaliza la fuerza de su raza (${attacker.raceName}), cargando a ${attacker.metrics.speedMs} m/s para descargar un impacto masivo con su ${attacker.weapon}.`,
-    defense: `${defender.name} intenta desviar la embestida con ${defender.metrics.reactionMs} ms de reacción, pero la potencia de ${attacker.metrics.forceKn} kN quiebra parte de su postura defensiva.`,
-    damage: finalDmg,
-    buff: roundNum === 2 ? 'Impulso de Gladiador' : null,
-    nerf: finalDmg > 28 ? 'Herida Abierta (-2 Agilidad)' : null,
-    tacticalSituation: `${attacker.name} presiona implacablemente en el centro del foso de arena.`,
-  };
+  return generateProceduralFallbackExchange(attacker, defender, roundNum, new Error('Respuesta de IA vacía o no válida.'));
 }

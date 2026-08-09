@@ -13,7 +13,7 @@ jobs:
     steps:
       - name: Send Keep-Alive Ping to HF Space
         run: |
-          STATUS=$(curl -k -s -L -o /dev/null -w "%{http_code}" --max-time 15 --connect-timeout 10 "https://huggingface.co/spaces/axel785/kingdoom-whatsapp")
+          STATUS=$(curl -k -s -L -o /dev/null -w "%{http_code}" --max-time 45 --connect-timeout 15 "https://axel785-kingdoom-whatsapp.hf.space/status.json")
           echo "HF Space Ping HTTP Status Code: $STATUS"
           if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
             echo "✅ Hugging Face Space respondió activamente ($STATUS)."
