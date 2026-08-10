@@ -204,7 +204,8 @@ export async function handleApostarColiseo(msg, client, commandBody = '', option
 
   // Fallback if user typed "!apostar 1 5000" or "!apostar A 5000" or "!apostar 2 10000"
   let parsedAmount = 0;
-  const tokens = commandBody.trim().split(/\s+/).filter(Boolean);
+  const cleanBody = commandBody.replace(/^!apostar\s*/i, '').trim();
+  const tokens = cleanBody.split(/\s+/).filter(Boolean);
 
   if (!target && tokens.length >= 2) {
     const firstToken = tokens[0].toLowerCase();
@@ -218,7 +219,7 @@ export async function handleApostarColiseo(msg, client, commandBody = '', option
   }
 
   if (!parsedAmount) {
-    parsedAmount = parseGoldAmount(commandBody);
+    parsedAmount = parseGoldAmount(cleanBody);
   }
 
   if (!target) {
