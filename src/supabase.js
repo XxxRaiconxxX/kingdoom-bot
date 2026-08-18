@@ -3,6 +3,10 @@ import ws from 'ws';
 import { normalizePhone, isAdminUser, isStaffUser, isOwner } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { requireSafeGoldInteger } from './economy.js';
+import {
+  buildRoleplayLockUpdate,
+  isAutomaticRoleplayLock,
+} from './roleplayActivity.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
 const SUPABASE_REQUEST_TIMEOUT_MS = Math.max(
@@ -273,6 +277,24 @@ export async function getPlayersByPhone(whatsappNumber) {
   }
 }
 
+function normalizeRoleplayPhoneAliases(values) {
+  const normalized = (values ?? [])
+    .map((value) => normalizePhone(value))
+    .filter(Boolean);
+  return [...new Set(normalized.flatMap((phone) => getPhoneLookupCandidates(phone)))];
+}
+
+async function getPlayersByRoleplayPhoneAliases(phoneAliases) {
+  const playersById = new Map();
+  for (const phoneAlias of phoneAliases) {
+    const players = await getPlayersByPhone(phoneAlias);
+    for (const player of players) {
+      if (player?.id) playersById.set(player.id, player);
+    }
+  }
+  return [...playersById.values()];
+}
+
 function filterPlayersByExactPhone(players, phone) {
   return (players ?? []).filter((player) => {
     if (!player.phone) return false;
@@ -538,44 +560,70 @@ export async function getPlayerRoleplayAccess(playerId) {
   return data ?? null;
 }
 
+async function upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso) {
+  const rows = phoneAliases.map((phone) => ({
+    phone,
+    last_roleplay_at: nowIso,
+    last_roleplay_group_jid: groupJid,
+  }));
+  if (!rows.length) return;
+
+  const { error } = await supabase
+    .from('roleplay_phone_activity')
+    .upsert(rows, { onConflict: 'phone' });
+
+  if (error) {
+    if (isMissingRoleplaySchemaError(error)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[upsertRoleplayPhoneActivity]', error.message);
+    throw new Error('No se pudo guardar la actividad de roleplay por telefono.');
+  }
+}
+
+function isMissingRoleplayActivityRpcError(error) {
+  const code = String(error?.code ?? '');
+  const message = String(error?.message ?? '').toLowerCase();
+  return code === 'PGRST202'
+    || code === '42883'
+    || (
+      message.includes('record_roleplay_activity')
+      && (
+        message.includes('could not find')
+        || message.includes('does not exist')
+        || message.includes('schema cache')
+      )
+    );
+}
+
+let missingRoleplayActivityRpcWarned = false;
+
 export async function markRoleplayActivityForPhone(whatsappNumber, options = {}) {
   const phone = normalizePhone(whatsappNumber);
+  const phoneAliases = normalizeRoleplayPhoneAliases([
+    phone,
+    ...(Array.isArray(options.phoneAliases) ? options.phoneAliases : []),
+  ]);
   const actor = String(options.actor ?? 'bot:roleplay_message').trim() || 'bot:roleplay_message';
   const groupJid = String(options.groupJid ?? '').trim() || null;
   const nowIso = new Date().toISOString();
 
-  if (!phone) {
+  if (!phone || !phoneAliases.length) {
     return {
       phone: '',
+      phoneAliases: [],
       updatedPlayers: [],
       updatedCount: 0,
       unlockedPlayers: [],
     };
   }
 
-  const { error: phoneError } = await supabase
-    .from('roleplay_phone_activity')
-    .upsert(
-      {
-        phone,
-        last_roleplay_at: nowIso,
-        last_roleplay_group_jid: groupJid,
-      },
-      { onConflict: 'phone' }
-    );
-
-  if (phoneError) {
-    if (isMissingRoleplaySchemaError(phoneError)) {
-      throw buildRoleplaySchemaError();
-    }
-    console.error('[markRoleplayActivityForPhone.phone]', phoneError.message);
-    throw new Error('No se pudo guardar la actividad de roleplay por telefono.');
-  }
-
-  const players = await getPlayersByPhone(phone);
+  const players = await getPlayersByRoleplayPhoneAliases(phoneAliases);
   if (!players.length) {
+    await upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso);
     return {
       phone,
+      phoneAliases,
       updatedPlayers: [],
       updatedCount: 0,
       unlockedPlayers: [],
@@ -583,35 +631,44 @@ export async function markRoleplayActivityForPhone(whatsappNumber, options = {})
   }
 
   await seedRoleplayAccessForPlayers(players);
-  const accessMap = await getRoleplayAccessMap(players.map((player) => player.id));
-  await syncRoleplayExemptionsForPlayers(players, accessMap, actor);
+  const playerIds = players.map((player) => player.id);
+  const accessBeforeExemptionSync = await getRoleplayAccessMap(playerIds);
+  await syncRoleplayExemptionsForPlayers(players, accessBeforeExemptionSync, actor);
+  const accessMap = await getRoleplayAccessMap(playerIds);
 
   const updates = [];
   const logs = [];
-  const unlockedPlayers = [];
 
   for (const player of players) {
     const access = accessMap.get(player.id);
     const { isExempt, exemptReason } = computeRoleplayExemption(player);
+    const lockUpdate = buildRoleplayLockUpdate(access);
 
     updates.push({
       player_id: player.id,
       last_roleplay_at: nowIso,
       grace_until: null,
-      locked_at: null,
-      lock_reason: null,
+      locked_at: lockUpdate.locked_at,
+      lock_reason: lockUpdate.lock_reason,
       last_roleplay_group_jid: groupJid,
       last_human_roleplay_phone: phone,
       is_exempt: isExempt,
       exempt_reason: exemptReason,
     });
 
-    if (access?.locked_at) {
-      unlockedPlayers.push({
-        playerId: player.id,
-        username: player.username,
-        phone: player.phone ?? phone,
-      });
+    logs.push({
+      player_id: player.id,
+      phone: player.phone ?? phone,
+      action: 'roleplay_detected',
+      performed_by: actor,
+      details: {
+        group_jid: groupJid,
+        phone_alias_count: phoneAliases.length,
+        automatic_lock_cleared: lockUpdate.automaticLockCleared,
+      },
+    });
+
+    if (lockUpdate.automaticLockCleared) {
       logs.push({
         player_id: player.id,
         phone: player.phone ?? phone,
@@ -625,24 +682,73 @@ export async function markRoleplayActivityForPhone(whatsappNumber, options = {})
     }
   }
 
-  const { error: accessError } = await supabase
-    .from('player_roleplay_access')
-    .upsert(updates, { onConflict: 'player_id' });
+  let automaticallyUnlockedPlayerIds;
+  const { data: rpcRows, error: rpcError } = await supabase.rpc('record_roleplay_activity', {
+    p_player_ids: playerIds,
+    p_phone: phone,
+    p_phone_aliases: phoneAliases,
+    p_group_jid: groupJid,
+    p_actor: actor,
+    p_recorded_at: nowIso,
+  });
 
-  if (accessError) {
-    if (isMissingRoleplaySchemaError(accessError)) {
+  if (rpcError && !isMissingRoleplayActivityRpcError(rpcError)) {
+    if (isMissingRoleplaySchemaError(rpcError)) {
       throw buildRoleplaySchemaError();
     }
-    console.error('[markRoleplayActivityForPhone.access]', accessError.message);
-    throw new Error('No se pudo actualizar el acceso de roleplay del jugador.');
+    console.error('[markRoleplayActivityForPhone.rpc]', rpcError.message);
+    throw new Error('No se pudo registrar atomicamente la actividad de roleplay.');
   }
 
-  if (logs.length) {
+  if (!rpcError) {
+    automaticallyUnlockedPlayerIds = new Set(
+      (rpcRows ?? [])
+        .filter((row) => row?.automatic_lock_cleared)
+        .map((row) => row.player_id)
+    );
+  } else {
+    if (!missingRoleplayActivityRpcWarned) {
+      missingRoleplayActivityRpcWarned = true;
+      console.warn(
+        '[markRoleplayActivityForPhone] RPC record_roleplay_activity no disponible; se usa compatibilidad no atomica hasta aplicar supabase/supabase_roleplay_activity_rpc.sql.'
+      );
+    }
+
+    await upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso);
+    const { error: accessError } = await supabase
+      .from('player_roleplay_access')
+      .upsert(updates, { onConflict: 'player_id' });
+
+    if (accessError) {
+      if (isMissingRoleplaySchemaError(accessError)) {
+        throw buildRoleplaySchemaError();
+      }
+      console.error('[markRoleplayActivityForPhone.access]', accessError.message);
+      throw new Error('No se pudo actualizar el acceso de roleplay del jugador.');
+    }
+
     await insertRoleplayAccessLog(logs);
+    automaticallyUnlockedPlayerIds = new Set(
+      players
+        .filter((player) => {
+          const access = accessMap.get(player.id);
+          return Boolean(access?.locked_at && isAutomaticRoleplayLock(access));
+        })
+        .map((player) => player.id)
+    );
   }
+
+  const unlockedPlayers = players
+    .filter((player) => automaticallyUnlockedPlayerIds.has(player.id))
+    .map((player) => ({
+      playerId: player.id,
+      username: player.username,
+      phone: player.phone ?? phone,
+    }));
 
   return {
     phone,
+    phoneAliases,
     updatedPlayers: players,
     updatedCount: players.length,
     unlockedPlayers,
@@ -666,10 +772,6 @@ function shouldRoleplayPlayerBeLocked(access, now = new Date()) {
   }
 
   return nowMs - lastRoleplayMs >= ROLEPLAY_LOCK_AFTER_DAYS * 24 * 60 * 60 * 1000;
-}
-
-function isAutomaticRoleplayLock(access) {
-  return !access?.lock_reason || access.lock_reason === 'roleplay_inactive';
 }
 
 export function isRoleplayAccessCurrentlyLocked(access, now = new Date()) {
@@ -3113,4 +3215,3 @@ export async function upgradePlayerBusinessInDb(businessId, playerId, upgradeTyp
   const row = Array.isArray(data) ? data[0] : data;
   return row ?? { success: false, message: 'No se obtuvo respuesta del servidor.' };
 }
-

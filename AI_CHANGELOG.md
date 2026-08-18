@@ -4,6 +4,19 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 18/08/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/roleplayActivity.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `supabase/supabase_roleplay_activity_rpc.sql`, `test_roleplay_activity.js`, `test_roleplay_persistence.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Correccion integral de falsos bloqueos temporales para jugadores que si rolean en el grupo principal:
+    1.  **[Recepcion redundante]:** la actividad valida se observa tanto por `message` como por `message_create`, con deduplicacion por Message ID, de modo que una omision puntual de un evento de `whatsapp-web.js` no pierda el roleo.
+    2.  **[Identidad PN/LID]:** se conservan simultaneamente el numero telefonico resuelto y el LID original; la busqueda de perfiles prueba todos los alias y variantes historicas antes de declarar una actividad sin vinculo.
+    3.  **[Cooldown seguro]:** la cache de 15 minutos solo se activa despues de actualizar al menos un jugador. Una identidad sin coincidencia queda auditada y vuelve a intentarse en el siguiente mensaje.
+    4.  **[Deteccion y observabilidad]:** los captions narrativos con multimedia ahora cuentan; comandos, vacios y respuestas triviales siguen excluidos. `/status.json` expone contadores sin PII de aceptados, vinculados, no vinculados, limitados y rechazados.
+    5.  **[Locks manuales]:** registrar roleo solo elimina bloqueos automaticos `roleplay_inactive`; los bloqueos manuales conservan `locked_at` y `lock_reason`.
+    6.  **[Persistencia atomica]:** se agrego la RPC service-role `record_roleplay_activity` para guardar alias, acceso, auditoria y desbloqueo automatico en una transaccion. El bot conserva un fallback compatible, marcado como no atomico, hasta aplicar el SQL.
+    7.  **[Dependencias]:** no se actualizo `whatsapp-web.js` ni otra libreria; la correccion no requiere cambios de version ni de `package-lock.json`.
+*   **Validacion:** `node --check` limpio en los cuatro modulos tocados; pruebas focalizadas `ROLEPLAY_ACTIVITY_OK`, `ROLEPLAY_PERSISTENCE_OK`, `WHATSAPP_COMPAT_OK` y `PHONE_LOOKUP_CACHE_OK`; suite global `npm test` en verde con **26/26 suites**; `npm run graphify:update` exitoso. La RPC se aplico al Supabase principal `sibisgiwmgdrpfkzmkkw` mediante Management API (HTTP 201) y se verificaron existencia, permiso exclusivo de `service_role`, denegacion para `anon/authenticated`, preservacion de locks manuales y exposicion correcta en PostgREST.
+*   **Riesgos / Advertencias:** La RPC ya esta activa en Supabase. No se realizo despliegue del codigo del bot ni prueba E2E con mensajes reales en esta tarea; la produccion seguira usando el codigo anterior hasta publicar estos cambios.
+
 ### [Fecha: 08/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección crítica del error de arranque en Hugging Face Space (`ReferenceError: Message is not defined at src/index.js:102:1`):

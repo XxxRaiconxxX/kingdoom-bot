@@ -82,8 +82,12 @@ import {
 } from './whatsappHealth.js';
 import { ResilientRemoteAuth, VersionedFileRemoteAuthStore } from './remoteAuth.js';
 import { decorateCommandReply, heraldCard, heraldStat } from './formatting.js';
-import { isLidWhatsAppId, resolveMessageSenderPhone } from './whatsappIdentity.js';
+import { isLidWhatsAppId, resolveMessageSenderIdentity } from './whatsappIdentity.js';
 import { hasQuotedMessageMetadata } from './whatsappDelivery.js';
+import {
+  evaluateRoleplayActivityMessage,
+  getRoleplayMessageId,
+} from './roleplayActivity.js';
 
 const Client = pkg.Client || pkg.default?.Client || pkg;
 const LocalAuth = pkg.LocalAuth || pkg.default?.LocalAuth;
@@ -341,6 +345,25 @@ const ROLEPLAY_BLOCKED_COMMANDS = new Set([
 ]);
 const restrictedGroupLocks = new Map();
 const roleplayActivityCache = new Map();
+const observedRoleplayMessages = new Set();
+const IGNORED_INTERNAL_MESSAGE_TYPES = new Set(['e2e_notification']);
+const roleplayActivityMetrics = {
+  accepted: 0,
+  matched: 0,
+  unmatched: 0,
+  throttled: 0,
+  rejectedByReason: {
+    empty: 0,
+    command: 0,
+    low_effort: 0,
+  },
+  lastAcceptedAt: null,
+  lastMatchedAt: null,
+  lastUnmatchedAt: null,
+  lastSource: null,
+  lastErrorAt: null,
+  lastError: null,
+};
 
 function normalizeCommandText(value) {
   return String(value ?? '')
@@ -454,59 +477,6 @@ function getRandomDelayMs(minMs, maxMs) {
   const safeMin = Math.max(0, Math.floor(minMs));
   const safeMax = Math.max(safeMin, Math.floor(maxMs));
   return safeMin + Math.floor(Math.random() * (safeMax - safeMin + 1));
-}
-
-function isLikelyLowEffortRoleplayText(value) {
-  const normalized = String(value ?? '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  if (!normalized) {
-    return true;
-  }
-
-  const trivialReplies = new Set([
-    'ok',
-    'oka',
-    'xd',
-    'xD',
-    'si',
-    'sí',
-    'no',
-    'dale',
-    'jaja',
-    'ajaj',
-    'jsjs',
-    'lol',
-    'uh',
-    'ah',
-    'hey',
-  ]);
-
-  if (trivialReplies.has(normalized)) {
-    return true;
-  }
-
-  const alphaNumeric = normalized.replace(/[^a-z0-9\s]/g, ' ').trim();
-  const words = alphaNumeric.split(/\s+/).filter(Boolean);
-  const compactLength = alphaNumeric.replace(/\s+/g, '').length;
-
-  if (compactLength < 12 && words.length < 3) {
-    return true;
-  }
-
-  return false;
-}
-
-function isEligibleRoleplayActivityMessage(msg, text) {
-  if (msg.from !== ROLEPLAY_ACTIVITY_GROUP_ID) return false;
-  if (!text) return false;
-  if (text.startsWith('!')) return false;
-  if (msg.hasMedia) return false;
-  if (isLikelyLowEffortRoleplayText(text)) return false;
-  return true;
 }
 
 function buildRoleplayLockedReply(commandName) {
@@ -812,6 +782,11 @@ function buildPublicStatus() {
         : RESET_AUTH_ENABLED
           ? 'misconfigured'
           : 'disabled',
+    roleplayActivity: {
+      configuredGroupJid: ROLEPLAY_ACTIVITY_GROUP_ID,
+      ...roleplayActivityMetrics,
+      rejectedByReason: { ...roleplayActivityMetrics.rejectedByReason },
+    },
     appStartedAt: runtimeStatus.appStartedAt,
   };
 }
@@ -2246,10 +2221,131 @@ client.on('change_state', (state) => {
   );
 });
 
-client.on('message_create', (msg) => {
-  if (!msg?.fromMe) return;
-  whatsappHealth.markOutbound();
-  persistRuntimeStatus();
+function rememberObservedRoleplayMessage(msg, evaluation) {
+  const messageId = getRoleplayMessageId(msg);
+  const dedupeKey = messageId || [
+    evaluation.groupJid,
+    msg?.author ?? '',
+    msg?.timestamp ?? '',
+    evaluation.text.length,
+  ].join(':');
+
+  if (observedRoleplayMessages.has(dedupeKey)) return false;
+  observedRoleplayMessages.add(dedupeKey);
+  if (observedRoleplayMessages.size > 2000) {
+    observedRoleplayMessages.delete(observedRoleplayMessages.values().next().value);
+  }
+  return true;
+}
+
+function maskRoleplayPhone(value) {
+  const phone = normalizePhone(value);
+  return phone ? `***${phone.slice(-4)}` : 'sin-identidad';
+}
+
+async function processRoleplayActivityMessage(msg, source, knownIdentity = null) {
+  const evaluation = evaluateRoleplayActivityMessage(msg, ROLEPLAY_ACTIVITY_GROUP_ID);
+  if (!evaluation.inRoleplayGroup) return;
+  if (!rememberObservedRoleplayMessage(msg, evaluation)) return;
+
+  roleplayActivityMetrics.lastSource = source;
+  if (!evaluation.eligible) {
+    if (Object.hasOwn(roleplayActivityMetrics.rejectedByReason, evaluation.reason)) {
+      roleplayActivityMetrics.rejectedByReason[evaluation.reason] += 1;
+    }
+    return;
+  }
+
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  roleplayActivityMetrics.accepted += 1;
+  roleplayActivityMetrics.lastAcceptedAt = nowIso;
+
+  try {
+    const identity = knownIdentity ?? await resolveMessageSenderIdentity(msg, client);
+    const roleplayPhone = normalizePhone(identity.primary);
+    const phoneAliases = [...new Set(
+      [roleplayPhone, ...(identity.aliases ?? [])]
+        .map((alias) => normalizePhone(alias))
+        .filter(Boolean)
+    )];
+
+    if (!roleplayPhone || !phoneAliases.length) {
+      roleplayActivityMetrics.unmatched += 1;
+      roleplayActivityMetrics.lastUnmatchedAt = nowIso;
+      console.warn(`[roleplay activity] Mensaje aceptado sin identidad util (${source}).`);
+      persistRuntimeStatus();
+      return;
+    }
+
+    const lastTouchedAt = Math.max(
+      0,
+      ...phoneAliases.map((alias) => roleplayActivityCache.get(alias) ?? 0)
+    );
+    if (lastTouchedAt && nowMs - lastTouchedAt < ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS) {
+      roleplayActivityMetrics.throttled += 1;
+      return;
+    }
+
+    const roleplayResult = await markRoleplayActivityForPhone(roleplayPhone, {
+      actor: `bot:roleplay_group_message:${source}`,
+      groupJid: evaluation.groupJid,
+      phoneAliases,
+    });
+
+    if (!roleplayResult.updatedCount) {
+      roleplayActivityMetrics.unmatched += 1;
+      roleplayActivityMetrics.lastUnmatchedAt = nowIso;
+      console.warn(
+        `[roleplay activity] Actividad sin jugador vinculado (${maskRoleplayPhone(roleplayPhone)}, ${source}); se reintentara en el siguiente mensaje.`
+      );
+      persistRuntimeStatus();
+      return;
+    }
+
+    for (const alias of roleplayResult.phoneAliases ?? phoneAliases) {
+      roleplayActivityCache.set(alias, nowMs);
+    }
+    roleplayActivityMetrics.matched += 1;
+    roleplayActivityMetrics.lastMatchedAt = nowIso;
+    roleplayActivityMetrics.lastErrorAt = null;
+    roleplayActivityMetrics.lastError = null;
+    persistRuntimeStatus();
+
+    if (roleplayResult.unlockedPlayers?.length) {
+      try {
+        await client.sendMessage(
+          formatJid(roleplayPhone),
+          heraldCard('Acceso restaurado', [
+            'Has vuelto a rolear en el grupo principal del reino.',
+            'Los minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.',
+          ], { icon: '✅' })
+        );
+      } catch (unlockNotifyError) {
+        console.error('[roleplay unlock notify]', unlockNotifyError);
+      }
+    }
+  } catch (roleplayError) {
+    roleplayActivityMetrics.lastErrorAt = nowIso;
+    roleplayActivityMetrics.lastError = sanitizeLogText(
+      roleplayError?.message ?? roleplayError
+    );
+    console.error('[roleplay activity]', roleplayError?.message ?? roleplayError);
+    persistRuntimeStatus();
+  }
+}
+
+client.on('message_create', async (msg) => {
+  if (msg?.fromMe) {
+    whatsappHealth.markOutbound();
+    persistRuntimeStatus();
+    return;
+  }
+  if (
+    msg?.isStatus
+    || IGNORED_INTERNAL_MESSAGE_TYPES.has(String(msg?.type ?? '').toLowerCase())
+  ) return;
+  await processRoleplayActivityMessage(msg, 'message_create');
 });
 
 client.on('message_ack', (msg, ack) => {
@@ -2294,7 +2390,6 @@ client.on('group_leave', async (notification) => {
 
 const activityCache = new Map();
 const processedMessages = new Set(); // deduplication cache
-const IGNORED_INTERNAL_MESSAGE_TYPES = new Set(['e2e_notification']);
 
 client.on('message', async (msg) => {
   if (
@@ -2325,9 +2420,12 @@ client.on('message', async (msg) => {
       : (typeof msg.body === 'string' ? msg.body.trim() : '')
   );
   const rawSender = msg.author || msg.from;
-  const resolvedSenderPhone = await resolveMessageSenderPhone(msg, client);
+  const senderIdentity = await resolveMessageSenderIdentity(msg, client);
+  const resolvedSenderPhone = senderIdentity.primary;
   const sender = resolvedSenderPhone || rawSender;
   const routedMsg = createMessageView(msg, { author: sender });
+
+  await processRoleplayActivityMessage(msg, 'message', senderIdentity);
 
   // Intercept replies (Blackjack, Tesoros, etc.)
   const hasQuotedMessage = hasQuotedMessageMetadata(routedMsg);
@@ -2448,41 +2546,6 @@ client.on('message', async (msg) => {
         'reply_intercept'
       );
       return;
-    }
-  }
-
-  if (isEligibleRoleplayActivityMessage(msg, text)) {
-    const roleplayPhone = normalizePhone(sender);
-    const lastTouchedAt = roleplayActivityCache.get(roleplayPhone) ?? 0;
-    const nowMs = Date.now();
-
-    if (!lastTouchedAt || nowMs - lastTouchedAt >= ROLEPLAY_ACTIVITY_TOUCH_INTERVAL_MS) {
-      try {
-        const roleplayResult = await markRoleplayActivityForPhone(sender, {
-          actor: 'bot:roleplay_group_message',
-          groupJid: msg.from,
-        });
-        roleplayActivityCache.set(roleplayPhone, nowMs);
-
-        for (const unlockedPlayer of roleplayResult.unlockedPlayers ?? []) {
-          const unlockedPhone = normalizePhone(unlockedPlayer.phone ?? roleplayPhone);
-          if (!unlockedPhone) continue;
-
-          try {
-            await client.sendMessage(
-              formatJid(unlockedPhone),
-              heraldCard('Acceso restaurado', [
-                'Has vuelto a rolear en el grupo principal del reino.',
-                'Los minijuegos, la economia y las consultas recreativas quedaron habilitados otra vez.',
-              ], { icon: '✅' })
-            );
-          } catch (unlockNotifyError) {
-            console.error('[roleplay unlock notify]', unlockNotifyError);
-          }
-        }
-      } catch (roleplayError) {
-        console.error('[roleplay activity]', roleplayError?.message ?? roleplayError);
-      }
     }
   }
 
