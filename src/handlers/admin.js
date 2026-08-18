@@ -35,7 +35,6 @@ import {
   getWhatsAppMessageId,
   hasQuotedMessageMetadata,
 } from '../whatsappDelivery.js';
-import { handleKnowledgeCatalog } from './knowledgeHandler.js';
 
 const DATA_MAX_FILE_BYTES = 1024 * 1024;
 const DATA_MAX_CONTENT_CHARS = 500000;

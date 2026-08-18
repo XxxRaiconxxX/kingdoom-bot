@@ -4,6 +4,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 18/08/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/admin.js`, `test_handler_import_contracts.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Hotfix del bucle de reinicio introducido por el despliegue de `!dataver`. `admin.js` importaba `handleKnowledgeCatalog` desde `knowledgeHandler.js`, pero ese simbolo no existia en el commit publicado y tampoco se utilizaba. Se elimino el import muerto en su origen, permitiendo que Node complete la instanciacion ESM y arranque el bot.
+*   **Validacion:** importacion real de `admin.js` y `player.js` con el entorno local en verde; nueva prueba `HANDLER_IMPORT_CONTRACTS_OK`; `node --check` y `git diff --check` limpios; suite global `npm test` en verde con **28/28 suites**; `npm run graphify:update` exitoso.
+*   **Riesgos / Advertencias:** El alias adicional que Antigravity dejo sin publicar en `knowledgeHandler.js` no forma parte de este hotfix porque el import era innecesario. Se preserva localmente sin stagear.
+
 ### [Fecha: 18/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/knowledgeHandler.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/formatting.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Implementación del comando `!dataver` para exploración e inspección de archivos canónicos y documentos subidos al bot:
