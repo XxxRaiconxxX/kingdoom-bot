@@ -18,7 +18,7 @@ import { hasQuotedMessageMetadata } from '../whatsappDelivery.js';
 import { safeGetQuotedDetails } from '../targetResolver.js';
 import { normalizePhone, formatJid } from '../adminStore.js';
 
-const ROLEPLAY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363410116763398@g.us';
+const ROLEPLAY_GROUP_ID = process.env.ROLEPLAY_ACTIVITY_GROUP_ID || '120363024420812768@g.us';
 const DEFAULT_BETTING_MINUTES = 3;
 const DEFAULT_COMBAT_INTERVAL_MS = Math.max(
   1000,

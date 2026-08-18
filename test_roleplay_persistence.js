@@ -102,7 +102,7 @@ try {
   );
   const result = await markRoleplayActivityForPhone(primaryPhone, {
     actor: 'test:roleplay',
-    groupJid: '120363410116763398@g.us',
+    groupJid: '120363024420812768@g.us',
     phoneAliases: [lidPhone],
   });
 

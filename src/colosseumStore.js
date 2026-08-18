@@ -12,7 +12,7 @@ export function createColosseumMatch(options = {}) {
     fighterA,
     fighterB,
     chatId,
-    roleplayChatId = '120363410116763398@g.us',
+    roleplayChatId = '120363024420812768@g.us',
     bettingDurationMs = 3 * 60 * 1000,
     combatIntervalMs = 60 * 1000,
   } = options;

@@ -5,6 +5,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 18/08/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/index.js`, `src/handlers/colosseumHandler.js`, `src/colosseumStore.js`, `test_roleplay_activity.js`, `test_roleplay_persistence.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** La verificacion real mediante `!groupid` confirmo que el grupo oficial de roleplay es `120363024420812768@g.us`. Se sustituyo el JID incorrecto `120363410116763398@g.us` en la deteccion de actividad, el destino del Coliseo y sus pruebas.
+*   **Validacion:** la regresion de roleplay comprueba los tres consumidores runtime y falla si reaparece el JID incorrecto; pruebas focalizadas en verde; `node --check` y `git diff --check` limpios; suite global `npm test` en verde con **27/27 suites**; `npm run graphify:update` exitoso.
+*   **Riesgos / Advertencias:** Ninguno detectado. La evidencia de `!groupid` resuelve el riesgo pendiente de la entrada anterior.
+
+### [Fecha: 18/08/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/roleplayActivity.js`, `src/handlers/player.js`, `test_roleplay_activity.js`, `test_player_market_source.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Seguimiento del falso bloqueo reportado para Tenma y correccion de dos fallos de runtime observados en produccion:
     1.  **[JID redundante]:** la validacion del grupo ahora revisa `msg.from`, `msg.id.remote` y los equivalentes internos de WhatsApp antes de rechazar el mensaje. Esto cubre eventos donde el primer campo contiene el LID del autor y el JID correcto queda en el Message ID remoto.

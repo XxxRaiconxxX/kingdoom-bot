@@ -9,7 +9,7 @@ import {
   resolveMessageSenderIdentity,
 } from './src/whatsappIdentity.js';
 
-const roleplayGroupId = '120363410116763398@g.us';
+const roleplayGroupId = '120363024420812768@g.us';
 
 assert.deepEqual(
   evaluateRoleplayActivityMessage({
@@ -107,5 +107,15 @@ assert.match(rpcSql, /create or replace function public\.record_roleplay_activit
 assert.match(rpcSql, /else access\.locked_at/i);
 assert.match(rpcSql, /'roleplay_detected'/i);
 assert.match(rpcSql, /grant execute[\s\S]*to service_role/i);
+
+for (const runtimeFile of [
+  './src/index.js',
+  './src/handlers/colosseumHandler.js',
+  './src/colosseumStore.js',
+]) {
+  const source = readFileSync(new URL(runtimeFile, import.meta.url), 'utf8');
+  assert.match(source, /120363024420812768@g\.us/, `${runtimeFile} debe usar el grupo confirmado.`);
+  assert.doesNotMatch(source, /120363410116763398@g\.us/, `${runtimeFile} conserva el JID incorrecto.`);
+}
 
 console.log('ROLEPLAY_ACTIVITY_OK');

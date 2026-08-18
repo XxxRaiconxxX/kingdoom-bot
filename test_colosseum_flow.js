@@ -150,7 +150,7 @@ const mockClient = {
 };
 
 const fakeMsg = {
-  from: '120363410116763398@g.us',
+  from: '120363024420812768@g.us',
   author: '595987273405',
   body: '!coliseo 1',
 };
