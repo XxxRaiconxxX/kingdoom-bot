@@ -35,6 +35,7 @@ import {
   getWhatsAppMessageId,
   hasQuotedMessageMetadata,
 } from '../whatsappDelivery.js';
+import { handleKnowledgeCatalog } from './knowledgeHandler.js';
 
 const DATA_MAX_FILE_BYTES = 1024 * 1024;
 const DATA_MAX_CONTENT_CHARS = 500000;
@@ -1685,6 +1686,8 @@ export async function handleAdminCommand(msg, client) {
         '- Adjunta un archivo con *!data [titulo]*.',
         '- Responde a un archivo o mensaje con *!data [titulo]*.',
         '- O escribe *!data Titulo* y el contenido en las líneas siguientes.',
+        '',
+        '💡 Para consultar los archivos ya subidos usa: *!dataver*',
       ].join('\n');
     }
 

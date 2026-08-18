@@ -2874,6 +2874,11 @@ client.on('message', async (msg) => {
           'torneo',
           'apostar',
           'apostarcoliseo',
+          'dataver',
+          'verdata',
+          'lorever',
+          'temas',
+          'lore',
         ].includes(command)
       ) {
         reply = await handlePlayerMessage(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)), client);

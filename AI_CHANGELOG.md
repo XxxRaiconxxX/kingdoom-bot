@@ -4,6 +4,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 18/08/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/handlers/knowledgeHandler.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/formatting.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Implementación del comando `!dataver` para exploración e inspección de archivos canónicos y documentos subidos al bot:
+    1.  **[Módulo `knowledgeHandler.js`]:** Se creó el catálogo estructurado con los 7 tomos canónicos de Aethelgardia (Shadow Garden, Cisma de Espinas, Valdren y la Corona de Carbón, Bolsa de Valores, Compendio Alquímico, Teología y Dinastías) integrado dinámicamente con los documentos de Supabase (`knowledge_documents`).
+    2.  **[Comando `!dataver`]:** Sin argumentos lista los archivos y tratados disponibles con formateo jerárquico vertical anti-quiebre para móvil. Con argumento (ej: `!dataver historia de valdren`, `!dataver 3`, `!dataver espinas`) muestra el extracto completo y ficha técnica del archivo.
+    3.  **[Preservación de `!data`]:** El comando administrativo `!data` se mantiene puro y dedicado para la subida y asimilación de archivos/textos por parte del staff, guiando con mensaje claro hacia `!dataver` si no se adjuntan contenidos.
+    4.  **[Menú `!ayuda` y Ruteo]:** Se registró `!dataver` en el compendio de ayuda para jugadores y en los temas de comandos de `formatting.js` e `index.js`.
+*   **Validación:** Ejecutada la suite completa de pruebas `npm test` con **26/26 suites en verde (100% OK)**; pruebas unitarias dirigidas para índices numéricos, alias, nombres de archivo y fallback de no encontrado en verde.
+*   **Riesgos / Advertencias:** Ninguno detectado. Despliegue requerido a GitHub y Hugging Face para que el contenedor activo en producción aplique los nuevos comandos.
+
 ### [Fecha: 18/08/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/handlers/colosseumHandler.js`, `src/colosseumStore.js`, `test_roleplay_activity.js`, `test_roleplay_persistence.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** La verificacion real mediante `!groupid` confirmo que el grupo oficial de roleplay es `120363024420812768@g.us`. Se sustituyo el JID incorrecto `120363410116763398@g.us` en la deteccion de actividad, el destino del Coliseo y sus pruebas.

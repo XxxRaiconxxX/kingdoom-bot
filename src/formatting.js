@@ -39,6 +39,10 @@ const COMMAND_THEMES = {
   apk: ['Aplicacion de Kingdoom', '📲'],
   app: ['Aplicacion de Kingdoom', '📲'],
   forjaritem: ['Forja del Mercado', '⚒️'],
+  data: ['Asimilacion de Conocimiento', '📚'],
+  dataver: ['Archivos y Documentos del Reino', '📂'],
+  lore: ['Archivos de Lore de Aethelgardia', '📜'],
+  temas: ['Temas y Tratados del Reino', '📖'],
 };
 
 const COUNCIL_COMMANDS = new Set([
