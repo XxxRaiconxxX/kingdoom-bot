@@ -263,3 +263,5 @@ function formatFileContentCard(item) {
     footer: `✦ Archivo Canónico · _Kingdoom Bot Lore_`,
   });
 }
+
+export const handleKnowledgeCatalog = handleDataVer;
