@@ -36,9 +36,16 @@ export function getRoleplayMessageId(msg) {
 }
 
 export function getRoleplayMessageChatId(msg) {
-  return serializeWhatsAppId(msg?.from)
-    || serializeWhatsAppId(msg?.id?.remote)
-    || serializeWhatsAppId(msg?._data?.from);
+  return getRoleplayMessageChatIds(msg)[0] || '';
+}
+
+export function getRoleplayMessageChatIds(msg) {
+  return [...new Set([
+    serializeWhatsAppId(msg?.from),
+    serializeWhatsAppId(msg?.id?.remote),
+    serializeWhatsAppId(msg?._data?.from),
+    serializeWhatsAppId(msg?._data?.id?.remote),
+  ].filter(Boolean))];
 }
 
 export function isLikelyLowEffortRoleplayText(value) {
@@ -53,13 +60,11 @@ export function isLikelyLowEffortRoleplayText(value) {
 }
 
 export function evaluateRoleplayActivityMessage(msg, expectedGroupId) {
-  const groupJid = getRoleplayMessageChatId(msg);
+  const groupJids = getRoleplayMessageChatIds(msg);
   const normalizedExpectedGroupId = serializeWhatsAppId(expectedGroupId);
-  const inRoleplayGroup = Boolean(
-    groupJid
-    && normalizedExpectedGroupId
-    && groupJid === normalizedExpectedGroupId
-  );
+  const matchedGroupJid = groupJids.find((groupJid) => groupJid === normalizedExpectedGroupId);
+  const groupJid = matchedGroupJid || groupJids[0] || '';
+  const inRoleplayGroup = Boolean(matchedGroupJid);
 
   if (!inRoleplayGroup) {
     return { eligible: false, inRoleplayGroup: false, reason: 'wrong_group', groupJid, text: '' };

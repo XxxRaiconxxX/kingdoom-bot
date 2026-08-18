@@ -52,6 +52,15 @@ assert.equal(
 );
 assert.equal(
   evaluateRoleplayActivityMessage({
+    from: '240797811245267@lid',
+    id: { remote: roleplayGroupId },
+    body: 'Megatron permanece en silencio y observa a quienes discuten frente a el.',
+  }, roleplayGroupId).eligible,
+  true,
+  'El JID valido debe reconocerse aunque otro campo del evento contenga primero el LID del autor.'
+);
+assert.equal(
+  evaluateRoleplayActivityMessage({
     from: '120363000000000000@g.us',
     body: 'Este texto no pertenece al grupo configurado.',
   }, roleplayGroupId).reason,

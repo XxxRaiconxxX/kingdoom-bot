@@ -5,6 +5,16 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ## Historial de Cambios (Changelog)
 
 ### [Fecha: 18/08/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/roleplayActivity.js`, `src/handlers/player.js`, `test_roleplay_activity.js`, `test_player_market_source.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Seguimiento del falso bloqueo reportado para Tenma y correccion de dos fallos de runtime observados en produccion:
+    1.  **[JID redundante]:** la validacion del grupo ahora revisa `msg.from`, `msg.id.remote` y los equivalentes internos de WhatsApp antes de rechazar el mensaje. Esto cubre eventos donde el primer campo contiene el LID del autor y el JID correcto queda en el Message ID remoto.
+    2.  **[Mercado]:** se elimino un bloque duplicado y corrupto de `!mercado` que ejecutaba por error logica de transferencia de oro con `identifier` y `amount` fuera de alcance. La ruta canonica de consulta de mercado queda como unica implementacion.
+    3.  **[Remediacion]:** se registro la actividad demostrada por captura mediante `record_roleplay_activity`; el perfil Tenma quedo con `locked_at = null` y sin `lock_reason`, preservando la regla que solo limpia bloqueos automaticos.
+    4.  **[Dependencias]:** `whatsapp-web.js@1.34.7` esta instalado y `npm outdated whatsapp-web.js --json` no reporto una version pendiente; no se modificaron dependencias ni `package-lock.json`.
+*   **Validacion:** pruebas dirigidas de actividad, persistencia y mercado en verde; `node --check` limpio; suite global `npm test` en verde con **27/27 suites**; `npm run graphify:update` exitoso; lectura real de Supabase confirmo la restauracion de Tenma.
+*   **Riesgos / Advertencias:** Falta contrastar con `!groupid` el JID exacto del grupo mostrado en la captura. Si fuera un tercer JID distinto del configurado, debera actualizarse la configuracion explicita sin habilitar grupos ajenos.
+
+### [Fecha: 18/08/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/roleplayActivity.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `supabase/supabase_roleplay_activity_rpc.sql`, `test_roleplay_activity.js`, `test_roleplay_persistence.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Correccion integral de falsos bloqueos temporales para jugadores que si rolean en el grupo principal:
     1.  **[Recepcion redundante]:** la actividad valida se observa tanto por `message` como por `message_create`, con deduplicacion por Message ID, de modo que una omision puntual de un evento de `whatsapp-web.js` no pierda el roleo.
