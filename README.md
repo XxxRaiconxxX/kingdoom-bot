@@ -20,6 +20,10 @@ Bot de WhatsApp automatizado para el Reino de Kingdoom. El runtime vivo actual c
 
 La sesion de WhatsApp vive fuera de la imagen, montada como `./wwebjs_auth:/app/.wwebjs_auth`. No borrar, mover, versionar ni reconstruir sobre esa carpeta mientras Chromium este activo. Antes de cualquier `pull`, rebuild, restart o limpieza de locks, verificar `/status`, `git status --short --branch` y uso de recursos.
 
+## Perfil de laptop
+
+El compose vivo esta ajustado para una laptop de 2 cores y 4 GB RAM con WSL2 limitado a 2.5 GB. El contenedor reserva 512 MB, puede subir hasta 1280 MB en picos, queda limitado a 1.8 CPU y a 256 procesos, y expone `/dev/shm` de 256 MB como margen para Chromium. Se conserva `--disable-dev-shm-usage` porque fue la ruta de arranque estable en esta laptop. Si se mueve a un equipo con mas RAM, revisar estos valores antes de asumirlos como limites definitivos.
+
 ## Salud de WhatsApp
 
 - El panel del QR vigila `/status.json` y se recarga solo cuando WhatsApp emite un QR nuevo, cambia de estado o entra a sincronizacion. Si el navegador queda clavado, la recarga de respaldo ocurre igual cada 25 segundos.
