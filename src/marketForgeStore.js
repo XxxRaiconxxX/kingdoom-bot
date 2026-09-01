@@ -21,18 +21,23 @@ function ensureStore() {
   }
 }
 
+let forgeMemoryCache = null;
+
 function readStore() {
+  if (forgeMemoryCache !== null) return forgeMemoryCache;
   ensureStore();
   try {
-    return JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+    forgeMemoryCache = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
   } catch (error) {
     console.error('[marketForgeStore.read]', error);
-    return {};
+    forgeMemoryCache = {};
   }
+  return forgeMemoryCache;
 }
 
 function writeStore(data) {
   ensureStore();
+  forgeMemoryCache = data;
   try {
     fs.writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf-8');
     return true;

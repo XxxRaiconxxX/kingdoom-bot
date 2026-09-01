@@ -193,6 +193,9 @@ export function resolveColosseumWinner(match, winnerTarget) {
   };
 
   colosseumHistory.push(match);
+  if (colosseumHistory.length > 20) {
+    colosseumHistory.shift();
+  }
   activeColosseumMatch = null;
 
   return match.settlement;

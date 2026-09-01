@@ -60,10 +60,10 @@ function readCachedPhone(id) {
   return cached.phone;
 }
 
-function cachePhone(id, phone, ttlMs = phone ? POSITIVE_CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS) {
+function cachePhone(id, phone) {
   phoneByWhatsappId.set(id, {
     phone,
-    expiresAt: Date.now() + ttlMs,
+    expiresAt: Date.now() + (phone ? POSITIVE_CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS),
   });
 }
 
@@ -118,22 +118,16 @@ export async function resolveWhatsAppPhone(client, value) {
     try {
       const mappings = await withLookupTimeout(client.getContactLidAndPhone([id]));
       const mapping = Array.isArray(mappings) ? mappings[0] : mappings;
-      const mappedPhone = normalizeResolvedPhone(mapping?.pn || mapping?.phone);
-      if (mappedPhone) {
-        cachePhone(id, mappedPhone);
-        return mappedPhone;
-      }
-
-      const fallback = normalizeResolvedPhone(id);
-      cachePhone(id, fallback, NEGATIVE_CACHE_TTL_MS);
-      return fallback;
+      const phone = normalizeResolvedPhone(mapping?.pn || mapping?.phone) || normalizeResolvedPhone(id);
+      cachePhone(id, phone);
+      return phone;
     } catch (error) {
       console.warn(
         '[whatsappIdentity] No se pudo resolver un LID; se usara el identificador directo:',
         error?.message ?? error
       );
       const fallback = normalizeResolvedPhone(id);
-      cachePhone(id, fallback, NEGATIVE_CACHE_TTL_MS);
+      cachePhone(id, fallback);
       return fallback;
     }
   })();
@@ -163,56 +157,56 @@ export async function resolveContactPhone(client, contact) {
   return resolveWhatsAppPhone(client, contactId);
 }
 
-export async function resolveMessageSenderIdentity(msg, client = msg?.client) {
+export async function resolveMessageSenderPhone(msg, client = msg?.client) {
   const senderId = serializeWhatsAppId(msg?.author || msg?.from);
-  if (!senderId) return { primary: '', aliases: [], senderId: '', isLid: false };
-
-  const rawPhone = normalizeResolvedPhone(senderId);
-  if (!isLidWhatsAppId(senderId)) {
-    return {
-      primary: rawPhone,
-      aliases: rawPhone ? [rawPhone] : [],
-      senderId,
-      isLid: false,
-    };
-  }
+  if (!senderId) return '';
+  if (!isLidWhatsAppId(senderId)) return normalizeResolvedPhone(senderId);
 
   const cached = readCachedPhone(senderId);
-  let resolvedPhone = cached;
+  if (cached !== undefined) return cached;
 
-  if (resolvedPhone === undefined && typeof msg?.getContact === 'function') {
+  if (typeof msg?.getContact === 'function') {
     try {
       const contact = await msg.getContact();
       const phone = await resolveContactPhone(client, contact);
       if (phone) {
-        resolvedPhone = phone;
-        cachePhone(
-          senderId,
-          phone,
-          phone === rawPhone ? NEGATIVE_CACHE_TTL_MS : POSITIVE_CACHE_TTL_MS
-        );
+        cachePhone(senderId, phone);
+        return phone;
       }
     } catch {
       // Contact lookup is best effort; the official LID mapper remains the fallback.
     }
   }
 
-  if (resolvedPhone === undefined) {
-    resolvedPhone = await resolveWhatsAppPhone(client, senderId);
-  }
-
-  const aliases = [...new Set([resolvedPhone, rawPhone].filter(Boolean))];
-  return {
-    primary: resolvedPhone || rawPhone,
-    aliases,
-    senderId,
-    isLid: true,
-  };
+  return resolveWhatsAppPhone(client, senderId);
 }
 
-export async function resolveMessageSenderPhone(msg, client = msg?.client) {
-  const identity = await resolveMessageSenderIdentity(msg, client);
-  return identity.primary;
+export async function resolveMessageSenderIdentity(msg, client = msg?.client) {
+  const rawIds = [
+    serializeWhatsAppId(msg?.author),
+    serializeWhatsAppId(msg?.from),
+    serializeWhatsAppId(msg?.id?.participant),
+    serializeWhatsAppId(msg?.participant),
+  ].filter(Boolean);
+  const senderId = rawIds.find(Boolean);
+  const primary = senderId
+    ? await resolveMessageSenderPhone({ ...msg, author: senderId }, client)
+    : '';
+  const aliases = [];
+
+  const addAlias = (value) => {
+    const phone = normalizeResolvedPhone(value);
+    if (phone && !aliases.includes(phone)) aliases.push(phone);
+  };
+
+  addAlias(primary);
+  rawIds.forEach(addAlias);
+
+  return {
+    primary,
+    aliases,
+    raw: senderId,
+  };
 }
 
 export async function resolveWhatsAppPhones(client, values) {

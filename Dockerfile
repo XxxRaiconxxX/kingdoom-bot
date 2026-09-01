@@ -17,7 +17,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY src/ ./src/
 
-# Crear carpeta de auth y dar permisos para compatibilidad con el usuario no-root de Hugging Face
-RUN mkdir -p /app/.wwebjs_auth && chmod -R 777 /app
+# Crear carpeta de auth y dar permisos
+RUN mkdir -p /app/.wwebjs_auth && chmod 777 /app/.wwebjs_auth
 
 CMD ["node", "src/launcher.js"]

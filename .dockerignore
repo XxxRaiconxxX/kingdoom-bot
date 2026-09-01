@@ -1,0 +1,8 @@
+wwebjs_auth
+.wwebjs_auth
+node_modules
+.git
+.env
+scratch
+test_*.js
+*.log

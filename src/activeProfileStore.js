@@ -21,24 +21,32 @@ function initStore() {
   }
 }
 
-export function getActiveProfile(whatsappNumber) {
+let profilesMemoryCache = null;
+
+function loadStore() {
+  if (profilesMemoryCache !== null) return profilesMemoryCache;
   initStore();
   try {
-    const phone = normalizePhone(whatsappNumber);
-    const data = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-    return data[phone] || null;
+    profilesMemoryCache = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
   } catch (err) {
     console.error("Error reading active profiles:", err);
-    return null;
+    profilesMemoryCache = {};
   }
+  return profilesMemoryCache;
+}
+
+export function getActiveProfile(whatsappNumber) {
+  const phone = normalizePhone(whatsappNumber);
+  const data = loadStore();
+  return data[phone] || null;
 }
 
 export function setActiveProfile(whatsappNumber, playerId) {
-  initStore();
+  const phone = normalizePhone(whatsappNumber);
+  const data = loadStore();
+  data[phone] = playerId;
   try {
-    const phone = normalizePhone(whatsappNumber);
-    const data = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
-    data[phone] = playerId;
+    initStore();
     fs.writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf-8');
     return true;
   } catch (err) {

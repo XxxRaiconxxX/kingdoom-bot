@@ -3,10 +3,6 @@ import ws from 'ws';
 import { normalizePhone, isAdminUser, isStaffUser, isOwner } from './adminStore.js';
 import { getActiveProfile } from './activeProfileStore.js';
 import { requireSafeGoldInteger } from './economy.js';
-import {
-  buildRoleplayLockUpdate,
-  isAutomaticRoleplayLock,
-} from './roleplayActivity.js';
 
 const DAILY_CLAIM_TYPE = 'heraldo_daily';
 const SUPABASE_REQUEST_TIMEOUT_MS = Math.max(
@@ -29,7 +25,20 @@ const phoneLookupCache = new Map();
 const pendingPhoneLookups = new Map();
 let phoneLookupRevision = 0;
 
+const MAX_READ_QUERY_CACHE_SIZE = 100;
 const readQueryCache = new Map();
+
+function pruneReadQueryCache() {
+  const now = Date.now();
+  for (const [k, v] of readQueryCache.entries()) {
+    if (now >= v.expiresAt) readQueryCache.delete(k);
+  }
+  while (readQueryCache.size > MAX_READ_QUERY_CACHE_SIZE) {
+    const firstKey = readQueryCache.keys().next().value;
+    readQueryCache.delete(firstKey);
+  }
+}
+
 async function getCachedOrFetch(key, ttlMs, fetchFn) {
   const now = Date.now();
   const cached = readQueryCache.get(key);
@@ -37,6 +46,7 @@ async function getCachedOrFetch(key, ttlMs, fetchFn) {
     return cached.data;
   }
 
+  pruneReadQueryCache();
   const promise = fetchFn();
   readQueryCache.set(key, { data: promise, expiresAt: now + ttlMs });
 
@@ -277,24 +287,6 @@ export async function getPlayersByPhone(whatsappNumber) {
   }
 }
 
-function normalizeRoleplayPhoneAliases(values) {
-  const normalized = (values ?? [])
-    .map((value) => normalizePhone(value))
-    .filter(Boolean);
-  return [...new Set(normalized.flatMap((phone) => getPhoneLookupCandidates(phone)))];
-}
-
-async function getPlayersByRoleplayPhoneAliases(phoneAliases) {
-  const playersById = new Map();
-  for (const phoneAlias of phoneAliases) {
-    const players = await getPlayersByPhone(phoneAlias);
-    for (const player of players) {
-      if (player?.id) playersById.set(player.id, player);
-    }
-  }
-  return [...playersById.values()];
-}
-
 function filterPlayersByExactPhone(players, phone) {
   return (players ?? []).filter((player) => {
     if (!player.phone) return false;
@@ -352,6 +344,13 @@ function isMissingRoleplaySchemaError(error) {
     message.includes('last_roleplay_at') ||
     message.includes('grace_until') ||
     message.includes('locked_at');
+}
+
+function isMissingRoleplayRpcError(error) {
+  const message = String(error?.message ?? '').toLowerCase();
+  const code = String(error?.code ?? '');
+  return code === 'PGRST202' ||
+    (message.includes('record_roleplay_activity') && message.includes('function'));
 }
 
 function buildRoleplaySchemaError() {
@@ -560,70 +559,58 @@ export async function getPlayerRoleplayAccess(playerId) {
   return data ?? null;
 }
 
-async function upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso) {
-  const rows = phoneAliases.map((phone) => ({
-    phone,
-    last_roleplay_at: nowIso,
-    last_roleplay_group_jid: groupJid,
-  }));
-  if (!rows.length) return;
-
-  const { error } = await supabase
-    .from('roleplay_phone_activity')
-    .upsert(rows, { onConflict: 'phone' });
-
-  if (error) {
-    if (isMissingRoleplaySchemaError(error)) {
-      throw buildRoleplaySchemaError();
-    }
-    console.error('[upsertRoleplayPhoneActivity]', error.message);
-    throw new Error('No se pudo guardar la actividad de roleplay por telefono.');
-  }
-}
-
-function isMissingRoleplayActivityRpcError(error) {
-  const code = String(error?.code ?? '');
-  const message = String(error?.message ?? '').toLowerCase();
-  return code === 'PGRST202'
-    || code === '42883'
-    || (
-      message.includes('record_roleplay_activity')
-      && (
-        message.includes('could not find')
-        || message.includes('does not exist')
-        || message.includes('schema cache')
-      )
-    );
-}
-
-let missingRoleplayActivityRpcWarned = false;
-
 export async function markRoleplayActivityForPhone(whatsappNumber, options = {}) {
   const phone = normalizePhone(whatsappNumber);
-  const phoneAliases = normalizeRoleplayPhoneAliases([
+  const phoneAliases = [...new Set([
     phone,
-    ...(Array.isArray(options.phoneAliases) ? options.phoneAliases : []),
-  ]);
+    ...(options.phoneAliases ?? []).map((alias) => normalizePhone(alias)),
+  ].filter(Boolean))];
   const actor = String(options.actor ?? 'bot:roleplay_message').trim() || 'bot:roleplay_message';
   const groupJid = String(options.groupJid ?? '').trim() || null;
   const nowIso = new Date().toISOString();
 
-  if (!phone || !phoneAliases.length) {
+  if (!phone) {
     return {
       phone: '',
-      phoneAliases: [],
       updatedPlayers: [],
       updatedCount: 0,
       unlockedPlayers: [],
     };
   }
 
-  const players = await getPlayersByRoleplayPhoneAliases(phoneAliases);
+  const playersById = new Map();
+  for (const phoneAlias of phoneAliases) {
+    const aliasPlayers = await getPlayersByPhone(phoneAlias);
+    for (const player of aliasPlayers) {
+      if (player?.id && !playersById.has(player.id)) {
+        playersById.set(player.id, player);
+      }
+    }
+  }
+  const players = [...playersById.values()];
+
+  const { error: phoneError } = await supabase
+    .from('roleplay_phone_activity')
+    .upsert(
+      phoneAliases.map((phoneAlias) => ({
+        phone: phoneAlias,
+        last_roleplay_at: nowIso,
+        last_roleplay_group_jid: groupJid,
+      })),
+      { onConflict: 'phone' }
+    );
+
+  if (phoneError) {
+    if (isMissingRoleplaySchemaError(phoneError)) {
+      throw buildRoleplaySchemaError();
+    }
+    console.error('[markRoleplayActivityForPhone.phone]', phoneError.message);
+    throw new Error('No se pudo guardar la actividad de roleplay por telefono.');
+  }
+
   if (!players.length) {
-    await upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso);
     return {
       phone,
-      phoneAliases,
       updatedPlayers: [],
       updatedCount: 0,
       unlockedPlayers: [],
@@ -631,25 +618,62 @@ export async function markRoleplayActivityForPhone(whatsappNumber, options = {})
   }
 
   await seedRoleplayAccessForPlayers(players);
-  const playerIds = players.map((player) => player.id);
-  const accessBeforeExemptionSync = await getRoleplayAccessMap(playerIds);
-  await syncRoleplayExemptionsForPlayers(players, accessBeforeExemptionSync, actor);
-  const accessMap = await getRoleplayAccessMap(playerIds);
+  const accessMap = await getRoleplayAccessMap(players.map((player) => player.id));
+  await syncRoleplayExemptionsForPlayers(players, accessMap, actor);
+
+  const rpcPayload = {
+    p_player_ids: players.map((player) => player.id),
+    p_phone: phone,
+    p_phone_aliases: phoneAliases.filter((phoneAlias) => phoneAlias !== phone),
+    p_group_jid: groupJid,
+    p_actor: actor,
+    p_recorded_at: nowIso,
+  };
+  const { data: rpcRows, error: rpcError } = await supabase
+    .rpc('record_roleplay_activity', rpcPayload);
+
+  if (!rpcError) {
+    const unlockedIds = new Set(
+      (rpcRows ?? [])
+        .filter((row) => row?.automatic_lock_cleared)
+        .map((row) => row.player_id)
+    );
+    return {
+      phone,
+      updatedPlayers: players,
+      updatedCount: players.length,
+      unlockedPlayers: players
+        .filter((player) => unlockedIds.has(player.id))
+        .map((player) => ({
+          playerId: player.id,
+          username: player.username,
+          phone: player.phone ?? phone,
+        })),
+    };
+  }
+
+  if (!isMissingRoleplaySchemaError(rpcError) && !isMissingRoleplayRpcError(rpcError)) {
+    console.error('[markRoleplayActivityForPhone.rpc]', rpcError.message);
+    throw new Error('No se pudo registrar la actividad de roleplay.');
+  }
 
   const updates = [];
   const logs = [];
+  const unlockedPlayers = [];
 
   for (const player of players) {
     const access = accessMap.get(player.id);
     const { isExempt, exemptReason } = computeRoleplayExemption(player);
-    const lockUpdate = buildRoleplayLockUpdate(access);
+    const automaticLockCleared = Boolean(
+      access?.locked_at && (!access.lock_reason || access.lock_reason === 'roleplay_inactive')
+    );
 
     updates.push({
       player_id: player.id,
       last_roleplay_at: nowIso,
       grace_until: null,
-      locked_at: lockUpdate.locked_at,
-      lock_reason: lockUpdate.lock_reason,
+      locked_at: automaticLockCleared ? null : (access?.locked_at ?? null),
+      lock_reason: automaticLockCleared ? null : (access?.lock_reason ?? null),
       last_roleplay_group_jid: groupJid,
       last_human_roleplay_phone: phone,
       is_exempt: isExempt,
@@ -663,12 +687,17 @@ export async function markRoleplayActivityForPhone(whatsappNumber, options = {})
       performed_by: actor,
       details: {
         group_jid: groupJid,
-        phone_alias_count: phoneAliases.length,
-        automatic_lock_cleared: lockUpdate.automaticLockCleared,
+        phone_alias_count: phoneAliases.length - 1,
+        automatic_lock_cleared: automaticLockCleared,
       },
     });
 
-    if (lockUpdate.automaticLockCleared) {
+    if (automaticLockCleared) {
+      unlockedPlayers.push({
+        playerId: player.id,
+        username: player.username,
+        phone: player.phone ?? phone,
+      });
       logs.push({
         player_id: player.id,
         phone: player.phone ?? phone,
@@ -682,73 +711,24 @@ export async function markRoleplayActivityForPhone(whatsappNumber, options = {})
     }
   }
 
-  let automaticallyUnlockedPlayerIds;
-  const { data: rpcRows, error: rpcError } = await supabase.rpc('record_roleplay_activity', {
-    p_player_ids: playerIds,
-    p_phone: phone,
-    p_phone_aliases: phoneAliases,
-    p_group_jid: groupJid,
-    p_actor: actor,
-    p_recorded_at: nowIso,
-  });
+  const { error: accessError } = await supabase
+    .from('player_roleplay_access')
+    .upsert(updates, { onConflict: 'player_id' });
 
-  if (rpcError && !isMissingRoleplayActivityRpcError(rpcError)) {
-    if (isMissingRoleplaySchemaError(rpcError)) {
+  if (accessError) {
+    if (isMissingRoleplaySchemaError(accessError)) {
       throw buildRoleplaySchemaError();
     }
-    console.error('[markRoleplayActivityForPhone.rpc]', rpcError.message);
-    throw new Error('No se pudo registrar atomicamente la actividad de roleplay.');
+    console.error('[markRoleplayActivityForPhone.access]', accessError.message);
+    throw new Error('No se pudo actualizar el acceso de roleplay del jugador.');
   }
 
-  if (!rpcError) {
-    automaticallyUnlockedPlayerIds = new Set(
-      (rpcRows ?? [])
-        .filter((row) => row?.automatic_lock_cleared)
-        .map((row) => row.player_id)
-    );
-  } else {
-    if (!missingRoleplayActivityRpcWarned) {
-      missingRoleplayActivityRpcWarned = true;
-      console.warn(
-        '[markRoleplayActivityForPhone] RPC record_roleplay_activity no disponible; se usa compatibilidad no atomica hasta aplicar supabase/supabase_roleplay_activity_rpc.sql.'
-      );
-    }
-
-    await upsertRoleplayPhoneActivity(phoneAliases, groupJid, nowIso);
-    const { error: accessError } = await supabase
-      .from('player_roleplay_access')
-      .upsert(updates, { onConflict: 'player_id' });
-
-    if (accessError) {
-      if (isMissingRoleplaySchemaError(accessError)) {
-        throw buildRoleplaySchemaError();
-      }
-      console.error('[markRoleplayActivityForPhone.access]', accessError.message);
-      throw new Error('No se pudo actualizar el acceso de roleplay del jugador.');
-    }
-
+  if (logs.length) {
     await insertRoleplayAccessLog(logs);
-    automaticallyUnlockedPlayerIds = new Set(
-      players
-        .filter((player) => {
-          const access = accessMap.get(player.id);
-          return Boolean(access?.locked_at && isAutomaticRoleplayLock(access));
-        })
-        .map((player) => player.id)
-    );
   }
-
-  const unlockedPlayers = players
-    .filter((player) => automaticallyUnlockedPlayerIds.has(player.id))
-    .map((player) => ({
-      playerId: player.id,
-      username: player.username,
-      phone: player.phone ?? phone,
-    }));
 
   return {
     phone,
-    phoneAliases,
     updatedPlayers: players,
     updatedCount: players.length,
     unlockedPlayers,
@@ -772,6 +752,10 @@ function shouldRoleplayPlayerBeLocked(access, now = new Date()) {
   }
 
   return nowMs - lastRoleplayMs >= ROLEPLAY_LOCK_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function isAutomaticRoleplayLock(access) {
+  return !access?.lock_reason || access.lock_reason === 'roleplay_inactive';
 }
 
 export function isRoleplayAccessCurrentlyLocked(access, now = new Date()) {
@@ -2935,77 +2919,80 @@ export async function getMissionByShortId(prefix) {
 // notebook_id sigue existiendo en la BD pero el bot ya no la usa.
 
 export async function getFormattedGrimoire() {
-  const { data, error } = await supabase
-    .from('grimoire_magic_styles')
-    .select('category_title, title, description, levels')
-    .order('created_at', { ascending: true });
+  return getCachedOrFetch('formatted_grimoire', 30 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('grimoire_magic_styles')
+      .select('category_title, title, description, levels')
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    console.error('[getFormattedGrimoire] Error fetching:', error.message);
-    return '';
-  }
+    if (error) {
+      console.error('[getFormattedGrimoire] Error fetching:', error.message);
+      return '';
+    }
 
-  if (!data || data.length === 0) return 'No hay magias registradas en el grimorio.';
+    if (!data || data.length === 0) return 'No hay magias registradas en el grimorio.';
 
-  let text = `# GRIMORIO OFICIAL DE MAGIAS Y HECHIZOS DEL REINO\n\n`;
-  text += `Este documento contiene la lista canónica de escuelas de magia, hechizos, niveles, cooldowns (CD), límites y efectos. El GM debe apegarse estrictamente a esta lista para juzgar el uso de magia por parte de los jugadores.\n\n`;
+    let text = `# GRIMORIO OFICIAL DE MAGIAS Y HECHIZOS DEL REINO\n\n`;
+    text += `Este documento contiene la lista canónica de escuelas de magia, hechizos, niveles, cooldowns (CD), límites y efectos. El GM debe apegarse estrictamente a esta lista para juzgar el uso de magia por parte de los jugadores.\n\n`;
 
-  for (const style of data) {
-    text += `=========================================\n`;
-    text += `ESCUELA MÁGICA: ${style.title} (${style.category_title || 'General'})\n`;
-    text += `=========================================\n`;
-    text += `${style.description || 'Sin descripción.'}\n\n`;
+    for (const style of data) {
+      text += `=========================================\n`;
+      text += `ESCUELA MÁGICA: ${style.title} (${style.category_title || 'General'})\n`;
+      text += `=========================================\n`;
+      text += `${style.description || 'Sin descripción.'}\n\n`;
 
-    if (style.levels && typeof style.levels === 'object') {
-      for (const [lvl, spells] of Object.entries(style.levels)) {
-        text += `### NIVEL ${lvl}\n`;
-        if (Array.isArray(spells)) {
-          for (const spell of spells) {
-            text += `- **Nombre:** ${spell.name || 'Sin nombre'}\n`;
-            text += `  - **Cooldown (CD):** ${spell.cd || 'No especificado'}\n`;
-            text += `  - **Límite/Condición:** ${spell.limit || 'Ninguno'}\n`;
-            text += `  - **Efecto:** ${spell.effect || 'No especificado'}\n`;
-            if (spell.antiManoNegra) {
-              text += `  - **Contra-medida (Anti-Mano Negra):** ${spell.antiManoNegra}\n`;
+      if (style.levels && typeof style.levels === 'object') {
+        for (const [lvl, spells] of Object.entries(style.levels)) {
+          text += `### NIVEL ${lvl}\n`;
+          if (Array.isArray(spells)) {
+            for (const spell of spells) {
+              text += `- **Nombre:** ${spell.name || 'Sin nombre'}\n`;
+              text += `  - **Cooldown (CD):** ${spell.cd || 'No especificado'}\n`;
+              text += `  - **Límite/Condición:** ${spell.limit || 'Ninguno'}\n`;
+              text += `  - **Efecto:** ${spell.effect || 'No especificado'}\n`;
+              if (spell.antiManoNegra) {
+                text += `  - **Contra-medida (Anti-Mano Negra):** ${spell.antiManoNegra}\n`;
+              }
+              text += `\n`;
             }
-            text += `\n`;
+          } else {
+            text += `(No hay hechizos declarados para este nivel)\n\n`;
           }
-        } else {
-          text += `(No hay hechizos declarados para este nivel)\n\n`;
         }
       }
+      text += `\n`;
     }
-    text += `\n`;
-  }
 
-  return text;
+    return text;
+  });
 }
 
 export async function getFormattedEncyclopedia() {
-  const { data, error } = await supabase
-    .from('knowledge_documents')
-    .select('title, type, category, content')
-    .order('created_at', { ascending: true });
+  return getCachedOrFetch('formatted_encyclopedia', 30 * 60 * 1000, async () => {
+    const { data, error } = await supabase
+      .from('knowledge_documents')
+      .select('title, type, category, content')
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    console.error('[getFormattedEncyclopedia] Error fetching:', error.message);
-    return '';
-  }
+    if (error) {
+      console.error('[getFormattedEncyclopedia] Error fetching:', error.message);
+      return '';
+    }
 
-  if (!data || data.length === 0) return 'No hay documentos de lore registrados en la enciclopedia.';
+    if (!data || data.length === 0) return 'No hay documentos de lore registrados en la enciclopedia.';
 
-  let text = `# ENCICLOPEDIA, LORE Y CODEX DEL REINO\n\n`;
-  text += `Este documento contiene la historia oficial, facciones, geopolítica, razas y el reglamento del sistema de combate del reino de KingDoom. El GM debe usar esta información para dar consistencia y coherencia a la narrativa.\n\n`;
+    let text = `# ENCICLOPEDIA, LORE Y CODEX DEL REINO\n\n`;
+    text += `Este documento contiene la historia oficial, facciones, geopolítica, razas y el reglamento del sistema de combate del reino de KingDoom. El GM debe usar esta información para dar consistencia y coherencia a la narrativa.\n\n`;
 
-  for (const doc of data) {
-    text += `=========================================\n`;
-    text += `DOCUMENTO: ${doc.title} [Tipo: ${doc.type || 'General'} | Categoría: ${doc.category || 'Lore'}]\n`;
-    text += `=========================================\n\n`;
-    text += `${doc.content || 'Sin contenido.'}\n\n`;
-    text += `\n`;
-  }
+    for (const doc of data) {
+      text += `=========================================\n`;
+      text += `DOCUMENTO: ${doc.title} [Tipo: ${doc.type || 'General'} | Categoría: ${doc.category || 'Lore'}]\n`;
+      text += `${doc.content || 'Sin contenido.'}\n\n`;
+      text += `\n`;
+    }
 
-  return text;
+    return text;
+  });
 }
 
 export async function saveActiveMissionState(state) {

@@ -4,6 +4,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 
+### [Fecha: 01/09/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `README.md`, `.env.example`, `.github/workflows/keep_alive.yml`, `src/whatsappIdentity.js`, `src/index.js`, `src/handlers/colosseumHandler.js`, `src/colosseumStore.js`, `AI_CHANGELOG.md`.
+*   **Resumen de Tareas:** Realineado el repositorio al runtime vivo en Ubuntu/Docker Compose tras dejar de usar Hugging Face Spaces como entorno operativo principal. El README ahora identifica `/home/crisma01/kingdoom-bot`, el contenedor `kingdoom-whatsapp-bot`, el puerto `7860`, los comandos de salud y la regla de preservar `wwebjs_auth`. `.env.example` vuelve a recomendar `WHATSAPP_AUTH_STRATEGY=local` con `PERSISTENT_DATA_PATH=/app/.wwebjs_auth`, respaldado por el volumen local. El workflow de keep-alive de Hugging Face quedo manual y deshabilitado para que no siga ejecutandose como operacion automatica. Antes del push se restauro el export compatible `resolveMessageSenderIdentity` y se corrigieron los defaults del Coliseo/roleplay al JID confirmado `120363024420812768@g.us`.
+*   **Validacion:** `docker compose config` exitoso; `node --check` en modulos de arranque/documentacion operativa sin errores; `ROLEPLAY_ACTIVITY_OK`; `ROLEPLAY_PERSISTENCE_OK`; suite completa `npm test` en verde con `TEST_SUITE_OK=28`; `/status` y `/healthz` verificados contra el contenedor vivo sin reiniciar ni reconstruir.
+*   **Riesgos / Advertencias:** No se hizo `pull`, rebuild, restart, commit, push ni deploy. El contenedor vivo seguia saludable antes del cambio, pero con consumo de memoria alto; revisar recursos antes de una publicacion o reinicio.
+
 ### [Fecha: 18/08/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/admin.js`, `test_handler_import_contracts.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Hotfix del bucle de reinicio introducido por el despliegue de `!dataver`. `admin.js` importaba `handleKnowledgeCatalog` desde `knowledgeHandler.js`, pero ese simbolo no existia en el commit publicado y tampoco se utilizaba. Se elimino el import muerto en su origen, permitiendo que Node complete la instanciacion ESM y arranque el bot.

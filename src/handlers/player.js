@@ -154,10 +154,14 @@ export async function handlePlayerMessage(msg, client = null) {
     const isSenderOwner = isOwner(sender);
     let isSenderAdmin = isAdminUser(sender);
     const isSenderStaff = isStaffUser(sender);
-
-    const player = await getPlayer(sender);
-    if (player?.is_admin === true) {
-      isSenderAdmin = true;
+    let player = null;
+    try {
+      player = await getPlayer(sender);
+      if (player?.is_admin === true) {
+        isSenderAdmin = true;
+      }
+    } catch (err) {
+      console.warn('[player] Error leyendo status admin en !ayuda:', err?.message || err);
     }
 
     let identityName = 'Jugador';
@@ -197,7 +201,6 @@ export async function handlePlayerMessage(msg, client = null) {
         treeCommand('⚒️ !forjaritem <idea>', 'Borrador IA para el mercado.'),
         treeCommand('🎯 !mision · 🎪 !evento', 'Ver misiones y eventos.'),
         treeCommand('⚖️ !subastas · 💰 !pujar · 🚪 !retirarse', 'Subastas y pujas.'),
-        treeCommand('📂 !dataver [archivo]', 'Ver archivos y textos subidos al bot.'),
         treeCommand('📲 !apk', 'App Android oficial.'),
       ]),
     ];
@@ -252,11 +255,6 @@ export async function handlePlayerMessage(msg, client = null) {
       footer: '╰─ _Ciber-Grimorio del Reino de las Sombras_',
     });
 
-  }
-
-  if (['dataver', 'verdata', 'lorever', 'temas', 'lore'].includes(command)) {
-    const { handleDataVer } = await import('./knowledgeHandler.js');
-    return await handleDataVer(body);
   }
 
   if (command === 'verificar') {

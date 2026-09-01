@@ -1685,8 +1685,6 @@ export async function handleAdminCommand(msg, client) {
         '- Adjunta un archivo con *!data [titulo]*.',
         '- Responde a un archivo o mensaje con *!data [titulo]*.',
         '- O escribe *!data Titulo* y el contenido en las líneas siguientes.',
-        '',
-        '💡 Para consultar los archivos ya subidos usa: *!dataver*',
       ].join('\n');
     }
 

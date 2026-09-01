@@ -37,10 +37,17 @@ export function cleanupStaleChromiumLocks(authDataPath, sessionDirName = 'sessio
 
   for (const fileName of CHROMIUM_LOCK_FILES) {
     const filePath = path.join(sessionPath, fileName);
-    if (!fs.existsSync(filePath)) continue;
-
-    fs.rmSync(filePath, { force: true, recursive: true });
-    removed.push(fileName);
+    try {
+      if (fs.lstatSync(filePath, { throwIfNoEntry: false })) {
+        fs.rmSync(filePath, { force: true, recursive: true });
+        removed.push(fileName);
+      }
+    } catch {
+      try {
+        fs.unlinkSync(filePath);
+        removed.push(fileName);
+      } catch {}
+    }
   }
 
   return removed;

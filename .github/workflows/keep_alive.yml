@@ -1,17 +1,15 @@
-name: Keep-Alive Hugging Face Space
+name: Legacy Hugging Face Space Check
 
 on:
-  schedule:
-    # Se ejecuta automáticamente cada 30 minutos (1,440 min/mes = 100% dentro del límite gratis de 2,000 min)
-    - cron: '*/30 * * * *'
-  workflow_dispatch: # Permite disparar la prueba manualmente desde GitHub Actions
+  workflow_dispatch: # Historico: solo ejecutar manualmente si se vuelve a auditar el Space.
 
 jobs:
   ping-space:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Send Keep-Alive Ping to HF Space
+      - name: Send Legacy HF Space Ping
         run: |
           STATUS=$(curl -k -s -L -o /dev/null -w "%{http_code}" --max-time 45 --connect-timeout 15 "https://axel785-kingdoom-whatsapp.hf.space/status.json")
           echo "HF Space Ping HTTP Status Code: $STATUS"
