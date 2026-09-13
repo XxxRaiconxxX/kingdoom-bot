@@ -1,8 +1,14 @@
-# AI Collaboration Log & Project Context - Kingdoom Bot
+﻿# AI Collaboration Log & Project Context - Kingdoom Bot
 
 Este archivo sirve como registro de actividad y contexto operativo para el repositorio `kingdoom-bot`.
 
 ## Historial de Cambios (Changelog)
+### [Fecha: 13/09/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/accessCodeUtils.js`, `src/accessCodes.js`, `src/index.js`, `test_access_codes.js`, `AI_CHANGELOG.md`.
+*   **Resumen de Tareas:** Añadido el flujo de códigos de acceso web para perfiles creados por el bot.
+*   **Cambios Clave:** `!codigo` y `!acceso` funcionan solo en chat privado, generan un código numérico de seis dígitos y almacenan únicamente su hash SHA-256 con caducidad de diez minutos.
+*   **Validación:** `node --check` y `npm test` con 25 pruebas pasadas.
+*   **Notas/Advertencias:** La migración `player_access_codes` debe aplicarse en Supabase antes de usar `!codigo` en producción.
 
 ### [Fecha: 01/09/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `docker-compose.yml`, `README.md`, `.env.example`, `AI_CHANGELOG.md`.
@@ -24,13 +30,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 18/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/knowledgeHandler.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/formatting.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación del comando `!dataver` para exploración e inspección de archivos canónicos y documentos subidos al bot:
-    1.  **[Módulo `knowledgeHandler.js`]:** Se creó el catálogo estructurado con los 7 tomos canónicos de Aethelgardia (Shadow Garden, Cisma de Espinas, Valdren y la Corona de Carbón, Bolsa de Valores, Compendio Alquímico, Teología y Dinastías) integrado dinámicamente con los documentos de Supabase (`knowledge_documents`).
-    2.  **[Comando `!dataver`]:** Sin argumentos lista los archivos y tratados disponibles con formateo jerárquico vertical anti-quiebre para móvil. Con argumento (ej: `!dataver historia de valdren`, `!dataver 3`, `!dataver espinas`) muestra el extracto completo y ficha técnica del archivo.
-    3.  **[Preservación de `!data`]:** El comando administrativo `!data` se mantiene puro y dedicado para la subida y asimilación de archivos/textos por parte del staff, guiando con mensaje claro hacia `!dataver` si no se adjuntan contenidos.
-    4.  **[Menú `!ayuda` y Ruteo]:** Se registró `!dataver` en el compendio de ayuda para jugadores y en los temas de comandos de `formatting.js` e `index.js`.
-*   **Validación:** Ejecutada la suite completa de pruebas `npm test` con **26/26 suites en verde (100% OK)**; pruebas unitarias dirigidas para índices numéricos, alias, nombres de archivo y fallback de no encontrado en verde.
-*   **Riesgos / Advertencias:** Ninguno detectado. Despliegue requerido a GitHub y Hugging Face para que el contenedor activo en producción aplique los nuevos comandos.
+*   **Resumen de Tareas:** ImplementaciÃ³n del comando `!dataver` para exploraciÃ³n e inspecciÃ³n de archivos canÃ³nicos y documentos subidos al bot:
+    1.  **[MÃ³dulo `knowledgeHandler.js`]:** Se creÃ³ el catÃ¡logo estructurado con los 7 tomos canÃ³nicos de Aethelgardia (Shadow Garden, Cisma de Espinas, Valdren y la Corona de CarbÃ³n, Bolsa de Valores, Compendio AlquÃ­mico, TeologÃ­a y DinastÃ­as) integrado dinÃ¡micamente con los documentos de Supabase (`knowledge_documents`).
+    2.  **[Comando `!dataver`]:** Sin argumentos lista los archivos y tratados disponibles con formateo jerÃ¡rquico vertical anti-quiebre para mÃ³vil. Con argumento (ej: `!dataver historia de valdren`, `!dataver 3`, `!dataver espinas`) muestra el extracto completo y ficha tÃ©cnica del archivo.
+    3.  **[PreservaciÃ³n de `!data`]:** El comando administrativo `!data` se mantiene puro y dedicado para la subida y asimilaciÃ³n de archivos/textos por parte del staff, guiando con mensaje claro hacia `!dataver` si no se adjuntan contenidos.
+    4.  **[MenÃº `!ayuda` y Ruteo]:** Se registrÃ³ `!dataver` en el compendio de ayuda para jugadores y en los temas de comandos de `formatting.js` e `index.js`.
+*   **ValidaciÃ³n:** Ejecutada la suite completa de pruebas `npm test` con **26/26 suites en verde (100% OK)**; pruebas unitarias dirigidas para Ã­ndices numÃ©ricos, alias, nombres de archivo y fallback de no encontrado en verde.
+*   **Riesgos / Advertencias:** Ninguno detectado. Despliegue requerido a GitHub y Hugging Face para que el contenedor activo en producciÃ³n aplique los nuevos comandos.
 
 ### [Fecha: 18/08/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/handlers/colosseumHandler.js`, `src/colosseumStore.js`, `test_roleplay_activity.js`, `test_roleplay_persistence.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
@@ -63,131 +69,131 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 08/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Corrección crítica del error de arranque en Hugging Face Space (`ReferenceError: Message is not defined at src/index.js:102:1`):
-    1.  **[Causa Raíz]:** Existía una declaración duplicada de constantes en el encabezado de `src/index.js` que causaba colisión de identificadores en ESM de Node.js al levantar el supervisor en el contenedor de Hugging Face.
-    2.  **[Solución]:** Se limpiaron y desduplicaron todos los imports al inicio del módulo, se estructuraron de forma segura las referencias `Client`, `LocalAuth`, `Message` desde `whatsapp-web.js` (`pkg.Message || pkg.default?.Message`) y se aseguró el parche del prototipo con encadenamiento opcional `if (Message?.prototype)`.
-*   **Validación:**
-    *   Verificación directa de importación ESM con `node -e` exitosa (`INDEX_IMPORT_SUCCESS`).
-    *   Ejecución de la suite completa `npm test`: **24/24 suites pasadas (100% OK)**.
+*   **Resumen de Tareas:** CorrecciÃ³n crÃ­tica del error de arranque en Hugging Face Space (`ReferenceError: Message is not defined at src/index.js:102:1`):
+    1.  **[Causa RaÃ­z]:** ExistÃ­a una declaraciÃ³n duplicada de constantes en el encabezado de `src/index.js` que causaba colisiÃ³n de identificadores en ESM de Node.js al levantar el supervisor en el contenedor de Hugging Face.
+    2.  **[SoluciÃ³n]:** Se limpiaron y desduplicaron todos los imports al inicio del mÃ³dulo, se estructuraron de forma segura las referencias `Client`, `LocalAuth`, `Message` desde `whatsapp-web.js` (`pkg.Message || pkg.default?.Message`) y se asegurÃ³ el parche del prototipo con encadenamiento opcional `if (Message?.prototype)`.
+*   **ValidaciÃ³n:**
+    *   VerificaciÃ³n directa de importaciÃ³n ESM con `node -e` exitosa (`INDEX_IMPORT_SUCCESS`).
+    *   EjecuciÃ³n de la suite completa `npm test`: **24/24 suites pasadas (100% OK)**.
 *   **Riesgos / Advertencias:** Ninguno detectado.
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/loreRaces.js`, `src/colosseumStore.js`, `src/handlers/colosseumHandler.js`, `src/handlers/player.js`, `src/index.js`, `test_colosseum_flow.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación integral del sistema de **Coliseo de Razas y PvP con Apuestas por Cita en WhatsApp**:
-    1.  **[Indexador y Catálogo de Razas (`src/loreRaces.js`)]:**
-        *   Carga y análisis de más de 55 razas oficiales organizadas en 4 regiones (*Kaelum-Gard*, *Nexo de Arcania*, *Los Páramos*, *Oakhaven*).
-        *   Extracción de atributos D&D (FUE, DES, CON, ARC, RES, pasivas, habilidades con CD) y métricas físicas/numéricas (kN de impacto, m/s de sprint, ms de reacción, Joules de resistencia HP y MW mágicos).
-        *   Generador de gladiadores únicos con nombres, epítetos, armas y balanceo de cuotas (`odds` de 1.30x a 4.50x).
-    2.  **[Almacén en Memoria y Apuestas por Cita (`src/colosseumStore.js`)]:**
+*   **Resumen de Tareas:** ImplementaciÃ³n integral del sistema de **Coliseo de Razas y PvP con Apuestas por Cita en WhatsApp**:
+    1.  **[Indexador y CatÃ¡logo de Razas (`src/loreRaces.js`)]:**
+        *   Carga y anÃ¡lisis de mÃ¡s de 55 razas oficiales organizadas en 4 regiones (*Kaelum-Gard*, *Nexo de Arcania*, *Los PÃ¡ramos*, *Oakhaven*).
+        *   ExtracciÃ³n de atributos D&D (FUE, DES, CON, ARC, RES, pasivas, habilidades con CD) y mÃ©tricas fÃ­sicas/numÃ©ricas (kN de impacto, m/s de sprint, ms de reacciÃ³n, Joules de resistencia HP y MW mÃ¡gicos).
+        *   Generador de gladiadores Ãºnicos con nombres, epÃ­tetos, armas y balanceo de cuotas (`odds` de 1.30x a 4.50x).
+    2.  **[AlmacÃ©n en Memoria y Apuestas por Cita (`src/colosseumStore.js`)]:**
         *   Manejo de sesiones activas del Coliseo (`betting`, `fighting`, `completed`).
-        *   Registro de Message IDs de presentación para permitir apuestas automáticas por respuesta citada directa (`findColosseumBetTargetByQuotedId`).
-        *   Protección contra apuestas en ambos bandos y cálculo exacto de multiplicadores de ganancia.
+        *   Registro de Message IDs de presentaciÃ³n para permitir apuestas automÃ¡ticas por respuesta citada directa (`findColosseumBetTargetByQuotedId`).
+        *   ProtecciÃ³n contra apuestas en ambos bandos y cÃ¡lculo exacto de multiplicadores de ganancia.
     3.  **[Manejador de Combate y Narrativa Turno a Turno (`src/handlers/colosseumHandler.js`)]:**
-        *   Comando `!coliseo [minutos]` que lanza el anuncio y las fichas técnicas de Gladiador A y Gladiador B en el grupo principal.
-        *   Comando `!apostar <monto>` y citas directas para apostar oro con deducción atómica en Supabase (`action: 'colosseum_bet'`).
+        *   Comando `!coliseo [minutos]` que lanza el anuncio y las fichas tÃ©cnicas de Gladiador A y Gladiador B en el grupo principal.
+        *   Comando `!apostar <monto>` y citas directas para apostar oro con deducciÃ³n atÃ³mica en Supabase (`action: 'colosseum_bet'`).
         *   Combate continuo asalto por asalto en el grupo de roleo (`120363024420812768@g.us`) hasta que el HP de uno de los gladiadores cae a 0.
-        *   Narración marcial dinámica impulsada por IA (`askKingdoomAI`) con réplicas defensivas citadas, cálculo de daño y barras de salud HP.
+        *   NarraciÃ³n marcial dinÃ¡mica impulsada por IA (`askKingdoomAI`) con rÃ©plicas defensivas citadas, cÃ¡lculo de daÃ±o y barras de salud HP.
         *   Cadencia temporal realista (60 a 90 segundos entre asaltos).
-        *   Liquidación de ganancias y acreditación automática de oro en Supabase (`action: 'colosseum_payout'`) para todos los apostadores ganadores.
-*   **Validación:**
-    *   Suite `test_colosseum_flow.js` creada y ejecutada con éxito (5/5 pruebas pasadas).
+        *   LiquidaciÃ³n de ganancias y acreditaciÃ³n automÃ¡tica de oro en Supabase (`action: 'colosseum_payout'`) para todos los apostadores ganadores.
+*   **ValidaciÃ³n:**
+    *   Suite `test_colosseum_flow.js` creada y ejecutada con Ã©xito (5/5 pruebas pasadas).
     *   Suite global `npm test` ejecutada: **24/24 suites pasadas (100% OK)**.
-    *   Verificación de tipos TypeScript en `Kingdoom-sync`: **`npx tsc --noEmit` completado con 0 errores**.
+    *   VerificaciÃ³n de tipos TypeScript en `Kingdoom-sync`: **`npx tsc --noEmit` completado con 0 errores**.
 *   **Riesgos / Advertencias:** Ninguno detectado.
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Corrección crítica en la normalización de identificadores de usuario (LID de WhatsApp) para que el detector de actividad de roleo en el grupo principal (`120363024420812768@g.us`) reconozca los mensajes de todos los usuarios registrados con LID (como "Cosa rosada" `281006825320570`) y desbloquee automáticamente el acceso a la web.
-*   **Diagnóstico y Causa Raíz:**
-    1.  **[Causa Raíz en `normalizePhone`]:** `normalizePhone` en `src/adminStore.js` contenía una condición que retornaba cadena vacía (`''`) para cualquier identificador con terminación `@lid` excepto uno específico.
-    2.  **[Impacto]:** La base de datos tiene registrados más de 17 jugadores con identificadores LID (ej. "Cosa rosada" `281006825320570`). Cuando "Cosa rosada" u otros jugadores enviaban mensajes de roleo en el grupo, `normalizePhone` descartaba el remitente, impidiendo que `markRoleplayActivityForPhone` actualizara `roleplay_phone_activity` y `player_roleplay_access` para desbloquear la web.
-    3.  **[Solución]:** Se removió el descarte de LIDs en `normalizePhone`, permitiendo normalizar de forma limpia los números de 14-15 dígitos; y `formatJid` ahora formatea con `@lid` si el identificador tiene 14 o más dígitos.
-    4.  **[Restauración Inmediata]:** Se actualizó en Supabase el estado de roleo de "Cosa rosada", quedando `locked_at = NULL` y su acceso web completamente restablecido.
-*   **Validación:** Ejecución de suite de tests completa (`16/16` tests pasados) y prueba directa de actualización de roleo en vivo.
+*   **Resumen de Tareas:** CorrecciÃ³n crÃ­tica en la normalizaciÃ³n de identificadores de usuario (LID de WhatsApp) para que el detector de actividad de roleo en el grupo principal (`120363024420812768@g.us`) reconozca los mensajes de todos los usuarios registrados con LID (como "Cosa rosada" `281006825320570`) y desbloquee automÃ¡ticamente el acceso a la web.
+*   **DiagnÃ³stico y Causa RaÃ­z:**
+    1.  **[Causa RaÃ­z en `normalizePhone`]:** `normalizePhone` en `src/adminStore.js` contenÃ­a una condiciÃ³n que retornaba cadena vacÃ­a (`''`) para cualquier identificador con terminaciÃ³n `@lid` excepto uno especÃ­fico.
+    2.  **[Impacto]:** La base de datos tiene registrados mÃ¡s de 17 jugadores con identificadores LID (ej. "Cosa rosada" `281006825320570`). Cuando "Cosa rosada" u otros jugadores enviaban mensajes de roleo en el grupo, `normalizePhone` descartaba el remitente, impidiendo que `markRoleplayActivityForPhone` actualizara `roleplay_phone_activity` y `player_roleplay_access` para desbloquear la web.
+    3.  **[SoluciÃ³n]:** Se removiÃ³ el descarte de LIDs en `normalizePhone`, permitiendo normalizar de forma limpia los nÃºmeros de 14-15 dÃ­gitos; y `formatJid` ahora formatea con `@lid` si el identificador tiene 14 o mÃ¡s dÃ­gitos.
+    4.  **[RestauraciÃ³n Inmediata]:** Se actualizÃ³ en Supabase el estado de roleo de "Cosa rosada", quedando `locked_at = NULL` y su acceso web completamente restablecido.
+*   **ValidaciÃ³n:** EjecuciÃ³n de suite de tests completa (`16/16` tests pasados) y prueba directa de actualizaciÃ³n de roleo en vivo.
 
 ### [Fecha: 07/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación y validación de la **Suite Completa de 100 Simulaciones de Variaciones Sintácticas de Negociación** (`!contraoferta`), alcanzando el **100.0% de éxito**.
+*   **Resumen de Tareas:** ImplementaciÃ³n y validaciÃ³n de la **Suite Completa de 100 Simulaciones de Variaciones SintÃ¡cticas de NegociaciÃ³n** (`!contraoferta`), alcanzando el **100.0% de Ã©xito**.
 *   **Cambios Clave:**
-    1.  **[Parser Universal de Metas Numéricas (`parseBusinessUpgradeTargets`)]:** Soporte exhaustivo para 5 familias sintácticas completas:
-        *   **Categoría A (Metas Antepuestas):** 20/20 (100.0%) - ej: `subiendo a 2.000.000 mi almacenamiento`, `a 800k de espacio total`, `dejando en 100k la tasa`.
-        *   **Categoría B (Metas Porcentuales %):** 20/20 (100.0%) - ej: `+35%`, `un 25% mas de produccion`, `subiendo 50% mi capacidad actual`.
-        *   **Categoría C (Paquetes Combinados / Dual Upgrades):** 20/20 (100.0%) - ej: `25M subiendo produccion a 80k y almacenamiento a 400k`, `con 1.2M de capacidad y 105k de oro por hora`.
-        *   **Categoría D (Variantes Temporales & Puntos):** 20/20 (100.0%) - ej: `28.000.000 por 720.000 de oro al día`, `para 168.000 a la semana`, `dejando en 480.000 diarios`.
-        *   **Categoría E (Lenguaje Natural de Rol & Estructuras Libres):** 20/20 (100.0%) - ej: `Que las ganancias queden en 90k`, `si mi negocio sube a 50k de produccion`, `si ajustas la produccion a 50.000 exactos`.
-    2.  **[Preservación de `currentProd` y `currentStor` en Memoria]:** Almacenamiento directo de las métricas base del negocio en la sesión para evitar pérdida de contexto al conmutar entre tipos de mejoras.
-    3.  **[Resolución de Ambigüedades por Proximidad]:** Diferenciación precisa entre el oro ofertado para la Cancillería (ej: `42M`) y las metas numéricas de los atributos (ej: `105k oro/hr`).
-*   **Validación:** Ejecución de `scratch/run_100_syntactic_variations_suite.js` con **100/100 (100.0%) de casos exitosos**.
+    1.  **[Parser Universal de Metas NumÃ©ricas (`parseBusinessUpgradeTargets`)]:** Soporte exhaustivo para 5 familias sintÃ¡cticas completas:
+        *   **CategorÃ­a A (Metas Antepuestas):** 20/20 (100.0%) - ej: `subiendo a 2.000.000 mi almacenamiento`, `a 800k de espacio total`, `dejando en 100k la tasa`.
+        *   **CategorÃ­a B (Metas Porcentuales %):** 20/20 (100.0%) - ej: `+35%`, `un 25% mas de produccion`, `subiendo 50% mi capacidad actual`.
+        *   **CategorÃ­a C (Paquetes Combinados / Dual Upgrades):** 20/20 (100.0%) - ej: `25M subiendo produccion a 80k y almacenamiento a 400k`, `con 1.2M de capacidad y 105k de oro por hora`.
+        *   **CategorÃ­a D (Variantes Temporales & Puntos):** 20/20 (100.0%) - ej: `28.000.000 por 720.000 de oro al dÃ­a`, `para 168.000 a la semana`, `dejando en 480.000 diarios`.
+        *   **CategorÃ­a E (Lenguaje Natural de Rol & Estructuras Libres):** 20/20 (100.0%) - ej: `Que las ganancias queden en 90k`, `si mi negocio sube a 50k de produccion`, `si ajustas la produccion a 50.000 exactos`.
+    2.  **[PreservaciÃ³n de `currentProd` y `currentStor` en Memoria]:** Almacenamiento directo de las mÃ©tricas base del negocio en la sesiÃ³n para evitar pÃ©rdida de contexto al conmutar entre tipos de mejoras.
+    3.  **[ResoluciÃ³n de AmbigÃ¼edades por Proximidad]:** DiferenciaciÃ³n precisa entre el oro ofertado para la CancillerÃ­a (ej: `42M`) y las metas numÃ©ricas de los atributos (ej: `105k oro/hr`).
+*   **ValidaciÃ³n:** EjecuciÃ³n de `scratch/run_100_syntactic_variations_suite.js` con **100/100 (100.0%) de casos exitosos**.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Corrección de enrutamiento de comandos al añadir el alias `!contraoferta` (sin "r" final) para que las respuestas del jugador sean procesadas por la **Real Cancillería** y no se caigan al chatbot general del Heraldo.
+*   **Resumen de Tareas:** CorrecciÃ³n de enrutamiento de comandos al aÃ±adir el alias `!contraoferta` (sin "r" final) para que las respuestas del jugador sean procesadas por la **Real CancillerÃ­a** y no se caigan al chatbot general del Heraldo.
 *   **Cambios Clave:**
     *   **[Alias de Comandos]:** Agregados `!contraoferta`, `!negociacion`, `!aceptarcedula` y `!cancelarnegociacion` al manejador en `src/handlers/player.js`.
-*   **Validación:** Sintaxis verificada y ruteo corregido.
+*   **ValidaciÃ³n:** Sintaxis verificada y ruteo corregido.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/businessNegotiationHandler.js`, `src/negotiationStore.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Pulido integral de la mecánica de negociación de negocios (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`), fiscalización secreta del oro por la IA y presentación manuscrita medieval.
+*   **Resumen de Tareas:** Pulido integral de la mecÃ¡nica de negociaciÃ³n de negocios (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`), fiscalizaciÃ³n secreta del oro por la IA y presentaciÃ³n manuscrita medieval.
 *   **Cambios Clave:**
-    1.  **[Selección Inteligente de Negocios]:** Autoselección si posee 1 solo negocio; menú interactivo numerado si posee múltiples propiedades y ejecuta `!negociar` a secas.
-    2.  **[Desglose Visual del Beneficio Real]:** Cálculo de incremento exacto y estimación de días de amortización pasiva ($ROI$).
-    3.  **[Fiscalización Secreta del Oro]:** El Gran Canciller conoce en secreto la fortuna en bolsa del jugador sin mencionarla abiertamente, adaptando la firmeza y agresividad de sus ofertas.
-    4.  **[Límite de Insolencia y Veto (3 Strikes)]:** Ruptura inmediata de negociación al 3er insulto impositivo con veto impositivo de 10 minutos (`fiscoVetoUntil`).
-    5.  **[Evaluación de Argumentos de Rol]:** Descuentos adicionales de hasta 3% en contraofertas si el jugador presenta una justificación narrativa válida.
-    6.  **[Expiración Elegante (TTL)]:** Respuestas estilizadas del Heraldo si el borrador caduca a los 15 minutos.
-    7.  **[Presentación Manuscrita & Pergamino Real]:** Tipografía estilizada Unicode (ej: `📜 𝔇𝔢𝔠𝔯𝔢𝔱𝔬 𝔡𝔢 𝔩𝔞 ℜ𝔢𝔞𝔩 ℭ𝔞𝔫𝔠𝔦𝔩𝔩𝔢𝔯í𝔞`) y marcos ornamentados de Real Cédula.
-*   **Validación:** Sintaxis ESM comprobada y pruebas unitarias de flujo en vivo.
+    1.  **[SelecciÃ³n Inteligente de Negocios]:** AutoselecciÃ³n si posee 1 solo negocio; menÃº interactivo numerado si posee mÃºltiples propiedades y ejecuta `!negociar` a secas.
+    2.  **[Desglose Visual del Beneficio Real]:** CÃ¡lculo de incremento exacto y estimaciÃ³n de dÃ­as de amortizaciÃ³n pasiva ($ROI$).
+    3.  **[FiscalizaciÃ³n Secreta del Oro]:** El Gran Canciller conoce en secreto la fortuna en bolsa del jugador sin mencionarla abiertamente, adaptando la firmeza y agresividad de sus ofertas.
+    4.  **[LÃ­mite de Insolencia y Veto (3 Strikes)]:** Ruptura inmediata de negociaciÃ³n al 3er insulto impositivo con veto impositivo de 10 minutos (`fiscoVetoUntil`).
+    5.  **[EvaluaciÃ³n de Argumentos de Rol]:** Descuentos adicionales de hasta 3% en contraofertas si el jugador presenta una justificaciÃ³n narrativa vÃ¡lida.
+    6.  **[ExpiraciÃ³n Elegante (TTL)]:** Respuestas estilizadas del Heraldo si el borrador caduca a los 15 minutos.
+    7.  **[PresentaciÃ³n Manuscrita & Pergamino Real]:** TipografÃ­a estilizada Unicode (ej: `ðŸ“œ ð”‡ð”¢ð” ð”¯ð”¢ð”±ð”¬ ð”¡ð”¢ ð”©ð”ž â„œð”¢ð”žð”© â„­ð”žð”«ð” ð”¦ð”©ð”©ð”¢ð”¯Ã­ð”ž`) y marcos ornamentados de Real CÃ©dula.
+*   **ValidaciÃ³n:** Sintaxis ESM comprobada y pruebas unitarias de flujo en vivo.
 
 ### [Fecha: 06/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/ai.js`, `.env`, `.env.example`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Rotación de proveedores de IA y soporte para OpenRouter.
+*   **Resumen de Tareas:** RotaciÃ³n de proveedores de IA y soporte para OpenRouter.
 *   **Cambios Clave:**
-    *   **[Orden de Rotación de IA]:** Actualizada la jerarquía de redundancia a **`groq -> gemini -> openrouter -> nvidia`**.
-    *   **[Integración de OpenRouter]:** Incorporado `askOpenRouterAI` en `src/ai.js` con manejo de cooldowns y fallbacks para modelos libres/comerciales.
-*   **Validación:** Ejecución del flujo de rotación en vivo verificado exitosamente.
+    *   **[Orden de RotaciÃ³n de IA]:** Actualizada la jerarquÃ­a de redundancia a **`groq -> gemini -> openrouter -> nvidia`**.
+    *   **[IntegraciÃ³n de OpenRouter]:** Incorporado `askOpenRouterAI` en `src/ai.js` con manejo de cooldowns y fallbacks para modelos libres/comerciales.
+*   **ValidaciÃ³n:** EjecuciÃ³n del flujo de rotaciÃ³n en vivo verificado exitosamente.
 
 ### [Fecha: 05/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.github/workflows/keep_alive.yml`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación y optimización del flujo de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensión de Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
+*   **Resumen de Tareas:** ImplementaciÃ³n y optimizaciÃ³n del flujo de Keep-Alive mediante GitHub Actions Cron para prevenir la suspensiÃ³n de Hugging Face Spaces (`axel785/kingdoom-whatsapp`).
 *   **Cambios Clave:**
-    *   **[GitHub Actions Keep-Alive Workflow]:** Creación y optimización de `.github/workflows/keep_alive.yml` a **cada 30 minutos** (`*/30 * * * *`). Esto consume exactamente 1,440 minutos/mes (utilizando solo el 72% de la cuota gratuita de 2,000 min/mes de GitHub) y mantiene el Space despierto 24/7 sin gastar nada.
-*   **Validación:** Verificación matemática de cuotas y despliegue en remotos.
+    *   **[GitHub Actions Keep-Alive Workflow]:** CreaciÃ³n y optimizaciÃ³n de `.github/workflows/keep_alive.yml` a **cada 30 minutos** (`*/30 * * * *`). Esto consume exactamente 1,440 minutos/mes (utilizando solo el 72% de la cuota gratuita de 2,000 min/mes de GitHub) y mantiene el Space despierto 24/7 sin gastar nada.
+*   **ValidaciÃ³n:** VerificaciÃ³n matemÃ¡tica de cuotas y despliegue en remotos.
 
 ### [Fecha: 03/08/2026] - [Autor: Antigravity]
 
 ### [Fecha: 03/08/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/negotiationStore.js`, `src/handlers/businessNegotiationHandler.js`, `src/supabase.js`, `src/handlers/player.js`, `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación de la IA Negociadora de Negocios y Ampliación Dinámica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`) y auditoría operativa de ineficiencias y corrección de bugs.
-*   **Cambios Clave & Correcciones de Auditoría:**
-    *   **[Procedimiento RPC en Supabase]:** Creación e integración de `upgrade_player_business` para cobro de oro y aumento atómico de nivel, producción (`gold_per_hour`) o capacidad (`max_storage`).
-    *   **[Gran Canciller del Fisco Real (IA Negociadora)]:** Módulo en `businessNegotiationHandler.js` impulsado por NVIDIA NIM Llama 70B / Gemini. Implementa el Canciller Real, un fiscal impositivo feroz enfocado en maximizar la rentabilidad de las arcas del Reino.
-    *   **[Audit Fix - Parser de Números Flexible]:** Soporte mejorado en `extractGoldAmount` para sufijos como `150k`, `1.5M`, y formatos agrupados como `150.000` o `150,000`.
-    *   **[Audit Fix - Historial Multi-Turno]:** Preservación de `conversationHistory` en `negotiationStore.js` para que el Gran Canciller recuerde todas las ofertas y argumentos del jugador en la misma sesión.
-    *   **[Audit Fix - Parser de Argumentos de Negocio]:** Corrección del parsing de `businessSearch` cuando no se especifica el sufijo de tipo de mejora.
-*   **Validación:** Pruebas atómicas en Supabase, verificación sintáctica ESM y prueba simulada de negociación completa en vivo con respuesta activa del Canciller Real.
+*   **Resumen de Tareas:** ImplementaciÃ³n de la IA Negociadora de Negocios y AmpliaciÃ³n DinÃ¡mica de Alta Rentabilidad (`!negociar`, `!contraofertar`, `!aceptartrato`, `!cancelartrato`) y auditorÃ­a operativa de ineficiencias y correcciÃ³n de bugs.
+*   **Cambios Clave & Correcciones de AuditorÃ­a:**
+    *   **[Procedimiento RPC en Supabase]:** CreaciÃ³n e integraciÃ³n de `upgrade_player_business` para cobro de oro y aumento atÃ³mico de nivel, producciÃ³n (`gold_per_hour`) o capacidad (`max_storage`).
+    *   **[Gran Canciller del Fisco Real (IA Negociadora)]:** MÃ³dulo en `businessNegotiationHandler.js` impulsado por NVIDIA NIM Llama 70B / Gemini. Implementa el Canciller Real, un fiscal impositivo feroz enfocado en maximizar la rentabilidad de las arcas del Reino.
+    *   **[Audit Fix - Parser de NÃºmeros Flexible]:** Soporte mejorado en `extractGoldAmount` para sufijos como `150k`, `1.5M`, y formatos agrupados como `150.000` o `150,000`.
+    *   **[Audit Fix - Historial Multi-Turno]:** PreservaciÃ³n de `conversationHistory` en `negotiationStore.js` para que el Gran Canciller recuerde todas las ofertas y argumentos del jugador en la misma sesiÃ³n.
+    *   **[Audit Fix - Parser de Argumentos de Negocio]:** CorrecciÃ³n del parsing de `businessSearch` cuando no se especifica el sufijo de tipo de mejora.
+*   **ValidaciÃ³n:** Pruebas atÃ³micas en Supabase, verificaciÃ³n sintÃ¡ctica ESM y prueba simulada de negociaciÃ³n completa en vivo con respuesta activa del Canciller Real.
 
 ### [Fecha: 31/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/player.js`, `src/handlers/admin.js`, `src/handlers/businessHandler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Implementación del esquema de cobro de fondos y consulta de negocios pasivos mediante el bot de WhatsApp (`!negocios`, `!cobrar`, `!recolectar`) y auditoría total de enrutamiento de comandos en menús de ayuda y administración.
+*   **Resumen de Tareas:** ImplementaciÃ³n del esquema de cobro de fondos y consulta de negocios pasivos mediante el bot de WhatsApp (`!negocios`, `!cobrar`, `!recolectar`) y auditorÃ­a total de enrutamiento de comandos en menÃºs de ayuda y administraciÃ³n.
 *   **Cambios Clave:**
-    *   **[Helpers de Supabase para Negocios]:** Adición de `getPlayerBusinesses(playerId)` y `collectPlayerBusinessesGold(playerId)` en `supabase.js`, consumiendo la tabla `businesses` y el RPC de recolección `collect_business_gold`.
-    *   **[Handler de Negocios (businessHandler.js)]:** Módulo con `handleNegocios` (muestra lista de propiedades activas, tasa/h, oro acumulado y tope) y `handleCobrarNegocios` (ejecuta la recolección segura en Supabase y acredita el oro a la bolsa del jugador).
-    *   **[Comandos !negocios y !cobrar en WhatsApp]:** Enrutamiento de alias (`!negocios`, `!misnegocios`, `!cobrar`, `!recolectar`) e integración en la sección `01. PERSONAJE & ECONOMÍA` de `!ayuda`.
-    *   **[Auditoría Total y Menú !admin]:** Verificación exhaustiva de 58 comandos únicos en el bot. Se integraron los comandos `!verificarnumero`, `!desvincular` y `!data` en las listas del menú `!admin`, logrando 100% de cobertura en menús.
-*   **Validación:** Verificación sintáctica ESM limpia, prueba de recolección segura contra Supabase RPC y auditoría estática de todos los comandos en código.
+    *   **[Helpers de Supabase para Negocios]:** AdiciÃ³n de `getPlayerBusinesses(playerId)` y `collectPlayerBusinessesGold(playerId)` en `supabase.js`, consumiendo la tabla `businesses` y el RPC de recolecciÃ³n `collect_business_gold`.
+    *   **[Handler de Negocios (businessHandler.js)]:** MÃ³dulo con `handleNegocios` (muestra lista de propiedades activas, tasa/h, oro acumulado y tope) y `handleCobrarNegocios` (ejecuta la recolecciÃ³n segura en Supabase y acredita el oro a la bolsa del jugador).
+    *   **[Comandos !negocios y !cobrar en WhatsApp]:** Enrutamiento de alias (`!negocios`, `!misnegocios`, `!cobrar`, `!recolectar`) e integraciÃ³n en la secciÃ³n `01. PERSONAJE & ECONOMÃA` de `!ayuda`.
+    *   **[AuditorÃ­a Total y MenÃº !admin]:** VerificaciÃ³n exhaustiva de 58 comandos Ãºnicos en el bot. Se integraron los comandos `!verificarnumero`, `!desvincular` y `!data` en las listas del menÃº `!admin`, logrando 100% de cobertura en menÃºs.
+*   **ValidaciÃ³n:** VerificaciÃ³n sintÃ¡ctica ESM limpia, prueba de recolecciÃ³n segura contra Supabase RPC y auditorÃ­a estÃ¡tica de todos los comandos en cÃ³digo.
 
 ### [Fecha: 30/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/games.js`, `src/handlers/player.js`, `src/handlers/tradeHandler.js`, `.env`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Actualización del Oráculo a la versión Prompt v2 con proveedor NVIDIA NIM, desarrollo del sistema de comercio e inventario en WhatsApp (`!items`, `!vender`, `!comerciar`, `!aceptarcomercio`, `!cancelarcomercio`) e inclusión de los nuevos comandos en el menú `!ayuda`.
+*   **Resumen de Tareas:** ActualizaciÃ³n del OrÃ¡culo a la versiÃ³n Prompt v2 con proveedor NVIDIA NIM, desarrollo del sistema de comercio e inventario en WhatsApp (`!items`, `!vender`, `!comerciar`, `!aceptarcomercio`, `!cancelarcomercio`) e inclusiÃ³n de los nuevos comandos en el menÃº `!ayuda`.
 *   **Cambios Clave:**
-    *   **[Prompt Oráculo v2]:** Se reemplazó el system prompt en `games.js` por la versión v2 (místico veterano cínico, anti-prompt injection, reconocimiento exclusivo de Nothing/E.XE, visualización de inventario real).
-    *   **[Proveedor NVIDIA NIM]:** Integración y validación de 6 claves API NVIDIA NIM (`meta/llama-3.1-70b-instruct`) con fallback automático a Groq y Gemini en `.env`.
-    *   **[Comando !items / !inventario / !mochila]:** Muestra la mochila del aventurero desde `player_inventory` en Supabase con cantidades, estado de financiación/bloqueo `is_locked` y valor de reventa.
-    *   **[Comando !vender / !venderitem]:** Permite vender ítems de la mochila a la taberna (50% valor mercado), abonando oro en la bolsa de Supabase (`updateGold`) si no está bloqueado.
-    *   **[Comando !comerciar / !trocar / !intercambiar]:** Sistema de comercio atómico entre aventureros (`!comerciar @jugador <oferta> por <pedido>`). Soporta trueques de oro por ítem, ítem por oro e ítem por ítem. Respuestas con `!aceptarcomercio` y `!cancelarcomercio`.
-    *   **[Actualización Compendio !ayuda]:** Se agregaron los accesos directos y descripciones de `!items`, `!vender` y `!comerciar` en las secciones `01. PERSONAJE & ECONOMÍA` y `03. MERCADO & SUBASTAS` del Grimorio.
-*   **Validación:** Verificación sintáctica ESM limpia, prueba de respuesta en tiempo real del Oráculo v2 con NVIDIA NIM (status 200) y simulación automatizada de variantes de comandos con outputs de tarjetas Heraldo.
+    *   **[Prompt OrÃ¡culo v2]:** Se reemplazÃ³ el system prompt en `games.js` por la versiÃ³n v2 (mÃ­stico veterano cÃ­nico, anti-prompt injection, reconocimiento exclusivo de Nothing/E.XE, visualizaciÃ³n de inventario real).
+    *   **[Proveedor NVIDIA NIM]:** IntegraciÃ³n y validaciÃ³n de 6 claves API NVIDIA NIM (`meta/llama-3.1-70b-instruct`) con fallback automÃ¡tico a Groq y Gemini en `.env`.
+    *   **[Comando !items / !inventario / !mochila]:** Muestra la mochila del aventurero desde `player_inventory` en Supabase con cantidades, estado de financiaciÃ³n/bloqueo `is_locked` y valor de reventa.
+    *   **[Comando !vender / !venderitem]:** Permite vender Ã­tems de la mochila a la taberna (50% valor mercado), abonando oro en la bolsa de Supabase (`updateGold`) si no estÃ¡ bloqueado.
+    *   **[Comando !comerciar / !trocar / !intercambiar]:** Sistema de comercio atÃ³mico entre aventureros (`!comerciar @jugador <oferta> por <pedido>`). Soporta trueques de oro por Ã­tem, Ã­tem por oro e Ã­tem por Ã­tem. Respuestas con `!aceptarcomercio` y `!cancelarcomercio`.
+    *   **[ActualizaciÃ³n Compendio !ayuda]:** Se agregaron los accesos directos y descripciones de `!items`, `!vender` y `!comerciar` en las secciones `01. PERSONAJE & ECONOMÃA` y `03. MERCADO & SUBASTAS` del Grimorio.
+*   **ValidaciÃ³n:** VerificaciÃ³n sintÃ¡ctica ESM limpia, prueba de respuesta en tiempo real del OrÃ¡culo v2 con NVIDIA NIM (status 200) y simulaciÃ³n automatizada de variantes de comandos con outputs de tarjetas Heraldo.
 
 ### [Fecha: 27/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/whatsappDelivery.js`, `src/targetResolver.js`, `src/whatsappMedia.js`, `src/handlers/admin.js`, `src/handlers/player.js`, `src/handlers/marketForge.js`, `src/handlers/blackjack.js`, `src/index.js`, `test_reply_routing.js`, `test_real_integration.js`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
@@ -204,12 +210,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 26/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/formatting.js`, `src/handlers/player.js`, `src/index.js`, `src/scheduler.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
-*   **Resumen de Tareas:** Corrección del fallo de envío silencioso en `sendBotText` (firma `msg.reply`) y optimización monomensaje del compendio `!ayuda` (Ciber-Grimorio).
+*   **Resumen de Tareas:** CorrecciÃ³n del fallo de envÃ­o silencioso en `sendBotText` (firma `msg.reply`) y optimizaciÃ³n monomensaje del compendio `!ayuda` (Ciber-Grimorio).
 *   **Cambios Clave:**
-    *   **[Corrección de Envío msg.reply]:** Se eliminó el parámetro `undefined` erróneo en `await msg.reply(chunk, undefined, sendOptions)` dentro de `sendBotText` en `src/index.js`. Esto corregía el fallo silencioso en `whatsapp-web.js` donde las respuestas a comandos aparecían registradas en logs pero no se entregaban en WhatsApp.
-    *   **[Optimización Monomensaje WhatsApp]:** Disposición agrupada por pares en `!ayuda` (33 líneas, 1.528 car.) garantizando la entrega en un solo mensaje sin partición.
-    *   **[Visibilidad QR & Transmisión Cron]:** QR en alta resolución en web HTTP y transmisión motivacional semanal al Grupo Principal.
-*   **Validación:** Sintaxis verificada con `node --check`; suite limpia (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
+    *   **[CorrecciÃ³n de EnvÃ­o msg.reply]:** Se eliminÃ³ el parÃ¡metro `undefined` errÃ³neo en `await msg.reply(chunk, undefined, sendOptions)` dentro de `sendBotText` en `src/index.js`. Esto corregÃ­a el fallo silencioso en `whatsapp-web.js` donde las respuestas a comandos aparecÃ­an registradas en logs pero no se entregaban en WhatsApp.
+    *   **[OptimizaciÃ³n Monomensaje WhatsApp]:** DisposiciÃ³n agrupada por pares en `!ayuda` (33 lÃ­neas, 1.528 car.) garantizando la entrega en un solo mensaje sin particiÃ³n.
+    *   **[Visibilidad QR & TransmisiÃ³n Cron]:** QR en alta resoluciÃ³n en web HTTP y transmisiÃ³n motivacional semanal al Grupo Principal.
+*   **ValidaciÃ³n:** Sintaxis verificada con `node --check`; suite limpia (`CORE_MECHANICS_OK`, `GM_FORMATTING_OK`, `message formatting tests passed`).
 
 
 
@@ -230,17 +236,17 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 23/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/blackjack.js`, `src/handlers/welcome.js`, `src/handlers/playerLifecycle.js`, `src/handlers/admin.js`, `test_blackjack.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Auditoría integral de minijuegos y handlers del bot para corregir accesos inseguros a `id._serialized` y prevenir errores de doble respuesta/emergencia (`⚠️ El reino está en llamas...`).
+*   **Resumen de Tareas:** AuditorÃ­a integral de minijuegos y handlers del bot para corregir accesos inseguros a `id._serialized` y prevenir errores de doble respuesta/emergencia (`âš ï¸ El reino estÃ¡ en llamas...`).
 *   **Cambios Clave:**
-    *   **[Auditoría General de Minijuegos]:**
-        * **`Dados`, `Cofre`, `Trampa`, `Oráculo` (`src/handlers/games.js`):** Pura arquitectura funcional síncrona/asíncrona con retorno de strings/tarjetas `heraldCard`. **100% Inmunes** (no manejan `activeSessions` ni llaman `msg.reply()` internamente).
+    *   **[AuditorÃ­a General de Minijuegos]:**
+        * **`Dados`, `Cofre`, `Trampa`, `OrÃ¡culo` (`src/handlers/games.js`):** Pura arquitectura funcional sÃ­ncrona/asÃ­ncrona con retorno de strings/tarjetas `heraldCard`. **100% Inmunes** (no manejan `activeSessions` ni llaman `msg.reply()` internamente).
         * **`Subastas` & `Pujas` (`src/handlers/auctions.js`):** Retorno de cadenas formateadas a `index.js`. **100% Inmunes**.
         * **`Tesoro Errante` (`src/handlers/treasure.js`):** Utiliza `sendMessageWithResult` que ya integra `getWhatsAppMessageId` de forma resiliente. **100% Inmune**.
-        * **`Blackjack` (`src/handlers/blackjack.js`):** Se corrigieron los 5 puntos de lectura insegura de `replyMsg.id._serialized` reemplazándolos por `getWhatsAppMessageId(replyMsg)`.
+        * **`Blackjack` (`src/handlers/blackjack.js`):** Se corrigieron los 5 puntos de lectura insegura de `replyMsg.id._serialized` reemplazÃ¡ndolos por `getWhatsAppMessageId(replyMsg)`.
     *   **[Endurecimiento en Handlers Adicionales]:**
-        * **`welcome.js` & `playerLifecycle.js`:** Reemplazados los accesos frágiles `contact.id._serialized` por `serializeWhatsAppId(contact?.id || contact)` y el helper seguro `getContactId(contact)`.
-        * **`admin.js`:** Actualizada la función `getMessageSerializedId(msg)` para delegar en `getWhatsAppMessageId(msg)`, protegiendo comandos administrativos contra excepciones al citar/procesar mensajes.
-    *   **[Verificación de Pruebas]:** Ejecutada la suite completa (`npm test`), confirmando **21/21 suites pasadas exitosamente (100% OK)**.
+        * **`welcome.js` & `playerLifecycle.js`:** Reemplazados los accesos frÃ¡giles `contact.id._serialized` por `serializeWhatsAppId(contact?.id || contact)` y el helper seguro `getContactId(contact)`.
+        * **`admin.js`:** Actualizada la funciÃ³n `getMessageSerializedId(msg)` para delegar en `getWhatsAppMessageId(msg)`, protegiendo comandos administrativos contra excepciones al citar/procesar mensajes.
+    *   **[VerificaciÃ³n de Pruebas]:** Ejecutada la suite completa (`npm test`), confirmando **21/21 suites pasadas exitosamente (100% OK)**.
 
 ### [Fecha: 22/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/scheduler.js`, `src/whatsappDelivery.js`, `src/whatsappIdentity.js`, `src/supabase.js`, `test_scheduler_delivery_guard.js`, `test_whatsapp_compat.js`, `test_phone_lookup_cache.js`, `test_real_integration.js`, `docs/architecture/SECOND_FULL_BOT_AUDIT_2026-07-22.md`, `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl`.
@@ -337,25 +343,25 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 22/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `src/handlers/admin.js`, `src/adminStore.js`, `src/handlers/treasure.js`, `test_data_and_treasure.js`, `test_community_patch_validation.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Resolución completa del comando `!data` para carga de documentos `.txt` en grupos con formato LID de WhatsApp Web. Investigación y aplicación de parches comunitarios para el bug global de `downloadMedia()`.
+*   **Resumen de Tareas:** ResoluciÃ³n completa del comando `!data` para carga de documentos `.txt` en grupos con formato LID de WhatsApp Web. InvestigaciÃ³n y aplicaciÃ³n de parches comunitarios para el bug global de `downloadMedia()`.
 *   **Cambios Clave:**
-    *   **[Fix de Captions en Documentos — `src/index.js` y `src/handlers/admin.js`]:** WhatsApp Web asigna el texto de comandos en archivos adjuntos a `msg.caption` en lugar de `msg.body`. Se actualizó la extracción global de texto para priorizar `msg.caption` cuando existe, permitiendo que `!data <titulo>` como pie de foto se parsee correctamente.
-    *   **[Pipeline de Descarga de 3 Métodos — `src/handlers/admin.js`]:** Rediseñado el motor de descarga de documentos con 3 estrategias independientes:
-        * **Método A:** Búsqueda por ID en `WAWebCollections.Msg` + polling de `mediaStage` hasta 12s + lectura de `_blob` via `FileReader`.
-        * **Método B (NUEVO):** Descarga directa usando `directPath` + `mediaKey` del `quotedMsg._data` via `WAWebDownloadManager`. Bypasea completamente la búsqueda por ID, resolviendo el problema de mensajes citados sin ID válido en grupos con formato `@lid`.
-        * **Método C:** Fallback al `targetMsg.downloadMedia()` nativo de `whatsapp-web.js`.
-    *   **[Helper `getSerializedId()` — `src/handlers/admin.js`]:** Creado para extraer IDs serializados del nuevo formato LID de WhatsApp Web (`id['$1']`), evitando que Puppeteer reciba un objeto en lugar de un string.
-    *   **[Resolución Sintética de Citas — `src/handlers/admin.js`]:** Cuando `client.getMessageById()` y `getQuotedMessage()` fallan con la excepción minificada `r`, se extraen los datos directamente de `msg._data.quotedMsg` para construir un `targetMsg` sintético con los metadatos de descarga.
-    *   **[Guard de Respuestas del Bot]:** Se agregó filtro para ignorar mensajes citados que sean respuestas de error del propio bot (`❌`, `🛡️`, etc.).
-    *   **[Investigación Comunitaria]:** Investigado el estado actual del bug global de `downloadMedia()` en `whatsapp-web.js` (excepción `r: r`, formato `@lid`, mutación de `WAWebDownloadManager`). Se confirmó que no existe solución oficial; se integró el parche comunitario de inspección dinámica de métodos (`downloadAndMaybeDecrypt || downloadAndDecrypt || downloadMedia`).
+    *   **[Fix de Captions en Documentos â€” `src/index.js` y `src/handlers/admin.js`]:** WhatsApp Web asigna el texto de comandos en archivos adjuntos a `msg.caption` en lugar de `msg.body`. Se actualizÃ³ la extracciÃ³n global de texto para priorizar `msg.caption` cuando existe, permitiendo que `!data <titulo>` como pie de foto se parsee correctamente.
+    *   **[Pipeline de Descarga de 3 MÃ©todos â€” `src/handlers/admin.js`]:** RediseÃ±ado el motor de descarga de documentos con 3 estrategias independientes:
+        * **MÃ©todo A:** BÃºsqueda por ID en `WAWebCollections.Msg` + polling de `mediaStage` hasta 12s + lectura de `_blob` via `FileReader`.
+        * **MÃ©todo B (NUEVO):** Descarga directa usando `directPath` + `mediaKey` del `quotedMsg._data` via `WAWebDownloadManager`. Bypasea completamente la bÃºsqueda por ID, resolviendo el problema de mensajes citados sin ID vÃ¡lido en grupos con formato `@lid`.
+        * **MÃ©todo C:** Fallback al `targetMsg.downloadMedia()` nativo de `whatsapp-web.js`.
+    *   **[Helper `getSerializedId()` â€” `src/handlers/admin.js`]:** Creado para extraer IDs serializados del nuevo formato LID de WhatsApp Web (`id['$1']`), evitando que Puppeteer reciba un objeto en lugar de un string.
+    *   **[ResoluciÃ³n SintÃ©tica de Citas â€” `src/handlers/admin.js`]:** Cuando `client.getMessageById()` y `getQuotedMessage()` fallan con la excepciÃ³n minificada `r`, se extraen los datos directamente de `msg._data.quotedMsg` para construir un `targetMsg` sintÃ©tico con los metadatos de descarga.
+    *   **[Guard de Respuestas del Bot]:** Se agregÃ³ filtro para ignorar mensajes citados que sean respuestas de error del propio bot (`âŒ`, `ðŸ›¡ï¸`, etc.).
+    *   **[InvestigaciÃ³n Comunitaria]:** Investigado el estado actual del bug global de `downloadMedia()` en `whatsapp-web.js` (excepciÃ³n `r: r`, formato `@lid`, mutaciÃ³n de `WAWebDownloadManager`). Se confirmÃ³ que no existe soluciÃ³n oficial; se integrÃ³ el parche comunitario de inspecciÃ³n dinÃ¡mica de mÃ©todos (`downloadAndMaybeDecrypt || downloadAndDecrypt || downloadMedia`).
 
 ### [Fecha: 21/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/handlers/treasure.js`, `test_data_and_treasure.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Corrección de fallos en el reclamo de tesoros del Heraldo y normalización de teléfonos multi-device.
+*   **Resumen de Tareas:** CorrecciÃ³n de fallos en el reclamo de tesoros del Heraldo y normalizaciÃ³n de telÃ©fonos multi-device.
 *   **Cambios Clave:**
-    *   **[Normalización de Teléfonos Multi-Device]:** Corregido `normalizePhone` en `src/adminStore.js` para extraer la base JID antes de remover caracteres no numéricos (`.split(':')[0]`). Anteriormente, sufijos como `:12@c.us` generaban teléfonos corruptos (ej. `59598112345612`), provocando el rechazo o fallo en la resolución del jugador al reclamar tesoros o ejecutar comandos.
-    *   **[Reclamo de Tesoros Dinámico]:** Actualizados los filtros y lógica de cierre en `src/handlers/treasure.js` para validar `treasure.chatId` en lugar de comparar contra un ID de grupo fijo, asegurando que las respuestas de reclamo y resúmenes de cierre se dirijan siempre al chat correspondiente.
-    *   **[Suite de Pruebas]:** Creado `test_data_and_treasure.js` para validar unitariamente la normalización multi-device, la respuesta a tesoros y la asimilación de archivos `.txt` vía `!data`.
+    *   **[NormalizaciÃ³n de TelÃ©fonos Multi-Device]:** Corregido `normalizePhone` en `src/adminStore.js` para extraer la base JID antes de remover caracteres no numÃ©ricos (`.split(':')[0]`). Anteriormente, sufijos como `:12@c.us` generaban telÃ©fonos corruptos (ej. `59598112345612`), provocando el rechazo o fallo en la resoluciÃ³n del jugador al reclamar tesoros o ejecutar comandos.
+    *   **[Reclamo de Tesoros DinÃ¡mico]:** Actualizados los filtros y lÃ³gica de cierre en `src/handlers/treasure.js` para validar `treasure.chatId` en lugar de comparar contra un ID de grupo fijo, asegurando que las respuestas de reclamo y resÃºmenes de cierre se dirijan siempre al chat correspondiente.
+    *   **[Suite de Pruebas]:** Creado `test_data_and_treasure.js` para validar unitariamente la normalizaciÃ³n multi-device, la respuesta a tesoros y la asimilaciÃ³n de archivos `.txt` vÃ­a `!data`.
 
 ### [Fecha: 20/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/remoteAuth.js`, `src/index.js`, `test_remote_auth.js`, `test_connection_watchdog.js`, `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
@@ -370,14 +376,14 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 19/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/handlers/player.js`, `src/handlers/treasure.js`, `src/supabase.js`, `test_treasure_feedback.js`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** Corrección de la condición de carrera del drop de tesoros, bloqueo de falsas acreditaciones en el chatbot de IA y aumento de recompensas.
+*   **Resumen de Tareas:** CorrecciÃ³n de la condiciÃ³n de carrera del drop de tesoros, bloqueo de falsas acreditaciones en el chatbot de IA y aumento de recompensas.
 *   **Cambios Clave:**
-    *   **[Condición de Carrera Resuelta]:** En `src/handlers/treasure.js`, se cambió el flujo para que `registerActiveTreasure` se invoque de manera síncrona inmediatamente después de obtener el `messageId` de WhatsApp, eliminando la ventana de retraso de la llamada asíncrona de base de datos (`createTreasureEvent`) en la cual las respuestas rápidas de los jugadores eran ignoradas.
-    *   **[Soporte para Exclamación `!reclamar`]:** Se actualizó `normalizeTreasureReply` para limpiar prefijos de exclamación `!` y espacios de forma transparente, permitiendo que `!reclamar` y `! Reclamar` procesen correctamente la transacción real en la base de datos si citan al mensaje del tesoro.
-    *   **[Bloqueo de Alucinaciones en IA]:** Se agregó un guard en `handlePlayerMessage` en `src/handlers/player.js` para que el comando `!reclamar` (cuando no es una réplica al mensaje del tesoro) retorne instrucciones amigables en lugar de caer en el fallback del Heraldo IA y causar alucinaciones de oro fantasmas.
-    *   **[Incremento de Recompensas]:** Se modificó la función `claimTreasureReward` en `src/supabase.js` para aumentar el rango aleatorio de oro otorgado al abrir cofres errantes, pasando de 1,000–20,000 a **10,000–50,000 oro**.
-    *   **[Auto-recuperación de Anuncios de Tesoros]:** Modificado `closeTreasure` en `src/handlers/treasure.js` para reprogramar automáticamente el intento de cierre cada 1 minuto en memoria si WhatsApp no está disponible en el instante del timeout, sin alterar el estado en base de datos. Esto evita que los cierres (por expiración o agotamiento) queden "mudos" permanentemente cuando hay microcortes de conexión.
-    *   **[Pruebas e Integración]:** Se añadieron pruebas unitarias en `test_treasure_feedback.js` verificando la normalización con y sin prefijos, y la suite pasó limpia.
+    *   **[CondiciÃ³n de Carrera Resuelta]:** En `src/handlers/treasure.js`, se cambiÃ³ el flujo para que `registerActiveTreasure` se invoque de manera sÃ­ncrona inmediatamente despuÃ©s de obtener el `messageId` de WhatsApp, eliminando la ventana de retraso de la llamada asÃ­ncrona de base de datos (`createTreasureEvent`) en la cual las respuestas rÃ¡pidas de los jugadores eran ignoradas.
+    *   **[Soporte para ExclamaciÃ³n `!reclamar`]:** Se actualizÃ³ `normalizeTreasureReply` para limpiar prefijos de exclamaciÃ³n `!` y espacios de forma transparente, permitiendo que `!reclamar` y `! Reclamar` procesen correctamente la transacciÃ³n real en la base de datos si citan al mensaje del tesoro.
+    *   **[Bloqueo de Alucinaciones en IA]:** Se agregÃ³ un guard en `handlePlayerMessage` en `src/handlers/player.js` para que el comando `!reclamar` (cuando no es una rÃ©plica al mensaje del tesoro) retorne instrucciones amigables en lugar de caer en el fallback del Heraldo IA y causar alucinaciones de oro fantasmas.
+    *   **[Incremento de Recompensas]:** Se modificÃ³ la funciÃ³n `claimTreasureReward` en `src/supabase.js` para aumentar el rango aleatorio de oro otorgado al abrir cofres errantes, pasando de 1,000â€“20,000 a **10,000â€“50,000 oro**.
+    *   **[Auto-recuperaciÃ³n de Anuncios de Tesoros]:** Modificado `closeTreasure` en `src/handlers/treasure.js` para reprogramar automÃ¡ticamente el intento de cierre cada 1 minuto en memoria si WhatsApp no estÃ¡ disponible en el instante del timeout, sin alterar el estado en base de datos. Esto evita que los cierres (por expiraciÃ³n o agotamiento) queden "mudos" permanentemente cuando hay microcortes de conexiÃ³n.
+    *   **[Pruebas e IntegraciÃ³n]:** Se aÃ±adieron pruebas unitarias en `test_treasure_feedback.js` verificando la normalizaciÃ³n con y sin prefijos, y la suite pasÃ³ limpia.
 
 ### [Fecha: 17/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `docs/architecture/WHATSAPP_RECONNECTION_RESEARCH.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
@@ -541,7 +547,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Bot - Telemetria de Enlace]:** el runtime ahora registra `authenticated`, `loading_screen` y `pairing_code`, de modo que `/status.json` ya distingue entre QR pendiente, telefono aceptado y sincronizacion interna.
     *   **[Panel - Auto Refresh]:** la pagina publica del Space ya no depende solo de `meta refresh`; ahora sondea `/status.json` cada pocos segundos y fuerza recarga cuando cambia el QR o el evento activo.
     *   **[Bot - Respaldo de Vinculacion]:** se dejo soporte opcional para emparejamiento por numero telefonico (`WHATSAPP_PAIR_PHONE_NUMBER`) con codigo visible en el panel cuando se habilite.
-    *   **[Persistencia - Señal Honesta]:** `src/runtimePaths.js` deja de reportar persistencia probable en Hugging Face cuando `/data` ni siquiera existe, evitando falsos positivos sobre la sesion.
+    *   **[Persistencia - SeÃ±al Honesta]:** `src/runtimePaths.js` deja de reportar persistencia probable en Hugging Face cuando `/data` ni siquiera existe, evitando falsos positivos sobre la sesion.
 *   **Notas/Advertencias:** Este ajuste no elimina por si solo un bloqueo externo de red entre el contenedor y WhatsApp, pero si aclara si el problema ocurre antes del escaneo, al aceptar el telefono o durante la sincronizacion posterior.
 
 ### [Fecha: 10/07/2026] - [Autor: Codex]
@@ -586,18 +592,18 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Solucionado bug de silencio en comandos permitidos de dados/cofre/trampa/etc. en index.js.
 *   **Cambios Clave:**
-    *   **[Bot - Gating de Rol]:** Se extrajo la validación de `isRoleplayLocked` de la cadena principal de `if-else` de despacho de comandos. Esto previene que los comandos permitidos de minijuegos y economía fallen de forma silenciosa (sin respuesta alguna) para los jugadores que no están bloqueados por rol.
+    *   **[Bot - Gating de Rol]:** Se extrajo la validaciÃ³n de `isRoleplayLocked` de la cadena principal de `if-else` de despacho de comandos. Esto previene que los comandos permitidos de minijuegos y economÃ­a fallen de forma silenciosa (sin respuesta alguna) para los jugadores que no estÃ¡n bloqueados por rol.
 *   **Notas/Advertencias:** Validado con `node --check` y pruebas internas del blackjack.
 
 ### [Fecha: 03/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/supabase.js`, `src/scheduler.js`, `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Soporte para LIDs de 14 dígitos en JIDs, cambio de la ventana por defecto a 7 días y adición de lógica de auto-desbloqueo en el scheduler.
+*   **Resumen de Tareas:** Soporte para LIDs de 14 dÃ­gitos en JIDs, cambio de la ventana por defecto a 7 dÃ­as y adiciÃ³n de lÃ³gica de auto-desbloqueo en el scheduler.
 *   **Cambios Clave:**
-    *   **[LID - Soporte]:** Se cambió el umbral de longitud en `formatJid()` de 15 a 14. Esto permite que los identificadores de Line Identity (LIDs) de 14 dígitos se formateen correctamente con `@lid` en vez de `@c.us`, evitando el error `No LID for user` en la cola del scheduler.
-    *   **[Días de Roleo - Defaults]:** Se corrigió la ventana por defecto a `7` días (en lugar de `9` días en `src/supabase.js`).
-    *   **[Lógica - Auto-desbloqueo]:** Se añadió una rama en `processRoleplayAccessEnforcement()` para que el scheduler limpie automáticamente el bloqueo (`locked_at = null`) de los jugadores que se encuentren dentro del umbral de días permitido tras una reevaluación de inactividad de rol.
-    *   **[Notificaciones]:** El scheduler ahora encola avisos automáticos de acceso restaurado (`newlyUnlocked`) cuando un jugador es desbloqueado por la reevaluación del scheduler.
-    *   **[Configuración]:** `ROLEPLAY_ACTIVITY_GROUP_ID` en `src/index.js` ahora es configurable a través de variables de entorno, con fallback al JID canónico.
+    *   **[LID - Soporte]:** Se cambiÃ³ el umbral de longitud en `formatJid()` de 15 a 14. Esto permite que los identificadores de Line Identity (LIDs) de 14 dÃ­gitos se formateen correctamente con `@lid` en vez de `@c.us`, evitando el error `No LID for user` en la cola del scheduler.
+    *   **[DÃ­as de Roleo - Defaults]:** Se corrigiÃ³ la ventana por defecto a `7` dÃ­as (en lugar de `9` dÃ­as en `src/supabase.js`).
+    *   **[LÃ³gica - Auto-desbloqueo]:** Se aÃ±adiÃ³ una rama en `processRoleplayAccessEnforcement()` para que el scheduler limpie automÃ¡ticamente el bloqueo (`locked_at = null`) de los jugadores que se encuentren dentro del umbral de dÃ­as permitido tras una reevaluaciÃ³n de inactividad de rol.
+    *   **[Notificaciones]:** El scheduler ahora encola avisos automÃ¡ticos de acceso restaurado (`newlyUnlocked`) cuando un jugador es desbloqueado por la reevaluaciÃ³n del scheduler.
+    *   **[ConfiguraciÃ³n]:** `ROLEPLAY_ACTIVITY_GROUP_ID` en `src/index.js` ahora es configurable a travÃ©s de variables de entorno, con fallback al JID canÃ³nico.
 *   **Notas/Advertencias:** Validado con `node --check` para todos los archivos modificados.
 ### [Fecha: 03/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
@@ -637,9 +643,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 30/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `.agents/agents/KingdoomFB/agent.json`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** AdiciÃ³n de configuraciÃ³n persistente para el agente KingdoomFB enfocado en marketing.
+*   **Resumen de Tareas:** AdiciÃƒÂ³n de configuraciÃƒÂ³n persistente para el agente KingdoomFB enfocado en marketing.
 *   **Cambios Clave:**
-    *   **[KingdoomFB]:** Se agregÃ³ el subagente `.agents/agents/KingdoomFB/agent.json` con su respectiva definiciÃ³n de sistema orientada a la redacciÃ³n y diseÃ±o de copies promocionales sin generaciÃ³n de imÃ¡genes.
+    *   **[KingdoomFB]:** Se agregÃƒÂ³ el subagente `.agents/agents/KingdoomFB/agent.json` con su respectiva definiciÃƒÂ³n de sistema orientada a la redacciÃƒÂ³n y diseÃƒÂ±o de copies promocionales sin generaciÃƒÂ³n de imÃƒÂ¡genes.
 *   **Notas/Advertencias:** Ninguna.
 ### [Fecha: 29/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `README.md`, `docs/architecture/SUPABASE_BOT_SPLIT_DIAGNOSTIC.md`, `supabase/`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
@@ -700,13 +706,13 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 24/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/gmTracker.js`, `src/handlers/admin.js`, `src/index.js`, `src/supabase.js`, `supabase_bot_state_migration.sql`, `AI_CHANGELOG.md`
-*   **Resumen de Tareas:** ParalelizaciÃ³n de misiones para mÃºltiples grupos/jugadores independientes y resoluciÃ³n de fallos en el tracker y normalizaciÃ³n de nÃºmeros de WhatsApp.
+*   **Resumen de Tareas:** ParalelizaciÃƒÂ³n de misiones para mÃƒÂºltiples grupos/jugadores independientes y resoluciÃƒÂ³n de fallos en el tracker y normalizaciÃƒÂ³n de nÃƒÂºmeros de WhatsApp.
 *   **Cambios Clave:**
-    *   **[ParalelizaciÃ³n de Misiones]:** Se modificÃ³ la tabla de estado `bot_active_missions` agregando `instance_id` (UUID) como clave primaria en lugar de `short_id`, permitiendo mÃºltiples instancias de la misma misiÃ³n simultÃ¡neamente.
-    *   **[NormalizaciÃ³n de WhatsApp JIDs]:** Se integrÃ³ `normalizePhone` para normalizar todos los participantes y comprobar IDs de forma uniforme, resolviendo fallos en dispositivos vinculados (linked devices).
-    *   **[CorrecciÃ³n de Menciones]:** Se ajustaron los comandos `!misionesON` y `!misionoff` para formatear los JIDs correctamente para las menciones usando `formatJid()`.
-    *   **[Comandos Administrativos]:** Se actualizÃ³ el menÃº y soporte para `!misionstart <ID> <@jugadores>`, `!misioneson`, y `!misionoff <ID> [@jugador]`.
-*   **Notas/Advertencias:** Requiere aplicar la migraciÃ³n `supabase_bot_state_migration.sql` en Supabase para cambiar la clave primaria y estructura de la tabla `bot_active_missions`.
+    *   **[ParalelizaciÃƒÂ³n de Misiones]:** Se modificÃƒÂ³ la tabla de estado `bot_active_missions` agregando `instance_id` (UUID) como clave primaria en lugar de `short_id`, permitiendo mÃƒÂºltiples instancias de la misma misiÃƒÂ³n simultÃƒÂ¡neamente.
+    *   **[NormalizaciÃƒÂ³n de WhatsApp JIDs]:** Se integrÃƒÂ³ `normalizePhone` para normalizar todos los participantes y comprobar IDs de forma uniforme, resolviendo fallos en dispositivos vinculados (linked devices).
+    *   **[CorrecciÃƒÂ³n de Menciones]:** Se ajustaron los comandos `!misionesON` y `!misionoff` para formatear los JIDs correctamente para las menciones usando `formatJid()`.
+    *   **[Comandos Administrativos]:** Se actualizÃƒÂ³ el menÃƒÂº y soporte para `!misionstart <ID> <@jugadores>`, `!misioneson`, y `!misionoff <ID> [@jugador]`.
+*   **Notas/Advertencias:** Requiere aplicar la migraciÃƒÂ³n `supabase_bot_state_migration.sql` en Supabase para cambiar la clave primaria y estructura de la tabla `bot_active_missions`.
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`
@@ -771,7 +777,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **[Bot - Mensaje de resultado]:** La carta del minijuego ahora describe correctamente la regla del modo `x4` como `ganas con suma de 7 o mas`.
     *   **[Ayuda - Heraldo]:** El menu `!ayuda` se actualizo para no seguir anunciando una condicion incorrecta.
     *   **[Bot - Oraculo resiliente]:** `askKingdoomAI(...)` ahora aplica cooldown temporal por clave/modelo cuando detecta `API key invalid`, `403`, `429` o `503`, evitando reintentos ciegos y respuestas eternamente lentas en cada consulta.
-    *   **[Bot - Mensaje util de falla]:** `handleOraculo(...)` ya no responde solo con â€œguarda silencioâ€; ahora devuelve una razon util para cuota agotada, permisos revocados o saturacion del servicio.
+    *   **[Bot - Mensaje util de falla]:** `handleOraculo(...)` ya no responde solo con Ã¢â‚¬Å“guarda silencioÃ¢â‚¬Â; ahora devuelve una razon util para cuota agotada, permisos revocados o saturacion del servicio.
 *   **Notas/Advertencias:** El ajuste de `!oraculo` mejora la degradacion cuando Gemini falla, pero no reemplaza la necesidad de renovar o sanear las claves invalidas/cuoteadas del entorno.
 
 ### [Fecha: 24/06/2026] - [Autor: Codex]
@@ -806,12 +812,12 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 19/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** VerificaciÃ³n del split parcial y optimizaciÃ³n de lecturas (Fase 0) mediante cachÃ© para el grimorio/orÃ¡culo.
+*   **Resumen de Tareas:** VerificaciÃƒÂ³n del split parcial y optimizaciÃƒÂ³n de lecturas (Fase 0) mediante cachÃƒÂ© para el grimorio/orÃƒÂ¡culo.
 *   **Cambios Clave:**
-    *   **[OptimizaciÃ³n - CachÃ©]:** Se implementÃ³ un cachÃ© local en memoria de 15 minutos (`KNOWLEDGE_CACHE_TTL_MS`) para `getKnowledgeDocuments()` en `src/supabase.js`. Esto reduce drÃ¡sticamente las lecturas repetidas a la tabla `knowledge_documents` cuando los usuarios consultan el `!oraculo` constantemente.
-    *   **[OptimizaciÃ³n - InvalidaciÃ³n]:** Se aÃ±adiÃ³ limpieza automÃ¡tica de cachÃ© (`knowledgeCache = null`) dentro de `upsertKnowledgeDocument` para asegurar que las actualizaciones del staff impacten inmediatamente.
-    *   **[VerificaciÃ³n - Split Parcial]:** Se validÃ³ exhaustivamente el cÃ³digo del bloque operativo (`cofre`, `trampa`, `dados`, `21`, `faltasgrupo`, `bot_active_missions`, `heraldo_daily`). Todos los accesos ya operan correctamente mediante `botStateSupabase` sobre la base dedicada, sin fugas al cliente principal. No se requiere migrar tablas de tesoros por restricciones de atomicidad.
-*   **Notas/Advertencias:** El cÃ³digo estÃ¡ 100% listo para el split. El prÃ³ximo paso operativo debe ser inyectar las variables de entorno `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY` en producciÃ³n y monitorear.
+    *   **[OptimizaciÃƒÂ³n - CachÃƒÂ©]:** Se implementÃƒÂ³ un cachÃƒÂ© local en memoria de 15 minutos (`KNOWLEDGE_CACHE_TTL_MS`) para `getKnowledgeDocuments()` en `src/supabase.js`. Esto reduce drÃƒÂ¡sticamente las lecturas repetidas a la tabla `knowledge_documents` cuando los usuarios consultan el `!oraculo` constantemente.
+    *   **[OptimizaciÃƒÂ³n - InvalidaciÃƒÂ³n]:** Se aÃƒÂ±adiÃƒÂ³ limpieza automÃƒÂ¡tica de cachÃƒÂ© (`knowledgeCache = null`) dentro de `upsertKnowledgeDocument` para asegurar que las actualizaciones del staff impacten inmediatamente.
+    *   **[VerificaciÃƒÂ³n - Split Parcial]:** Se validÃƒÂ³ exhaustivamente el cÃƒÂ³digo del bloque operativo (`cofre`, `trampa`, `dados`, `21`, `faltasgrupo`, `bot_active_missions`, `heraldo_daily`). Todos los accesos ya operan correctamente mediante `botStateSupabase` sobre la base dedicada, sin fugas al cliente principal. No se requiere migrar tablas de tesoros por restricciones de atomicidad.
+*   **Notas/Advertencias:** El cÃƒÂ³digo estÃƒÂ¡ 100% listo para el split. El prÃƒÂ³ximo paso operativo debe ser inyectar las variables de entorno `BOT_SUPABASE_URL` y `BOT_SUPABASE_SERVICE_KEY` en producciÃƒÂ³n y monitorear.
 
 
 ### [Fecha: 19/06/2026] - [Autor: Codex]
@@ -846,21 +852,21 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/adminStore.js`, `src/scheduler.js`, `src/handlers/admin.js`, `src/handlers/welcome.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** CorrecciÃ³n de envÃ­os de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
+*   **Resumen de Tareas:** CorrecciÃƒÂ³n de envÃƒÂ­os de mensajes privados a usuarios verificados desde Comunidades de WhatsApp (Soporte para nodos `@lid`).
 *   **Cambios Clave:**
-    *   **[Core - JID Helper]:** Se agregÃ³ una funciÃ³n heurÃ­stica `formatJid` en `adminStore.js` que evalÃºa la longitud del nÃºmero de telÃ©fono. Si tiene >= 15 dÃ­gitos, asume que es un Local ID encriptado de Comunidad y le aÃ±ade el sufijo `@lid`. De lo contrario, usa `@c.us`.
-    *   **[Core - Notificaciones]:** Se implementÃ³ `formatJid` en `sendToAll` dentro de `scheduler.js`, permitiendo que el mensaje diario/semanal llegue a los IDs enmascarados que fallaban silenciosamente.
-    *   **[Core - Admin]:** Se aplicÃ³ el formato dinÃ¡mico a los comandos `!registrar` y `!kick`.
-    *   **[Core - Welcome]:** Se adaptÃ³ `normalizeWhatsappId` en `welcome.js` para retener explÃ­citamente el sufijo `@lid` si un jugador ya entra con ese sufijo desde un grupo de comunidad.
-*   **Notas/Advertencias:** La regla de >= 15 dÃ­gitos funciona perfectamente para la regiÃ³n actual del juego (donde los nÃºmeros reales tienen un mÃ¡ximo de 12 a 13 dÃ­gitos). Si en el futuro entra un paÃ­s con una longitud de nÃºmero E.164 vÃ¡lida de 15 dÃ­gitos, la heurÃ­stica deberÃ¡ refinarse.
+    *   **[Core - JID Helper]:** Se agregÃƒÂ³ una funciÃƒÂ³n heurÃƒÂ­stica `formatJid` en `adminStore.js` que evalÃƒÂºa la longitud del nÃƒÂºmero de telÃƒÂ©fono. Si tiene >= 15 dÃƒÂ­gitos, asume que es un Local ID encriptado de Comunidad y le aÃƒÂ±ade el sufijo `@lid`. De lo contrario, usa `@c.us`.
+    *   **[Core - Notificaciones]:** Se implementÃƒÂ³ `formatJid` en `sendToAll` dentro de `scheduler.js`, permitiendo que el mensaje diario/semanal llegue a los IDs enmascarados que fallaban silenciosamente.
+    *   **[Core - Admin]:** Se aplicÃƒÂ³ el formato dinÃƒÂ¡mico a los comandos `!registrar` y `!kick`.
+    *   **[Core - Welcome]:** Se adaptÃƒÂ³ `normalizeWhatsappId` en `welcome.js` para retener explÃƒÂ­citamente el sufijo `@lid` si un jugador ya entra con ese sufijo desde un grupo de comunidad.
+*   **Notas/Advertencias:** La regla de >= 15 dÃƒÂ­gitos funciona perfectamente para la regiÃƒÂ³n actual del juego (donde los nÃƒÂºmeros reales tienen un mÃƒÂ¡ximo de 12 a 13 dÃƒÂ­gitos). Si en el futuro entra un paÃƒÂ­s con una longitud de nÃƒÂºmero E.164 vÃƒÂ¡lida de 15 dÃƒÂ­gitos, la heurÃƒÂ­stica deberÃƒÂ¡ refinarse.
 
 ### [Fecha: 17/06/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/games.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** ImplementaciÃ³n de soporte para multiplicadores (`xN`) en los comandos `!cofre` y `!trampa`.
+*   **Resumen de Tareas:** ImplementaciÃƒÂ³n de soporte para multiplicadores (`xN`) en los comandos `!cofre` y `!trampa`.
 *   **Cambios Clave:**
-    *   **[Bot - Base de datos]:** Se actualizÃ³ `incrementBotUsageCount`, `incrementCofreUsage` y `incrementTrampaUsage` para admitir operaciones en bloque mediante un nuevo parÃ¡metro `amount`.
-    *   **[Bot - Juegos]:** `handleCofre` y `handleTrampa` ahora extraen un multiplicador con formato `x[N]`. Se agrupan las tiradas en un bucle interno, respetando los lÃ­mites de usos diarios, consolidando la respuesta enviada por WhatsApp y sumando o descontando el oro de forma atÃ³mica en un Ãºnico paso.
-    *   **[Bot - ValidaciÃ³n Financiera]:** Se agregÃ³ un freno preventivo en `!trampa` que deniega el comando completo si el jugador no posee suficiente oro para costear el total combinado (`apuesta * N`).
+    *   **[Bot - Base de datos]:** Se actualizÃƒÂ³ `incrementBotUsageCount`, `incrementCofreUsage` y `incrementTrampaUsage` para admitir operaciones en bloque mediante un nuevo parÃƒÂ¡metro `amount`.
+    *   **[Bot - Juegos]:** `handleCofre` y `handleTrampa` ahora extraen un multiplicador con formato `x[N]`. Se agrupan las tiradas en un bucle interno, respetando los lÃƒÂ­mites de usos diarios, consolidando la respuesta enviada por WhatsApp y sumando o descontando el oro de forma atÃƒÂ³mica en un ÃƒÂºnico paso.
+    *   **[Bot - ValidaciÃƒÂ³n Financiera]:** Se agregÃƒÂ³ un freno preventivo en `!trampa` que deniega el comando completo si el jugador no posee suficiente oro para costear el total combinado (`apuesta * N`).
 *   **Notas/Advertencias:** Ninguna detectada.
 
 ### [Fecha: 16/06/2026] - [Autor: Codex]
@@ -899,9 +905,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 *   **Resumen de Tareas:** Ajuste operativo de minijuegos del bot y nueva variante `x4` para `!dados`.
 *   **Cambios Clave:**
     *   **`!dados x4`:** El comando ahora acepta `!dados <monto> x4` o `!dados x4 <monto>`. En este modo el jugador solo gana si la suma de los dados da exactamente `7`, y el premio neto sube a `x4`.
-    *   **CompensaciÃ³n Simple:** `!dados`, `!cofre` y `!trampa` ahora comparten un helper que intenta revertir el cambio de oro si el incremento del contador diario falla despuÃ©s del cobro/pago.
-    *   **Saldo Reportado:** Tras resolver la jugada, el bot relee el perfil y muestra el oro actualizado real, en vez de depender siempre del cÃ¡lculo local previo al await.
-*   **Notas/Advertencias:** El blindaje del bot mejora la consistencia, pero sigue siendo recomendable llevar estos minijuegos a una RPC transaccional Ãºnica si se quiere eliminar por completo cualquier ventana entre oro y uso diario.
+    *   **CompensaciÃƒÂ³n Simple:** `!dados`, `!cofre` y `!trampa` ahora comparten un helper que intenta revertir el cambio de oro si el incremento del contador diario falla despuÃƒÂ©s del cobro/pago.
+    *   **Saldo Reportado:** Tras resolver la jugada, el bot relee el perfil y muestra el oro actualizado real, en vez de depender siempre del cÃƒÂ¡lculo local previo al await.
+*   **Notas/Advertencias:** El blindaje del bot mejora la consistencia, pero sigue siendo recomendable llevar estos minijuegos a una RPC transaccional ÃƒÂºnica si se quiere eliminar por completo cualquier ventana entre oro y uso diario.
 
 ### [Fecha: 19/06/2026] - [Autor: Codex]
 *   **Archivos Modificados:** src/handlers/games.js, src/supabase.js, AI_CHANGELOG.md
@@ -924,19 +930,19 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [Fecha: 05/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `src/index.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Soporte para reset de sesión de WhatsApp e inicialización autolimpiante ante suspensiones/bloqueos de cuenta.
+*   **Resumen de Tareas:** Soporte para reset de sesiÃ³n de WhatsApp e inicializaciÃ³n autolimpiante ante suspensiones/bloqueos de cuenta.
 *   **Cambios Clave:**
-    *   **Manual Reset Endpoint (`/reset` / `/reset-auth`):** Se agregó un enrutador HTTP en el servidor para que los operadores puedan borrar la carpeta de sesión `.wwebjs_auth` y reiniciar el bot visitando `/reset` o `/reset-auth` desde el navegador.
-    *   **Auto-Reset en Fallos Críticos:** Se modificó la lógica en `initializeClientWithRetry` para que, si se agotan todos los reintentos de inicialización (`WHATSAPP_INIT_MAX_RETRIES` intentos de `client.initialize()`), el bot borre de forma automática la sesión corrupta `.wwebjs_auth` y reinicie el contenedor (`process.exit(1)`), forzando un nuevo código QR limpio.
-*   **Notas/Advertencias:** Ambos cambios protegen al bot de bucles infinitos en contenedores remotos de Hugging Face Spaces tras la suspensión de una línea telefónica.
+    *   **Manual Reset Endpoint (`/reset` / `/reset-auth`):** Se agregÃ³ un enrutador HTTP en el servidor para que los operadores puedan borrar la carpeta de sesiÃ³n `.wwebjs_auth` y reiniciar el bot visitando `/reset` o `/reset-auth` desde el navegador.
+    *   **Auto-Reset en Fallos CrÃ­ticos:** Se modificÃ³ la lÃ³gica en `initializeClientWithRetry` para que, si se agotan todos los reintentos de inicializaciÃ³n (`WHATSAPP_INIT_MAX_RETRIES` intentos de `client.initialize()`), el bot borre de forma automÃ¡tica la sesiÃ³n corrupta `.wwebjs_auth` y reinicie el contenedor (`process.exit(1)`), forzando un nuevo cÃ³digo QR limpio.
+*   **Notas/Advertencias:** Ambos cambios protegen al bot de bucles infinitos en contenedores remotos de Hugging Face Spaces tras la suspensiÃ³n de una lÃ­nea telefÃ³nica.
 
 ### [Fecha: 07/07/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `AGENTS.md`, `.agents/rules/graphify.md`, `.agents/workflows/graphify.md`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
-*   **Resumen de Tareas:** Configuración y activación local de Graphify para el desarrollo del bot.
+*   **Resumen de Tareas:** ConfiguraciÃ³n y activaciÃ³n local de Graphify para el desarrollo del bot.
 *   **Cambios Clave:**
     *   Se inyectaron las reglas y flujos de Graphify en el directorio de personalizaciones locales `.agents` y en `AGENTS.md`.
-    *   Se configuraron los hooks de git (`post-commit`, `post-checkout`) para regenerar el grafo de manera automática.
-*   **Notas/Advertencias:** Los cambios preparan el bot para la indexación y navegación mediante grafos AST semánticos locales.
+    *   Se configuraron los hooks de git (`post-commit`, `post-checkout`) para regenerar el grafo de manera automÃ¡tica.
+*   **Notas/Advertencias:** Los cambios preparan el bot para la indexaciÃ³n y navegaciÃ³n mediante grafos AST semÃ¡nticos locales.
 ### [Fecha: 11/07/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/index.js`, `.env.example`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`
 *   **Resumen de Tareas:** Endurecimiento de la recuperacion de sesion de WhatsApp en Hugging Face cuando el cliente queda sin QR, se desconecta o arranca con auth corrupta.
@@ -1027,3 +1033,4 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Backoff y shutdown:** los reinicios consecutivos usan espera exponencial de 3 a 30 segundos y `SIGTERM`/`SIGINT` se reenvian al bot para conservar su cierre ordenado de Chromium.
     *   **Pruebas reparadas:** el test del watchdog normaliza CRLF en Windows y la nueva prueba bloquea despliegues que omitan el supervisor en Docker o `npm start`.
 *   **Notas/Advertencias:** La sesion activa ya estaba en estado QR antes de este cambio; el supervisor evita que la proxima desconexion recicle el Space, pero la vinculacion actual requiere un escaneo fisico para volver a `ready`.
+

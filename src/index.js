@@ -40,6 +40,7 @@ import {
 import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMResponse, buildVisibleGMResponse, assessGMResponse, buildFallbackCompletedGMResponse, initMissionTracker } from './gmTracker.js';
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
+import { issuePlayerAccessCode } from './accessCodes.js';
 import {
   activeSessions,
   findBlackjackReplySessionKey,
@@ -2778,6 +2779,19 @@ client.on('message', async (msg) => {
         );
       } else if (command === 'registrar') {
         reply = 'El comando *!registrar* esta restringido unicamente a los Administradores del Reino.';
+      } else if (command === 'codigo' || command === 'acceso') {
+        if (!isDirectChat) {
+          reply = 'Por seguridad, solicita tu codigo de acceso en un chat privado con el bot.';
+        } else {
+          const players = await getSenderPlayers();
+          const player = players[0];
+          if (!player?.id) {
+            reply = 'No encontre un perfil vinculado a este numero de WhatsApp. Pide al staff que lo registre primero.';
+          } else {
+            const access = await issuePlayerAccessCode(player.id);
+            reply = `Tu codigo de acceso web es *${access.code}*. Caduca en 10 minutos y solo puede usarse una vez.`;
+          }
+        }
       } else if (command === 'dados') {
         reply = await handleDados(wrapMsg(routedMsg, ensurePrefixedBody(command, text, body)));
       } else if (command === 'cofre') {
@@ -2817,6 +2831,8 @@ client.on('message', async (msg) => {
           'resumen',
           'ayuda',
           'help',
+          'codigo',
+          'acceso',
           'subasta',
           'subastas',
           'pujar',
