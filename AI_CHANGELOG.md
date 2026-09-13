@@ -4,6 +4,10 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ## Historial de Cambios (Changelog)
 ### [Fecha: 13/09/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/handlers/player.js`.
+*   **Resumen de Tareas:** Añadidos `!codigo` y `!acceso` al menú visible de `!ayuda`.
+*   **Validación:** `node --check` y `test_access_codes.js` superados.
+### [Fecha: 13/09/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/accessCodeUtils.js`, `src/accessCodes.js`, `src/index.js`, `test_access_codes.js`, `AI_CHANGELOG.md`.
 *   **Resumen de Tareas:** Añadido el flujo de códigos de acceso web para perfiles creados por el bot.
 *   **Cambios Clave:** `!codigo` y `!acceso` funcionan solo en chat privado, generan un código numérico de seis dígitos y almacenan únicamente su hash SHA-256 con caducidad de diez minutos.
