@@ -183,6 +183,7 @@ export async function handlePlayerMessage(msg, client = null) {
         treeCommand('!reclamar <cod> · !vinculo', 'Reclamar tesoro / enlace web.'),
         treeCommand('!cambiarcuenta · !nuevo', 'Cambiar personaje / guía inicio.'),
         treeCommand('!verificar <id>', 'Vincular tu WhatsApp al reino.'),
+      treeCommand('!codigo ?? !acceso', 'Recibir por privado el codigo para activar tu acceso web.'),
         treeCommand('!ranking · !reino · !ricos', 'Poder semanal y fortunas.'),
       ]),
       '',
