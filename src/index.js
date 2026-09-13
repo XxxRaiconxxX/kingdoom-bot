@@ -2783,13 +2783,14 @@ client.on('message', async (msg) => {
         if (!isDirectChat) {
           reply = 'Por seguridad, solicita tu codigo de acceso en un chat privado con el bot.';
         } else {
-          const players = await getSenderPlayers();
-          const player = players[0];
+          // Respeta la cuenta seleccionada con !cambiarcuenta cuando un telefono
+          // tiene varios perfiles vinculados.
+          const player = await getPlayer(sender);
           if (!player?.id) {
             reply = 'No encontre un perfil vinculado a este numero de WhatsApp. Pide al staff que lo registre primero.';
           } else {
             const access = await issuePlayerAccessCode(player.id);
-            reply = `Tu codigo de acceso web es *${access.code}*. Caduca en 10 minutos y solo puede usarse una vez.`;
+            reply = `Tu codigo de acceso web para *${player.username}* es *${access.code}*. Caduca en 10 minutos y solo puede usarse una vez.`;
           }
         }
       } else if (command === 'dados') {

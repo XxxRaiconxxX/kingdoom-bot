@@ -1038,3 +1038,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
     *   **Pruebas reparadas:** el test del watchdog normaliza CRLF en Windows y la nueva prueba bloquea despliegues que omitan el supervisor en Docker o `npm start`.
 *   **Notas/Advertencias:** La sesion activa ya estaba en estado QR antes de este cambio; el supervisor evita que la proxima desconexion recicle el Space, pero la vinculacion actual requiere un escaneo fisico para volver a `ready`.
 
+### [2026-09-13] Codigo web respeta la cuenta activa
+- El comando `!codigo` / `!acceso` usa `getPlayer(sender)` para respetar la cuenta seleccionada con `!cambiarcuenta <nombre>` cuando un telefono tiene varios perfiles.
+- La respuesta incluye el nombre del perfil al que pertenece el codigo, evitando activar otra cuenta por error.
+- Validado con `node --check src/index.js` y `node test_access_codes.js` (`ACCESS_CODES_OK`).
