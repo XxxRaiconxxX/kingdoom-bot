@@ -8,6 +8,7 @@ declare
   v_table_name text;
 begin
   foreach v_table_name in array array[
+    'bot_active_bets',
     'bot_daily_claims',
     'bot_active_missions',
     'bot_treasure_events',
@@ -31,6 +32,15 @@ begin
       v_table_name
     );
   end loop;
+end;
+$$;
+
+do $$
+begin
+  if to_regprocedure('public.claim_bot_treasure_reward(text,uuid,text)') is not null then
+    revoke all on function public.claim_bot_treasure_reward(text, uuid, text) from public, anon, authenticated;
+    grant execute on function public.claim_bot_treasure_reward(text, uuid, text) to service_role;
+  end if;
 end;
 $$;
 

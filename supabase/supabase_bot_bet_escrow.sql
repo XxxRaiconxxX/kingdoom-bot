@@ -10,6 +10,10 @@ CREATE TABLE IF NOT EXISTS public.bot_active_bets (
     created_at timestamptz DEFAULT now() NOT NULL
 );
 
+ALTER TABLE public.bot_active_bets ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.bot_active_bets FROM public, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.bot_active_bets TO service_role;
+
 -- Index for querying unresolved bets quickly
 CREATE INDEX IF NOT EXISTS idx_bot_active_bets_unresolved ON public.bot_active_bets (player_id) WHERE resolved = false;
 
@@ -53,6 +57,9 @@ BEGIN
 END;
 $$;
 
+REVOKE ALL ON FUNCTION public.place_bet(uuid, numeric, text) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.place_bet(uuid, numeric, text) TO service_role;
+
 -- 3. resolve_bet RPC
 -- Closes the bet and adds payout if any. Returns boolean indicating success.
 CREATE OR REPLACE FUNCTION public.resolve_bet(p_bet_id uuid, p_payout numeric)
@@ -93,3 +100,6 @@ BEGIN
     RETURN true;
 END;
 $$;
+
+REVOKE ALL ON FUNCTION public.resolve_bet(uuid, numeric) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_bet(uuid, numeric) TO service_role;

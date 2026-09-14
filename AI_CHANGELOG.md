@@ -1058,3 +1058,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - Se aplicaron `bot_game_rewards_20260914` y `bot_state_rls_hardening_20260914` en el Supabase activo.
 - Las tablas internas del bot quedaron con RLS y permisos directos exclusivos para `service_role`; las RPC de reserva y marcado tambien quedaron cerradas a `anon` y `authenticated`.
 - Se elimino la reserva de prueba usada para validar la RPC y se confirmo que no quedo actividad artificial.
+
+### [2026-09-14] Cierre de ACL heredados de economia del bot
+- La RPC legacy `claim_bot_treasure_reward` y la tabla `bot_active_bets` conservaban permisos directos para `authenticated`/`anon`.
+- Se revocaron esos permisos en Supabase y se actualizaron `supabase_bot_state_rls_hardening.sql` y `supabase_bot_bet_escrow.sql` para mantener el cierre reproducible.
