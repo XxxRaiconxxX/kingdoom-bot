@@ -1062,3 +1062,8 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ### [2026-09-14] Cierre de ACL heredados de economia del bot
 - La RPC legacy `claim_bot_treasure_reward` y la tabla `bot_active_bets` conservaban permisos directos para `authenticated`/`anon`.
 - Se revocaron esos permisos en Supabase y se actualizaron `supabase_bot_state_rls_hardening.sql` y `supabase_bot_bet_escrow.sql` para mantener el cierre reproducible.
+
+### [2026-09-14] Compatibilidad de esquema corregida para reclamos de tesoro
+- La migracion anterior agrego el flujo por `event_message_id`, pero la tabla existente conservaba `event_id NOT NULL` y la restriccion de estados no permitia `closed`.
+- Se hizo `event_id` nullable, se garantizo unicidad por `(event_message_id, player_id)` y se amplio `bot_treasure_events_status_check` para aceptar `closed`, preservando el codigo legacy y el RPC atomico.
+- Prueba transaccional del RPC con evento temporal: reserva confirmada y limpieza verificada sin filas artificiales.

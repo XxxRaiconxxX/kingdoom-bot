@@ -84,6 +84,50 @@ create table if not exists public.bot_treasure_claims (
   unique (event_message_id, player_id)
 );
 
+-- Compatibilidad con la tabla antigua, que usaba event_id como clave del evento.
+alter table public.bot_treasure_claims
+  add column if not exists event_message_id text;
+
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'bot_treasure_claims'
+      and column_name = 'event_id'
+  ) then
+    execute $sql$
+      update public.bot_treasure_claims as claim
+      set event_message_id = event.message_id
+      from public.bot_treasure_events as event
+      where claim.event_message_id is null
+        and claim.event_id = event.id
+    $sql$;
+    alter table public.bot_treasure_claims
+      alter column event_id drop not null;
+  end if;
+end;
+$$;
+
+alter table public.bot_treasure_claims
+  alter column event_message_id set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'bot_treasure_claims_event_message_player_unique'
+      and conrelid = 'public.bot_treasure_claims'::regclass
+  ) then
+    alter table public.bot_treasure_claims
+      add constraint bot_treasure_claims_event_message_player_unique
+      unique (event_message_id, player_id);
+  end if;
+end;
+$$;
+
 alter table public.bot_treasure_claims
   add column if not exists credit_status text,
   add column if not exists credited_at timestamptz;
@@ -109,6 +153,24 @@ begin
       add constraint bot_treasure_claims_credit_status_check
       check (credit_status in ('pending', 'credited'));
   end if;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'bot_treasure_events_status_check'
+      and conrelid = 'public.bot_treasure_events'::regclass
+  ) then
+    alter table public.bot_treasure_events
+      drop constraint bot_treasure_events_status_check;
+  end if;
+
+  alter table public.bot_treasure_events
+    add constraint bot_treasure_events_status_check
+    check (status in ('open', 'claimed', 'closed', 'expired'));
 end;
 $$;
 
