@@ -1,8 +1,15 @@
-﻿# AI Collaboration Log & Project Context - Kingdoom Bot
+# AI Collaboration Log & Project Context - Kingdoom Bot
 
 Este archivo sirve como registro de actividad y contexto operativo para el repositorio `kingdoom-bot`.
 
 ## Historial de Cambios (Changelog)
+### [Fecha: 14/09/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `supabase/supabase_bot_state_migration.sql`, `test_treasure_atomicity.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Corrección definitiva del fallo "Reclamo no confirmado" en Tesoros Errantes.
+*   **Causa Raíz:** En commit `7511381` se aumentó la recompensa de tesoros a 10,000–50,000 oro, pero la tabla `public.bot_treasure_claims` conservaba el check constraint obsoleto `bot_treasure_claims_reward_gold_check: CHECK (((reward_gold >= 10000) AND (reward_gold <= 20000)))`. Cualquier reclamo que generaba > 20,000 oro (75% de los casos) arrojaba violación de restricción en Postgres y fallaba silenciosamente hacia el mensaje de reclamo no confirmado.
+*   **Solución:** Se relajó la restricción en la base de datos remota (`sibisgiwmgdrpfkzmkkw`) a `CHECK (reward_gold >= 0)` (consistente con el resto de tablas económicas como `bot_gold_awards` y `bot_game_rewards`), se actualizó la migración SQL reproducible, y se añadió aserción en `test_treasure_atomicity.js`.
+*   **Validación:** Ejecutada prueba transaccional con recompensa de 42,000 oro en Postgres confirmando reserva limpia. Suite completa `npm test` ejecutada con **29/29 suites en verde**.
+
 ### [Fecha: 13/09/2026] - [Autor: Codex]
 *   **Archivos Modificados:** `src/handlers/player.js`.
 *   **Resumen de Tareas:** Añadidos `!codigo` y `!acceso` al menú visible de `!ayuda`.

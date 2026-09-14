@@ -79,7 +79,7 @@ create table if not exists public.bot_treasure_claims (
   id uuid primary key default gen_random_uuid(),
   event_message_id text not null references public.bot_treasure_events(message_id) on delete cascade,
   player_id uuid not null,
-  reward_gold integer not null,
+  reward_gold integer not null check (reward_gold >= 0),
   claimed_at timestamptz not null default timezone('utc', now()),
   unique (event_message_id, player_id)
 );
@@ -172,6 +172,24 @@ begin
   alter table public.bot_treasure_events
     add constraint bot_treasure_events_status_check
     check (status in ('open', 'claimed', 'closed', 'expired'));
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'bot_treasure_claims_reward_gold_check'
+      and conrelid = 'public.bot_treasure_claims'::regclass
+  ) then
+    alter table public.bot_treasure_claims
+      drop constraint bot_treasure_claims_reward_gold_check;
+  end if;
+
+  alter table public.bot_treasure_claims
+    add constraint bot_treasure_claims_reward_gold_check
+    check (reward_gold >= 0);
 end;
 $$;
 

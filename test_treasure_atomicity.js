@@ -17,6 +17,11 @@ assert.match(botStateSql, /unique \(event_message_id, player_id\)/i);
 assert.match(botStateSql, /credit_status in \('pending', 'credited'\)/i);
 assert.match(
   botStateSql,
+  /bot_treasure_claims_reward_gold_check[\s\S]+check \(reward_gold >= 0\)/i,
+  'El constraint de oro de reclamos debe permitir recompensas >= 0 sin techo obsoleto.'
+);
+assert.match(
+  botStateSql,
   /revoke all on function public\.reserve_treasure_claim[\s\S]+from anon, authenticated/i
 );
 
