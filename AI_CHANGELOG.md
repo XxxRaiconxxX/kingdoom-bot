@@ -1071,3 +1071,6 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 ### [2026-09-14] Auditoría de revisión del parche de tesoro
 - La revisión detectó y corrigió una posible duplicación de la restricción única en instalaciones nuevas.
 - Se verificaron permisos de las RPC, estados permitidos, reclamos pendientes y compatibilidad del contenedor activo.
+
+### [2026-09-14] Proteccion de archivo local de variables
+- `VARIABLES_KINGDOOM_BOT.txt` contiene credenciales operativas y queda excluido del repositorio mediante `.gitignore`.
