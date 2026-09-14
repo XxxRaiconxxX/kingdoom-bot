@@ -41,6 +41,7 @@ import { processTrackerMessage, buildGMPrompt, buildGMUserPayload, registerGMRes
 import { askKingdoomAI } from './ai.js';
 import { handleMarketForgeConversation } from './handlers/marketForge.js';
 import { issuePlayerAccessCode } from './accessCodes.js';
+import { getActiveProfile } from './activeProfileStore.js';
 import {
   activeSessions,
   findBlackjackReplySessionKey,
@@ -2783,11 +2784,17 @@ client.on('message', async (msg) => {
         if (!isDirectChat) {
           reply = 'Por seguridad, solicita tu codigo de acceso en un chat privado con el bot.';
         } else {
-          // Respeta la cuenta seleccionada con !cambiarcuenta cuando un telefono
-          // tiene varios perfiles vinculados.
-          const player = await getPlayer(sender);
+          const players = await getSenderPlayers();
+          const activeProfileId = getActiveProfile(sender);
+          const player = activeProfileId
+            ? players.find((candidate) => candidate?.id === activeProfileId) ?? null
+            : players.length === 1
+              ? players[0]
+              : null;
           if (!player?.id) {
-            reply = 'No encontre un perfil vinculado a este numero de WhatsApp. Pide al staff que lo registre primero.';
+            reply = players.length > 1
+              ? 'Tienes varias cuentas vinculadas. Usa `!cambiarcuenta <nombre>` y luego repite `!codigo`.'
+              : 'No encontre un perfil vinculado a este numero de WhatsApp. Pide al staff que lo registre primero.';
           } else {
             const access = await issuePlayerAccessCode(player.id);
             reply = `Tu codigo de acceso web para *${player.username}* es *${access.code}*. Caduca en 10 minutos y solo puede usarse una vez.`;

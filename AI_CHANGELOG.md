@@ -1042,3 +1042,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - El comando `!codigo` / `!acceso` usa `getPlayer(sender)` para respetar la cuenta seleccionada con `!cambiarcuenta <nombre>` cuando un telefono tiene varios perfiles.
 - La respuesta incluye el nombre del perfil al que pertenece el codigo, evitando activar otra cuenta por error.
 - Validado con `node --check src/index.js` y `node test_access_codes.js` (`ACCESS_CODES_OK`).
+### [2026-09-13] Evitar OTP para perfiles ambiguos
+- `!codigo` / `!acceso` ya no emite un codigo si el numero tiene varias cuentas y no existe una seleccion activa.
+- El usuario recibe la instruccion `!cambiarcuenta <nombre>` antes de solicitar un nuevo codigo.
+- Validado con `node --check src/index.js` y `node test_access_codes.js` (`ACCESS_CODES_OK`).
