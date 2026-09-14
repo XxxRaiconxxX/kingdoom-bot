@@ -1046,3 +1046,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - `!codigo` / `!acceso` ya no emite un codigo si el numero tiene varias cuentas y no existe una seleccion activa.
 - El usuario recibe la instruccion `!cambiarcuenta <nombre>` antes de solicitar un nuevo codigo.
 - Validado con `node --check src/index.js` y `node test_access_codes.js` (`ACCESS_CODES_OK`).
+
+### [2026-09-14] Reparado el reclamo de Tesoro Errante en Supabase
+- El bot recibia `Reclamo no confirmado` porque la RPC `reserve_treasure_claim` no existia en el proyecto remoto y la ruta de compatibilidad insertaba un reclamo sin el `event_id` obligatorio del esquema actual.
+- Se aplico `bot_treasure_claim_reservation_20260914` en Supabase; ahora existen `reserve_treasure_claim` y `mark_treasure_claim_credited`, con permisos exclusivos para `service_role`.
+- La tabla de reclamos quedo con `credit_status` y la prueba de la RPC para un evento inexistente devolvio `status=error` sin mutar saldo.
+- Validado con `npm test` (29 suites) y las pruebas especificas de tesoro.
