@@ -118,8 +118,9 @@ begin
   if not exists (
     select 1
     from pg_constraint
-    where conname = 'bot_treasure_claims_event_message_player_unique'
+    where contype = 'u'
       and conrelid = 'public.bot_treasure_claims'::regclass
+      and pg_get_constraintdef(oid) = 'UNIQUE (event_message_id, player_id)'
   ) then
     alter table public.bot_treasure_claims
       add constraint bot_treasure_claims_event_message_player_unique
