@@ -1052,3 +1052,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - Se aplico `bot_treasure_claim_reservation_20260914` en Supabase; ahora existen `reserve_treasure_claim` y `mark_treasure_claim_credited`, con permisos exclusivos para `service_role`.
 - La tabla de reclamos quedo con `credit_status` y la prueba de la RPC para un evento inexistente devolvio `status=error` sin mutar saldo.
 - Validado con `npm test` (29 suites) y las pruebas especificas de tesoro.
+
+### [2026-09-14] Auditoria de migraciones del estado del bot
+- Se detectaron ausentes `bot_game_rewards`, `reserve_cofre_reward` y `mark_game_reward_credited`, dependencias usadas por el flujo de Cofres.
+- Se aplicaron `bot_game_rewards_20260914` y `bot_state_rls_hardening_20260914` en el Supabase activo.
+- Las tablas internas del bot quedaron con RLS y permisos directos exclusivos para `service_role`; las RPC de reserva y marcado tambien quedaron cerradas a `anon` y `authenticated`.
+- Se elimino la reserva de prueba usada para validar la RPC y se confirmo que no quedo actividad artificial.
