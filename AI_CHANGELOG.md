@@ -1067,3 +1067,7 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - La migracion anterior agrego el flujo por `event_message_id`, pero la tabla existente conservaba `event_id NOT NULL` y la restriccion de estados no permitia `closed`.
 - Se hizo `event_id` nullable, se garantizo unicidad por `(event_message_id, player_id)` y se amplio `bot_treasure_events_status_check` para aceptar `closed`, preservando el codigo legacy y el RPC atomico.
 - Prueba transaccional del RPC con evento temporal: reserva confirmada y limpieza verificada sin filas artificiales.
+
+### [2026-09-14] Auditoría de revisión del parche de tesoro
+- La revisión detectó y corrigió una posible duplicación de la restricción única en instalaciones nuevas.
+- Se verificaron permisos de las RPC, estados permitidos, reclamos pendientes y compatibilidad del contenedor activo.
