@@ -160,6 +160,8 @@ Estado: ✅ Completado / ⚠️ Incompleto / ❌ Error
 
 - Ejecutar `node --check src/index.js` para comprobar la sintaxis de todos los archivos modificados.
 - Ejecutar scripts de prueba aislados en la raíz (ej: `node test_blackjack.js`, `test_roleplay_activity.js`).
+- Ejecutar la suite completa del proyecto (`npm test`) y verificar que pase sin fallos.
+- **Pruebas de Límites Obligatorias:** Si se modifican rangos numéricos o transacciones de economía, probar obligatoriamente el límite máximo y el límite mínimo, nunca únicamente casos triviales (ver Sección 13).
 - Confirmar que todos los bloques asíncronos capturan errores adecuadamente.
 
 ---
@@ -173,3 +175,42 @@ Este proyecto cuenta con un grafo de conocimiento en `graphify-out/` con nodos c
   - Para dudas de flujo de comandos, ejecutar `graphify query "<pregunta>"` o trazar el camino `WhatsApp event -> handler -> helper/store -> Supabase`.
   - Antes de alterar módulos compartidos, ejecutar `graphify affected "<archivo_o_funcion>"`.
   - Ejecutar `npm run graphify:update` tras cambios estructurales de código.
+
+---
+
+## 13. Protocolo de Diagnóstico Forense y Validación de Base de Datos (Anti-Parches Superficiales)
+
+Este protocolo es de cumplimiento estricto para **Codex CLI**, Antigravity y cualquier agente ante tareas de auditoría, soporte de incidencias o corrección de bugs reportados en producción:
+
+### A. Evidencia en Logs Primero (Ground Truth First)
+- ⛔ **PROHIBIDO adivinar o asumir la causa de un fallo** basándose únicamente en diferencias de código o lecturas superficiales.
+- Ante un error reportado por un usuario o una captura de pantalla, el agente **DEBE consultar los logs reales del sistema** (PostgreSQL vía MCP `get_logs`, logs del contenedor Docker o consola) en la marca de tiempo exacta del incidente.
+- No se inicia ninguna modificación de código hasta identificar la excepción cruda del sistema (ej: `violates check constraint`, `null value in column`, `RPC function not found`, `permission denied`).
+
+### B. Auditoría Cruzada Código ↔ Esquema DDL (Constraint Audit)
+- Cuando una función interactúa con PostgreSQL (mediante RPC, `insert` o `update`), no basta con verificar que las columnas existan o que los nombres coincidan.
+- **Auditoría obligatoria de restricciones DDL:**
+  * **`CHECK constraints`:** Verificar que los límites numéricos de la base de datos admitan la totalidad del rango que el código puede generar. Si JavaScript calcula `[10.000, 50.000]`, la base de datos debe permitir hasta `50.000` (o `>= 0`).
+  * **`ENUMs / Status checks`:** Confirmar que todos los estados posibles del código (`open`, `claimed`, `closed`, `expired`) estén explícitamente permitidos en el `CHECK (status IN (...))`.
+  * **`UNIQUE constraints` y Nulos:** Validar que las claves compuestas y la nulabilidad no choquen con inserciones parciales o flujos asíncronos.
+- La regla es: **el código no manda sobre la base de datos; si el código cambia un rango económico o estado, la base de datos DEBE actualizarse en sincronía mediante migración SQL.**
+
+### C. Pruebas de Límites Reales (Boundary Testing Obligatorio)
+- ⛔ **PROHIBIDO validar correcciones únicamente con "caminos felices" triviales o valores mínimos.**
+- Si una variable o recompensa es un número o rango `[min, max]`:
+  * Se debe probar obligatoriamente el valor mínimo (`min`).
+  * Se debe probar obligatoriamente el **valor máximo (`max`)**.
+  * Se debe probar un valor intermedio típico.
+- Si el juego permite hasta 50.000 oro, la prueba debe ejecutar una transacción real con 50.000 oro. Si falla con el valor máximo, la tarea **NO está resuelta**.
+
+### D. Prohibición de Declaración de Éxito Prematuro (Verification Gate)
+- Un bug no se considera resuelto porque "el test de sintaxis no arrojó errores" o porque "un evento inexistente no muta saldo".
+- La validación debe demostrar que el **caso exacto reportado por el usuario** (mismo comando, mismos argumentos, misma identidad) ahora se completa satisfactoriamente con respuesta de éxito (`status = 'ok'`).
+- Todo parche no trivial debe dejar **una prueba residual automatizada** (`test_*.js` o aserción) que falle si la restricción o la RPC se rompen en el futuro.
+
+### E. Integridad y Versionado de Migraciones
+- Todo ajuste de esquema o función en Supabase debe:
+  1. Aplicarse en el entorno remoto activo.
+  2. Quedar guardado en el archivo `.sql` de migración versionado del repositorio para que sea 100% reproducible.
+  3. Registrarse en `AI_CHANGELOG.md` y `ai-memory/kingdoom-memory.jsonl` indicando la excepción real resuelta y la prueba de límites efectuada.
+
