@@ -1,25 +1,7 @@
 import { supabase } from '../supabase.js';
-import { heraldCard, heraldCommand, heraldSection, heraldStat } from '../formatting.js';
+import { heraldCard, heraldCommand, heraldSection, heraldStat, formatTimeRemaining } from '../formatting.js';
 import { parseGoldAmount } from '../economy.js';
 
-function formatTimeRemaining(expiresAt) {
-  const diffMs = new Date(expiresAt) - new Date();
-  if (diffMs <= 0) return 'Expirado';
-  const totalSecs = Math.floor(diffMs / 1000);
-  const secs = totalSecs % 60;
-  const totalMins = Math.floor(totalSecs / 60);
-  const mins = totalMins % 60;
-  const totalHours = Math.floor(totalMins / 60);
-  const hours = totalHours % 24;
-  const days = Math.floor(totalHours / 24);
-
-  let parts = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  if (mins > 0) parts.push(`${mins}m`);
-  if (days === 0 && hours === 0 && mins === 0) parts.push(`${secs}s`);
-  return parts.join(' ');
-}
 
 export async function handleSubastas(msg, player, body) {
   const { data: auctions, error } = await supabase
