@@ -5,6 +5,7 @@ import pkg from 'whatsapp-web.js';
 import { heraldCard, heraldList, heraldSection } from '../formatting.js';
 import { getLatestApkUrl } from '../services/apkService.js';
 import { resolveWhatsAppPhones, serializeWhatsAppId } from '../whatsappIdentity.js';
+import { parseEnvJidList } from '../adminStore.js';
 const { MessageMedia } = pkg;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -53,19 +54,6 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
-function normalizeWhatsappId(value) {
-  const raw = String(value ?? '').trim();
-  if (!raw) return '';
-  return raw.endsWith('@c.us') || raw.endsWith('@g.us') || raw.endsWith('@lid') ? raw : `${raw}@c.us`;
-}
-
-function parseAdminIds(value) {
-  return String(value ?? '')
-    .split(',')
-    .map((entry) => normalizeWhatsappId(entry))
-    .filter(Boolean);
-}
-
 function getContactId(contact) {
   return serializeWhatsAppId(contact?.id || contact) || String(contact?.number || '').trim();
 }
@@ -85,7 +73,7 @@ export function buildWelcomeConfig() {
     enabled: process.env.WELCOME_GROUP_ENABLED !== 'false',
     groupId: String(process.env.WELCOME_GROUP_ID ?? '').trim(),
     groupName: normalizeText(process.env.WELCOME_GROUP_NAME ?? ''),
-    adminIds: parseAdminIds(process.env.WELCOME_GROUP_ADMIN_IDS),
+    adminIds: parseEnvJidList(process.env.WELCOME_GROUP_ADMIN_IDS),
   };
 }
 
