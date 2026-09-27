@@ -352,6 +352,7 @@ export async function startColosseumCombat(client, matchId) {
 
   // Combat simulation loop until one falls to 0 HP
   let roundNum = 1;
+  let aiFailureAnnounced = false;
   const fA = active.fighterA;
   const fB = active.fighterB;
 
@@ -366,11 +367,12 @@ export async function startColosseumCombat(client, matchId) {
     // Generate dynamic martial roleplay narrative with AI or built-in procedural engine
     const combatNarrative = await generateCombatExchange(attacker, defender, roundNum);
 
-    if (combatNarrative.hasError) {
+    // ponytail: notificar la caida al motor procedural una sola vez por combate, no spamear cada asalto
+    if (combatNarrative.hasError && !aiFailureAnnounced) {
+      aiFailureAnnounced = true;
       const errorNotice = [
         `⚠️ *[AVISO DE COLISEO: Falla en Oráculo de IA]*`,
-        `Se detectó un problema en la generación narrativa por IA:`,
-        `\`${combatNarrative.errorMessage}\``,
+        `La generación narrativa por IA no está disponible en este combate.`,
         `📌 *Detalles en Logs:* Revisa los registros del servidor. Se continúa con la simulación procedural de combate.`,
       ].join('\n');
       await client.sendMessage(active.roleplayChatId, errorNotice).catch(() => null);
@@ -627,8 +629,9 @@ Genera un JSON estrictamente válido con exactamente este esquema:
 }`;
 
   try {
+    // ponytail: 2500 tokens para tolerar thinking tokens de modelos de razonamiento (Gemini 2.5 Flash) sin truncar el JSON
     const rawAiResponse = await askKingdoomAI([], prompt, {
-      maxOutputTokens: 1200,
+      maxOutputTokens: 2500,
       temperature: 0.85,
     });
 

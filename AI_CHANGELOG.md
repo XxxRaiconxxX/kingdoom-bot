@@ -3,6 +3,31 @@
 Este archivo sirve como registro de actividad y contexto operativo para el repositorio `kingdoom-bot`.
 
 ## Historial de Cambios (Changelog)
+### [Fecha: 26/09/2026] - [Autor: Codex]
+*   **Archivos Modificados:** `src/ai.js`, `src/handlers/colosseumHandler.js`, `test_ai_resilience.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Revisión local de resiliencia de IA. La prueba es ahora offline con mocks explícitos; se eliminó la carga de configuración desde el módulo de IA, se añadieron timeouts acotados a solicitudes HTTP y al SDK de Gemini, y el Coliseo no envía errores crudos al chat.
+*   **Validación:** `node --check` para los JavaScript modificados, `node test_ai_resilience.js` y `git diff --check`, todos exitosos. No se contactaron proveedores, WhatsApp ni bases de datos; `npm test` quedó omitido porque incluye automáticamente todos los `test_*.js` salvo un único caso marcado real y no se verificó la seguridad de las demás suites.
+
+### [Fecha: 17/09/2026] - [Autor: Antigravity]
+*   **Archivos Modificados:** `src/ai.js`, `src/handlers/colosseumHandler.js`, `test_ai_resilience.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Diagnóstico, auditoría de APIs y corrección integral del fallo en `!oraculo` ("runa de invocación inválida") y Coliseo ("AI cooldown activo: key_invalid"), e integración y reactivación completa del pool de claves de NVIDIA NIM.
+*   **Causa Raíz:**
+    1.  La clave local en `.env` expiró (`400 API_KEY_INVALID`), activando un cooldown en memoria de 12 horas que bloqueaba toda llamada posterior a IA (`AI cooldown activo: key_invalid`).
+    2.  Obsolescencia externa de proveedores: en NVIDIA el modelo `meta/llama-3.1-70b-instruct` llegó a fin de vida el 26/08/2026 (`410 Gone`), y en Groq la organización tiene bloqueados los modelos (`403 model_permission_blocked_org`).
+    3.  En Gemini, el fallback en código apuntaba a `gemini-2.0-flash` (retirado con `404`) en lugar del vigente `gemini-2.5-flash-lite`.
+    4.  Los modelos `gemini-2.5-flash` consumían ~1000 tokens en reasoning interno ("thinking"), provocando que solicitudes con presupuestos ajustados (como el JSON de 8 campos del Coliseo con 1200 tokens) se truncaran.
+*   **Solución:**
+    1.  Reordenado de proveedores efectivo: `gemini,nvidia,groq,openrouter`.
+    2.  Se documentó una configuración de proveedores sin registrar claves ni fragmentos de credenciales en este repositorio.
+    3.  Actualización de modelos de NVIDIA a `z-ai/glm-5.3-flash` (primario) y `z-ai/glm-5.3` (fallback), con extracción tolerante de `content` y `reasoning_content`.
+    4.  Actualizada cadena de modelos de Gemini a `gemini-2.5-flash` con fallback inmediato a `gemini-2.5-flash-lite` y claves rotativas.
+    5.  Configurado `thinkingConfig: { thinkingBudget: 0 }` en `askGeminiAI` para desactivar razonamiento innecesario, reduciendo latencia a <500ms y evitando truncamientos.
+    6.  Aumentado presupuesto de tokens en `colosseumHandler` a 2500 tokens y evitado el spam repetitivo del aviso de error por asalto.
+    7.  Reducido cooldown de claves inválidas a 30 minutos y mejorada la clasificación de errores en `classifyAIError`.
+    8.  La configuración operativa de proveedores queda fuera del control de versiones y no se valida en esta revisión local.
+    9.  Añadida prueba unitaria reproducible `test_ai_resilience.js`.
+*   **Validación:** Las afirmaciones de invocaciones externas y de suite completa no se verificaron en la revisión local del 26/09/2026; deben confirmarse por separado en un entorno autorizado.
+
 ### [Fecha: 14/09/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `supabase/supabase_bot_state_migration.sql`, `test_treasure_atomicity.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección definitiva del fallo "Reclamo no confirmado" en Tesoros Errantes.
@@ -1081,3 +1106,8 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 
 ### [2026-09-14] Proteccion de archivo local de variables
 - `VARIABLES_KINGDOOM_BOT.txt` contiene credenciales operativas y queda excluido del repositorio mediante `.gitignore`.
+
+### [2026-09-26] Corrección de timeout completo y respuestas finales de IA
+- Los proveedores HTTP NVIDIA, Groq y OpenRouter mantienen el `AbortController` activo hasta terminar el parseo JSON; un body estancado ahora aborta y se propaga al flujo de fallback.
+- NVIDIA y Groq aceptan exclusivamente `message.content`; los campos de razonamiento por sí solos se tratan como respuesta vacía y no se exponen ni se envían al parser de combate.
+- Validado sin red mediante `node test_ai_resilience.js`, incluyendo timeouts antes de headers y durante un body JSON, más respuestas reasoning-only. El wrapper de Gemini limita la espera del llamador, pero no puede cancelar el transporte del SDK.

@@ -8,6 +8,40 @@ const GROQ_API_BASE_URL = process.env.GROQ_API_BASE_URL || 'https://api.groq.com
 const OPENROUTER_API_BASE_URL = process.env.OPENROUTER_API_BASE_URL || 'https://openrouter.ai/api/v1';
 const SUPPORTED_AI_PROVIDERS = new Set(['groq', 'gemini', 'openrouter', 'nvidia']);
 
+function getRequestTimeoutMs() {
+  const configured = Number.parseInt(process.env.AI_REQUEST_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(configured) ? Math.min(Math.max(configured, 1000), 120000) : 30000;
+}
+
+async function fetchJsonWithTimeout(url, options) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getRequestTimeoutMs());
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const payload = await response.json();
+    return { response, payload };
+  } finally {
+    clearTimeout(timeout);
+    if (!controller.signal.aborted) controller.abort();
+  }
+}
+
+function withRequestTimeout(operation) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Solicitud de IA agotó el tiempo límite de ${getRequestTimeoutMs()} ms`)), getRequestTimeoutMs());
+    Promise.resolve(operation).then(
+      (value) => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
+
 if (!process.env.GEMINI_API_KEY && !process.env.GROQ_API_KEY && !process.env.NVIDIA_API_KEY && !process.env.OPENROUTER_API_KEY) {
   console.error('[ai] Ninguna clave de IA esta configurada. El Oraculo y la IA no funcionaran.');
 }
@@ -46,7 +80,7 @@ function getProviderKeyCount(provider) {
 function getProviderOrder() {
   let envVal = (process.env.AI_PROVIDER_ORDER || '').trim().toLowerCase();
   if (!envVal || envVal === 'nvidia,groq,gemini' || envVal === 'nvidia,groq,gemini,openrouter') {
-    envVal = 'groq,gemini,openrouter,nvidia';
+    envVal = 'gemini,groq,openrouter,nvidia';
   }
 
   const requested = envVal
@@ -61,7 +95,7 @@ function getProviderOrder() {
     }
   }
 
-  return unique.length ? unique : ['groq', 'gemini', 'openrouter', 'nvidia'];
+  return unique.length ? unique : ['gemini', 'groq', 'openrouter', 'nvidia'];
 }
 
 function getKeyFingerprint(key) {
@@ -119,12 +153,11 @@ function classifyAIError(err) {
   const message = String(err?.message ?? '').toLowerCase();
   const status = Number(err?.status ?? 0);
 
-  if (status === 400 && message.includes('api key')) return 'key_invalid';
-  if (status === 401) return 'key_invalid';
-  if (status === 403) return 'access_denied';
-  if (status === 429 || message.includes('quota exceeded') || message.includes('too many requests')) return 'quota_exceeded';
-  if (status === 503 || message.includes('service unavailable') || message.includes('high demand')) return 'service_unavailable';
-  if (message.includes('api key')) return 'key_invalid';
+  // ponytail: clasificacion directa tolerando mensajes de cooldown activo ademas de codigos HTTP
+  if (message.includes('key_invalid') || (status === 400 && message.includes('api key')) || status === 401 || message.includes('api key')) return 'key_invalid';
+  if (message.includes('access_denied') || status === 403) return 'access_denied';
+  if (message.includes('quota_exceeded') || status === 429 || message.includes('quota exceeded') || message.includes('too many requests')) return 'quota_exceeded';
+  if (message.includes('service_unavailable') || status === 503 || message.includes('service unavailable') || message.includes('high demand')) return 'service_unavailable';
   return 'unknown';
 }
 
@@ -318,14 +351,13 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
   }
 
   const baseModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-  // Cadena de fallback: solo modelos reales y vigentes de la API de Google.
-  // (gemini-3.5-flash no existe -> 404 garantizado; gemini-1.5-flash esta retirado)
+  const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || 'gemini-2.5-flash-lite';
+  // La cadena conserva el modelo configurado por entorno antes de sus alternativas.
   const modelsToTry = [baseModel];
-  if (baseModel !== 'gemini-2.5-flash') {
-    modelsToTry.push('gemini-2.5-flash');
-  }
-  if (baseModel !== 'gemini-2.0-flash') {
-    modelsToTry.push('gemini-2.0-flash');
+  for (const m of ['gemini-2.5-flash', 'gemini-3.1-flash-lite', fallbackModel, 'gemini-2.5-flash-lite']) {
+    if (!modelsToTry.includes(m)) {
+      modelsToTry.push(m);
+    }
   }
 
   const {
@@ -384,7 +416,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
         if (!contents.length) throw new Error('Historial de mensajes vacio o invalido');
 
         if (maxEstimatedInputTokens) {
-          const officialTokenCount = await countInputTokens(model, budgeted.systemPrompt, contents);
+          const officialTokenCount = await withRequestTimeout(countInputTokens(model, budgeted.systemPrompt, contents));
           if (officialTokenCount != null) {
             console.log(`[ai] Input tokens oficiales: ${officialTokenCount}`);
             if (officialTokenCount > maxEstimatedInputTokens) {
@@ -404,13 +436,19 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
           }
         }
 
-        const response = await model.generateContent({
-          contents,
-          generationConfig: {
-            maxOutputTokens,
-            temperature,
+        // El presupuesto de razonamiento puede desactivarse para respuestas estructuradas.
+        const generationConfig = {
+          maxOutputTokens,
+          temperature,
+          thinkingConfig: {
+            thinkingBudget: options.thinkingBudget ?? 0,
           },
-        });
+        };
+
+        const response = await withRequestTimeout(model.generateContent({
+          contents,
+          generationConfig,
+        }));
 
         const text = response.response.text();
         if (response.response.usageMetadata) {
@@ -430,7 +468,7 @@ async function askGeminiAI(history, systemPrompt, options = {}) {
         const retryDelayMs = parseRetryDelayMs(err);
 
         if (errorType === 'key_invalid') {
-          writeCooldown('gemini', key, modelName, errorType, 1000 * 60 * 60 * 12);
+          writeCooldown('gemini', key, modelName, errorType, 1000 * 60 * 30);
         } else if (errorType === 'access_denied') {
           writeCooldown('gemini', key, modelName, errorType, 1000 * 60 * 60);
         } else if (errorType === 'quota_exceeded') {
@@ -472,8 +510,8 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
   } = options;
 
   const configuredModels = [
-    process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
-    process.env.NVIDIA_FALLBACK_MODEL || 'qwen/qwen3-32b',
+    process.env.NVIDIA_MODEL || 'z-ai/glm-5.3-flash',
+    process.env.NVIDIA_FALLBACK_MODEL || 'z-ai/glm-5.3',
   ].filter((model, index, arr) => model && arr.indexOf(model) === index);
 
   let lastError = null;
@@ -491,7 +529,7 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
       try {
         const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
         const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
-        const response = await fetch(`${NVIDIA_API_BASE_URL}/chat/completions`, {
+        const { response, payload } = await fetchJsonWithTimeout(`${NVIDIA_API_BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${key}`,
@@ -506,7 +544,6 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
           }),
         });
 
-        const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = new Error(payload?.error?.message || payload?.message || `NVIDIA request failed with status ${response.status}`);
           error.status = response.status;
@@ -514,7 +551,8 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
           throw error;
         }
 
-        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        const message = payload?.choices?.[0]?.message;
+        const text = message?.content?.trim?.();
         if (!text) {
           throw new Error('Respuesta vacia desde NVIDIA');
         }
@@ -531,7 +569,7 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
         const retryDelayMs = parseRetryDelayMs(err);
 
         if (errorType === 'key_invalid') {
-          writeCooldown('nvidia', key, modelName, errorType, 1000 * 60 * 60 * 12);
+          writeCooldown('nvidia', key, modelName, errorType, 1000 * 60 * 30);
         } else if (errorType === 'access_denied') {
           writeCooldown('nvidia', key, modelName, errorType, 1000 * 60 * 60);
         } else if (errorType === 'quota_exceeded') {
@@ -573,8 +611,8 @@ async function askGroqAI(history, systemPrompt, options = {}) {
   } = options;
 
   const configuredModels = [
-    process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-    process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant',
+    process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    process.env.GROQ_FALLBACK_MODEL || 'groq/compound-mini',
   ].filter((model, index, arr) => model && arr.indexOf(model) === index);
 
   let lastError = null;
@@ -592,7 +630,7 @@ async function askGroqAI(history, systemPrompt, options = {}) {
       try {
         const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
         const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
-        const response = await fetch(`${GROQ_API_BASE_URL}/chat/completions`, {
+        const { response, payload } = await fetchJsonWithTimeout(`${GROQ_API_BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${key}`,
@@ -607,7 +645,6 @@ async function askGroqAI(history, systemPrompt, options = {}) {
           }),
         });
 
-        const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = new Error(payload?.error?.message || payload?.message || `Groq request failed with status ${response.status}`);
           error.status = response.status;
@@ -615,7 +652,8 @@ async function askGroqAI(history, systemPrompt, options = {}) {
           throw error;
         }
 
-        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        const message = payload?.choices?.[0]?.message;
+        const text = message?.content?.trim?.();
         if (!text) {
           throw new Error('Respuesta vacia desde Groq');
         }
@@ -632,7 +670,7 @@ async function askGroqAI(history, systemPrompt, options = {}) {
         const retryDelayMs = parseRetryDelayMs(err);
 
         if (errorType === 'key_invalid') {
-          writeCooldown('groq', key, modelName, errorType, 1000 * 60 * 60 * 12);
+          writeCooldown('groq', key, modelName, errorType, 1000 * 60 * 30);
         } else if (errorType === 'access_denied') {
           writeCooldown('groq', key, modelName, errorType, 1000 * 60 * 60);
         } else if (errorType === 'quota_exceeded') {
@@ -693,7 +731,7 @@ async function askOpenRouterAI(history, systemPrompt, options = {}) {
       try {
         const budgeted = applyInputBudget(history, systemPrompt, maxEstimatedInputTokens);
         const messages = buildOpenAICompatibleMessages(budgeted.history, budgeted.systemPrompt);
-        const response = await fetch(`${OPENROUTER_API_BASE_URL}/chat/completions`, {
+        const { response, payload } = await fetchJsonWithTimeout(`${OPENROUTER_API_BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${key}`,
@@ -710,7 +748,6 @@ async function askOpenRouterAI(history, systemPrompt, options = {}) {
           }),
         });
 
-        const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           const error = new Error(payload?.error?.message || payload?.message || `OpenRouter request failed with status ${response.status}`);
           error.status = response.status;
@@ -735,7 +772,7 @@ async function askOpenRouterAI(history, systemPrompt, options = {}) {
         const retryDelayMs = parseRetryDelayMs(err);
 
         if (errorType === 'key_invalid') {
-          writeCooldown('openrouter', key, modelName, errorType, 1000 * 60 * 60 * 12);
+          writeCooldown('openrouter', key, modelName, errorType, 1000 * 60 * 30);
         } else if (errorType === 'access_denied') {
           writeCooldown('openrouter', key, modelName, errorType, 1000 * 60 * 60);
         } else if (errorType === 'quota_exceeded') {
