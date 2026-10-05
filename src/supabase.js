@@ -121,14 +121,24 @@ function writePhoneLookupCache(phone, players) {
   });
 }
 
-function invalidatePlayerLookupCache(playerIds) {
+export function invalidatePlayerLookupCache(playerIds, phones = []) {
   const normalizedIds = new Set(
     (Array.isArray(playerIds) ? playerIds : [playerIds])
       .map((playerId) => String(playerId ?? '').trim())
       .filter(Boolean)
   );
 
+  const phoneList = (Array.isArray(phones) ? phones : [phones])
+    .flatMap((p) => String(p ?? '').split(','))
+    .map((p) => normalizePhone(p))
+    .filter(Boolean);
+
   phoneLookupRevision += 1;
+
+  for (const p of phoneList) {
+    phoneLookupCache.delete(p);
+  }
+
   if (normalizedIds.size === 0) {
     return;
   }

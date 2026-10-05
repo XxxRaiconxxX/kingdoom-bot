@@ -19,6 +19,7 @@ import {
   forceRoleplayActivityForPlayer,
   getRoleplayLockWindowDays,
   upsertKnowledgeDocument,
+  invalidatePlayerLookupCache,
 } from '../supabase.js';
 import { isOwner, isAdminUser, isStaffUser, addAdmin, removeAdmin, normalizePhone, formatJid } from '../adminStore.js';
 import { trackUnregisteredUsers, saveTrackerData } from '../tracker.js';
@@ -303,6 +304,8 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!registrar <celular> <nombre> [oro]', 'Registro manual directo.'),
           heraldCommand('!verificarnumero <celular> <id>', 'Vincula manualmente un celular.'),
           heraldCommand('!desvincular <objetivo>', 'Desvincula celular de WhatsApp.'),
+          heraldCommand('!renombrar <objetivo> <nuevo_nombre>', 'Rectifica el nombre de un jugador.'),
+          heraldCommand('!eliminarusuario <objetivo>', 'Elimina cuenta errónea sin fichas.'),
           heraldCommand('!add admin <objetivo>', 'Otorga admin.'),
           heraldCommand('!remove admin <objetivo>', 'Revoca admin.'),
           heraldCommand('!ban <objetivo>', 'Destierra un jugador.'),
@@ -344,6 +347,8 @@ export async function handleAdminCommand(msg, client) {
           heraldCommand('!registrar <celular> <nombre> [oro]', 'Registro manual directo.'),
           heraldCommand('!verificarnumero <celular> <id>', 'Vincula manualmente un celular.'),
           heraldCommand('!desvincular <objetivo>', 'Desvincula celular de WhatsApp.'),
+          heraldCommand('!renombrar <objetivo> <nuevo_nombre>', 'Rectifica el nombre de un jugador.'),
+          heraldCommand('!eliminarusuario <objetivo>', 'Elimina cuenta errónea sin fichas.'),
           heraldCommand('!grant <objetivo> <monto>', 'Entrega oro.'),
           heraldCommand('!quitar <objetivo> <monto>', 'Descuenta oro.'),
           heraldCommand('!forjaritem <idea> [url]', 'Forja un borrador IA para el mercado.'),
@@ -1039,6 +1044,8 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Error al vincular en Supabase: ${error.message}`;
     }
 
+    invalidatePlayerLookupCache(resolved.player.id, [cleanPhone, newPhone, resolved.player.phone]);
+
     recordAdminAction({
       actorPhone,
       actorName,
@@ -1077,6 +1084,8 @@ export async function handleAdminCommand(msg, client) {
       return `❌ Error al desvincular en Supabase: ${error.message}`;
     }
 
+    invalidatePlayerLookupCache(resolved.player.id, oldPhone);
+
     recordAdminAction({
       actorPhone,
       actorName,
@@ -1087,6 +1096,167 @@ export async function handleAdminCommand(msg, client) {
     });
 
     return `✂️ Se ha desvinculado exitosamente a *${resolved.player.username}* de sus números telefónicos (${oldPhone}).`;
+  }
+
+  // 3.7 !renombrar
+  if (cmd === '!renombrar') {
+    let targetIdentifier = '';
+    let newUsername = '';
+
+    if (hasQuotedMessage && parts.length === 2) {
+      const quotedDetails = await safeGetQuotedDetails(msg);
+      targetIdentifier = await resolveWhatsAppPhone(client, quotedDetails.author);
+      newUsername = parts[1].trim();
+    } else if (parts.length >= 3) {
+      targetIdentifier = parts[1].trim();
+      newUsername = parts.slice(2).join(' ').trim();
+    } else {
+      return `❌ *Uso correcto:*\n` +
+             `*Opción A (Respondiendo):* Cita un mensaje con \`!renombrar <nuevo_nombre>\`\n` +
+             `*Opción B (Directo):* \`!renombrar <objetivo> <nuevo_nombre>\``;
+    }
+
+    if (!newUsername || newUsername.length < 2) {
+      return `❌ El nuevo nombre debe tener al menos 2 caracteres.`;
+    }
+
+    if (newUsername.length > 32) {
+      return `❌ El nombre no puede superar los 32 caracteres.`;
+    }
+
+    const resolved = await resolvePlayerTarget(msg, targetIdentifier);
+    if (!resolved.ok) return describeResolutionError(targetIdentifier, resolved);
+
+    const oldUsername = resolved.player.username;
+    if (oldUsername.toLowerCase() === newUsername.toLowerCase()) {
+      return `⚠️ El aventurero ya se llama *${oldUsername}*.`;
+    }
+
+    // Verificar colisión de nombre único (case-insensitive)
+    const { data: collision, error: colError } = await supabase
+      .from('players')
+      .select('id, username')
+      .ilike('username', newUsername)
+      .maybeSingle();
+
+    if (colError) {
+      console.error('[admin renombrar check]', colError);
+      return `❌ Error al consultar nombres en Supabase: ${colError.message}`;
+    }
+
+    if (collision && collision.id !== resolved.player.id) {
+      return `❌ Ya existe un aventurero llamado *${collision.username}* en el reino. Elige otro nombre.`;
+    }
+
+    // Actualizar nombre en players
+    const { error: updateError } = await supabase
+      .from('players')
+      .update({ username: newUsername })
+      .eq('id', resolved.player.id);
+
+    if (updateError) {
+      console.error('[admin renombrar update]', updateError);
+      return `❌ Error al actualizar nombre en Supabase: ${updateError.message}`;
+    }
+
+    // Sincronizar nombre desnormalizado en character_sheets si tiene fichas
+    try {
+      await supabase
+        .from('character_sheets')
+        .update({ playerUsername: newUsername })
+        .eq('playerId', resolved.player.id);
+    } catch (sheetErr) {
+      console.error('[admin renombrar character_sheets sync]', sheetErr);
+    }
+
+    invalidatePlayerLookupCache(resolved.player.id, resolved.player.phone);
+
+    recordAdminAction({
+      actorPhone,
+      actorName,
+      action: 'renombrar',
+      target: `${oldUsername} ➔ ${newUsername}`,
+      detail: `ID: ${resolved.player.id}. Tel: ${resolved.player.phone || 'ninguno'}.`,
+      chatId: msg.from,
+    });
+
+    return `📜 *RECTIFICACIÓN REAL CONCEDIDA*\n\n` +
+           `👤 El aventurero anteriormente conocido como *${oldUsername}* ahora responderá al nombre de *${newUsername}*.\n` +
+           `🆔 ID Web: \`${resolved.player.id}\`\n` +
+           `✨ Las crónicas del reino y sus fichas han sido sincronizadas.`;
+  }
+
+  // 3.8 !eliminarusuario / !borrarusuario
+  if (cmd === '!eliminarusuario' || cmd === '!borrarusuario') {
+    const identifier = parts.slice(1).join(' ').trim();
+    if (!identifier && !hasQuotedMessage) {
+      return `❌ *Uso correcto:*\n` +
+             `*Opción A (Respondiendo):* Cita un mensaje con \`!eliminarusuario\`\n` +
+             `*Opción B (Directo):* \`!eliminarusuario <objetivo>\``;
+    }
+
+    const resolved = await resolvePlayerTarget(msg, identifier);
+    if (!resolved.ok) return describeResolutionError(identifier, resolved);
+
+    // Salvaguarda: No permitir eliminar administradores
+    if (resolved.player.is_admin) {
+      return `🛡️ No se puede eliminar a un administrador del reino con este comando. Revoca su rango primero con \`!remove admin\`.`;
+    }
+
+    // Salvaguarda: Verificar fichas activas
+    const { count: sheetCount, error: countErr } = await supabase
+      .from('character_sheets')
+      .select('id', { count: 'exact', head: true })
+      .eq('playerId', resolved.player.id);
+
+    if (countErr) {
+      console.error('[admin eliminarusuario sheet check]', countErr);
+      return `❌ Error al consultar fichas del jugador: ${countErr.message}`;
+    }
+
+    if (sheetCount && sheetCount > 0) {
+      return `⚠️ El aventurero *${resolved.player.username}* tiene ${sheetCount} ficha(s) de rol activa(s).\n` +
+             `Para evitar corromper el registro del gremio, debes reciclar o transferir sus fichas antes de eliminar el usuario. Si solo quieres suspenderlo, usa \`!ban\`.`;
+    }
+
+    // Salvaguarda: Verificar inventario
+    const { count: invCount } = await supabase
+      .from('player_inventory')
+      .select('id', { count: 'exact', head: true })
+      .eq('player_id', resolved.player.id);
+
+    if (invCount && invCount > 0) {
+      return `⚠️ El aventurero *${resolved.player.username}* tiene ítems en su inventario. Usa \`!ban\` si deseas expulsarlo, o limpia su inventario antes de borrar la cuenta.`;
+    }
+
+    const deletedUsername = resolved.player.username;
+    const deletedPhone = resolved.player.phone;
+    const deletedId = resolved.player.id;
+
+    const { error: delError } = await supabase
+      .from('players')
+      .delete()
+      .eq('id', deletedId);
+
+    if (delError) {
+      console.error('[admin eliminarusuario delete]', delError);
+      return `❌ Error al eliminar el usuario en Supabase: ${delError.message}`;
+    }
+
+    invalidatePlayerLookupCache(deletedId, deletedPhone);
+
+    recordAdminAction({
+      actorPhone,
+      actorName,
+      action: 'eliminarusuario',
+      target: `${deletedUsername} (${deletedId})`,
+      detail: `Cuenta eliminada definitivamente. Teléfono previo: ${deletedPhone || 'ninguno'}.`,
+      chatId: msg.from,
+    });
+
+    return `🗑️ *REGISTRO PURGADO DEL REINO*\n\n` +
+           `Se ha eliminado de forma definitiva la cuenta de *${deletedUsername}* (ID: \`${deletedId}\`).\n` +
+           `El número telefónico y el nombre quedan liberados para nuevo registro.`;
   }
 
 
