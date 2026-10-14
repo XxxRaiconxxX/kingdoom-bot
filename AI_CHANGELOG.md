@@ -3,6 +3,11 @@
 Este archivo sirve como registro de actividad y contexto operativo para el repositorio `kingdoom-bot`.
 
 ## Historial de Cambios (Changelog)
+### [Fecha: 14/10/2026] - [Autor: Hermes]
+*   **Archivos Modificados:** `src/ai.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
+*   **Resumen de Tareas:** Actualizados los modelos predeterminados de NVIDIA y Groq para el Oráculo y añadido soporte para respuestas que llegan en `reasoning_content`/`reasoning` cuando el proveedor no devuelve `content`.
+*   **Validación:** `node --check src/ai.js` y smoke test aislado de NVIDIA/Groq con modelos predeterminados y campos de razonamiento superados. `npm test` quedó bloqueado por la configuración local ausente de Supabase; no se cargaron ni modificaron credenciales.
+
 ### [Fecha: 14/09/2026] - [Autor: Antigravity]
 *   **Archivos Modificados:** `supabase/supabase_bot_state_migration.sql`, `test_treasure_atomicity.js`, `AI_CHANGELOG.md`, `ai-memory/kingdoom-memory.jsonl`.
 *   **Resumen de Tareas:** Corrección definitiva del fallo "Reclamo no confirmado" en Tesoros Errantes.

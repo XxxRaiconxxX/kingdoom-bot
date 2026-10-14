@@ -472,8 +472,8 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
   } = options;
 
   const configuredModels = [
-    process.env.NVIDIA_MODEL || 'meta/llama-3.1-70b-instruct',
-    process.env.NVIDIA_FALLBACK_MODEL || 'qwen/qwen3-32b',
+    process.env.NVIDIA_MODEL || 'z-ai/glm-5.3-flash',
+    process.env.NVIDIA_FALLBACK_MODEL || 'z-ai/glm-5.3',
   ].filter((model, index, arr) => model && arr.indexOf(model) === index);
 
   let lastError = null;
@@ -514,7 +514,8 @@ async function askNvidiaAI(history, systemPrompt, options = {}) {
           throw error;
         }
 
-        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        const message = payload?.choices?.[0]?.message;
+        const text = (message?.content || message?.reasoning_content)?.trim?.();
         if (!text) {
           throw new Error('Respuesta vacia desde NVIDIA');
         }
@@ -573,8 +574,8 @@ async function askGroqAI(history, systemPrompt, options = {}) {
   } = options;
 
   const configuredModels = [
-    process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
-    process.env.GROQ_FALLBACK_MODEL || 'llama-3.1-8b-instant',
+    process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    process.env.GROQ_FALLBACK_MODEL || 'groq/compound-mini',
   ].filter((model, index, arr) => model && arr.indexOf(model) === index);
 
   let lastError = null;
@@ -615,7 +616,8 @@ async function askGroqAI(history, systemPrompt, options = {}) {
           throw error;
         }
 
-        const text = payload?.choices?.[0]?.message?.content?.trim?.();
+        const message = payload?.choices?.[0]?.message;
+        const text = (message?.content || message?.reasoning)?.trim?.();
         if (!text) {
           throw new Error('Respuesta vacia desde Groq');
         }
