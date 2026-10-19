@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getAuthFilePath } from './runtimePaths.js';
+import { serializeWhatsAppId } from './whatsappIdentity.js';
 
 const OWNER_NUMBER = '595987273405';
 const ADMINS_FILE = getAuthFilePath('admins.json');
@@ -85,6 +86,13 @@ export function loadAdmins() {
 
   adminsCache = defaultAdmins;
   return adminsCache;
+}
+
+export function parseEnvJidList(value) {
+  return String(value ?? '')
+    .split(',')
+    .map((entry) => serializeWhatsAppId(entry))
+    .filter(Boolean);
 }
 
 function parseEnvPhoneList(value) {

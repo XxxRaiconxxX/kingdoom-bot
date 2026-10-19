@@ -1,4 +1,4 @@
-import { normalizePhone } from '../adminStore.js';
+import { normalizePhone, parseEnvJidList } from '../adminStore.js';
 import { resolveContactPhone, serializeWhatsAppId } from '../whatsappIdentity.js';
 import {
   getPlayerLifecycleGraceDays,
@@ -18,13 +18,6 @@ function normalizeText(value) {
 
 function getContactId(contact) {
   return serializeWhatsAppId(contact?.id || contact) || String(contact?.number || '').trim();
-}
-
-function parseAdminIds(value) {
-  return String(value ?? '')
-    .split(',')
-    .map((entry) => serializeWhatsAppId(entry))
-    .filter(Boolean);
 }
 
 function uniqueById(items) {
@@ -68,7 +61,7 @@ export function buildPlayerLifecycleConfig() {
     enabled: process.env.PLAYER_LIFECYCLE_ENABLED !== 'false',
     groupId: String(process.env.PLAYER_LIFECYCLE_GROUP_ID ?? DEFAULT_GROUP_ID).trim(),
     groupName: normalizeText(process.env.PLAYER_LIFECYCLE_GROUP_NAME ?? ''),
-    adminIds: parseAdminIds(process.env.PLAYER_LIFECYCLE_ADMIN_IDS),
+    adminIds: parseEnvJidList(process.env.PLAYER_LIFECYCLE_ADMIN_IDS),
   };
 }
 
