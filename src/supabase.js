@@ -237,7 +237,7 @@ function rankNameMatch(item, query) {
   return 0;
 }
 
-function formatAsuncionDateKey(date = new Date()) {
+export function formatAsuncionDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Asuncion',
     year: 'numeric',
@@ -3064,6 +3064,24 @@ export async function processMarketInstallments() {
     console.error('[processMarketInstallments] Error:', error.message);
     throw new Error('No se pudieron procesar las cuotas.');
   }
+  return data;
+}
+
+export async function processBankInstallments(runKey) {
+  const normalizedRunKey = String(runKey ?? '').trim();
+  if (!normalizedRunKey) {
+    throw new Error('La clave de ejecucion del banco es obligatoria.');
+  }
+
+  const { data, error } = await supabase.rpc('bank_collect_due_installments', {
+    p_run_key: normalizedRunKey,
+  });
+
+  if (error) {
+    console.error('[processBankInstallments] Error:', error.message);
+    throw new Error(`No se pudieron procesar las cuotas del banco: ${error.message}`);
+  }
+
   return data;
 }
 

@@ -1111,3 +1111,9 @@ Este archivo sirve como registro de actividad y contexto operativo para el repos
 - Los proveedores HTTP NVIDIA, Groq y OpenRouter mantienen el `AbortController` activo hasta terminar el parseo JSON; un body estancado ahora aborta y se propaga al flujo de fallback.
 - NVIDIA y Groq aceptan exclusivamente `message.content`; los campos de razonamiento por sí solos se tratan como respuesta vacía y no se exponen ni se envían al parser de combate.
 - Validado sin red mediante `node test_ai_resilience.js`, incluyendo timeouts antes de headers y durante un body JSON, más respuestas reasoning-only. El wrapper de Gemini limita la espera del llamador, pero no puede cancelar el transporte del SDK.
+
+### [2026-10-19] Scheduler bancario y estabilidad del Coliseo revisados por Astra
+- Se añadió al scheduler diario la llamada idempotente a `bank_collect_due_installments` con clave estable por fecha de Asunción y manejo de errores aislado.
+- Se corrigió el fixture del Coliseo y se liberan timers de pruebas con `unref`, sin tocar credenciales ni sesión de WhatsApp.
+- Astra (gpt-6-astra) emitió PASS para los cuatro archivos tracked; la ejecución remota de la RPC bancaria queda como verificación opcional cuando la base esté disponible.
+- No hubo commit, push ni deploy durante la revisión.

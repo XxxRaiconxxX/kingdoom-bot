@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import {
   supabase,
   botStateSupabase,
+  formatAsuncionDateKey,
+  processBankInstallments,
   processMarketInstallments,
   archiveExpiredGraceProfiles,
   processRoleplayAccessEnforcement,
@@ -573,6 +575,20 @@ export function startScheduler(client, isClientReady = () => Boolean(client?.inf
           console.log('[scheduler] Cuotas de mercado procesadas:', results);
         } catch (err) {
           console.error('[scheduler] Error procesando cuotas de mercado:', err);
+        }
+
+        const bankRunKey = `bank:${formatAsuncionDateKey()}`;
+        try {
+          const bankResult = await processBankInstallments(bankRunKey);
+          const bankCount = Array.isArray(bankResult)
+            ? bankResult.length
+            : bankResult?.processed_count
+              ?? bankResult?.collected_count
+              ?? bankResult?.count
+              ?? bankResult;
+          console.log(`[scheduler] Banco procesado (${bankRunKey}):`, bankCount);
+        } catch (err) {
+          console.error('[scheduler] Error procesando cuotas del banco:', err.message);
         }
 
         void hydrateOpenTreasures(client, isClientReady);

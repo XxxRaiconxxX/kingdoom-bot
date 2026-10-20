@@ -67,7 +67,7 @@ setColosseumMessageIds(match.id, {
 assert.equal(findColosseumBetTargetByQuotedId('false_main-group@g.us_3EB0101_author@c.us'), 'A');
 assert.equal(findColosseumBetTargetByQuotedId('3EB0101'), 'A');
 assert.equal(findColosseumBetTargetByQuotedId('3EB0102'), 'B');
-assert.equal(findColosseumBetTargetByQuotedId('unknown_id', '🪓 LUCHADOR B\n👑 KAELEN'), 'B');
+assert.equal(findColosseumBetTargetByQuotedId('unknown_id', '🪓 LUCHADOR B\n👑 TEST_FIGHTER_B'), 'B');
 assert.equal(findColosseumBetTargetByQuotedId('unknown_id', `🗡️ LUCHADOR A\n👑 ${fighterA.name}`), 'A');
 assert.equal(findColosseumBetTargetByQuotedId('random_msg_999'), null);
 
@@ -156,6 +156,8 @@ const fakeMsg = {
 };
 
 await handleColiseo(fakeMsg, mockClient, '1');
+const handlerMatch = getActiveColosseumMatch();
+if (handlerMatch?.timer) clearTimeout(handlerMatch.timer);
 assert.ok(sentMessages.length >= 3, 'Debe enviar anuncio + Ficha A + Ficha B');
 assert.ok(sentMessages[0].text.includes('𝕲𝖗𝖆𝖓 𝕮𝖔𝖑𝖎𝖘𝖊𝖔'));
 assert.ok(sentMessages[1].text.includes('LUCHADOR A'));

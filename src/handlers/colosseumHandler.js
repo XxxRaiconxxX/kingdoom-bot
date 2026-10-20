@@ -175,6 +175,7 @@ export async function handleColiseo(msg, client, body = '') {
         console.error('[startColosseumCombat.timer]', err);
       });
     }, bettingDurationMs);
+    match.timer.unref?.();
 
     return null;
   } catch (err) {
