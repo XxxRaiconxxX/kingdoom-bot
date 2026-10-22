@@ -1,5 +1,11 @@
 # AI Collaboration Log & Project Context - Kingdoom Bot
 
+### [Fecha: 21/10/2026] - [Autor: Hermes]
+*   **Archivos Modificados:** `src/supabase.js`, `src/handlers/businessNegotiationHandler.js`.
+*   **Resumen de Tareas:** Publicacion del flujo de negociacion dual idempotente y del limite server-side de crecimiento autonomo de negocios: +50% semanal sobre base congelada y +100% acumulado antes de exigir staff.
+*   **Validacion:** `TEST_SUITE_OK=31`, sintaxis Node, RPC remota con rollback para limites semanal/total, ACL exclusiva de `service_role`, y contrato SQL `BUSINESS_WEEKLY_CAP_CONTRACT_OK`.
+
+
 Este archivo sirve como registro de actividad y contexto operativo para el repositorio `kingdoom-bot`.
 
 ## Historial de Cambios (Changelog)
