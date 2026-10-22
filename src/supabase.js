@@ -3180,38 +3180,27 @@ export async function collectPlayerBusinessesGold(playerId, businessId = null) {
 
 export async function upgradePlayerBusinessInDb(businessId, playerId, upgradeType, newValue, costGold, secondaryUpgrade = null) {
   if (upgradeType === 'dual' && secondaryUpgrade) {
-    const { data, error } = await supabase.rpc('upgrade_player_business', {
+    const { data, error } = await supabase.rpc('upgrade_player_business_dual', {
       p_business_id: businessId,
       p_player_id: playerId,
-      p_upgrade_type: secondaryUpgrade.primaryType || 'production',
-      p_new_value: secondaryUpgrade.primaryValue,
-      p_cost_gold: costGold
+      p_production_value: secondaryUpgrade.primaryType === 'production'
+        ? secondaryUpgrade.primaryValue
+        : secondaryUpgrade.secondaryValue,
+      p_storage_value: secondaryUpgrade.primaryType === 'storage'
+        ? secondaryUpgrade.primaryValue
+        : secondaryUpgrade.secondaryValue,
+      p_cost_gold: costGold,
+      p_idempotency_key: secondaryUpgrade.idempotencyKey,
+      p_source: 'bot_negotiation'
     });
 
     if (error) {
-      console.error('[upgradePlayerBusinessInDb RPC Error]', error.message);
-      throw new Error(`Error en la transacción RPC de Supabase: ${error.message}`);
-    }
-
-    const updatePayload = {};
-    if (secondaryUpgrade.secondaryType === 'production') {
-      updatePayload.gold_per_hour = secondaryUpgrade.secondaryValue;
-    } else if (secondaryUpgrade.secondaryType === 'storage') {
-      updatePayload.max_storage = secondaryUpgrade.secondaryValue;
-    }
-
-    const { error: secError } = await supabase
-      .from('businesses')
-      .update(updatePayload)
-      .eq('id', businessId)
-      .eq('player_id', playerId);
-
-    if (secError) {
-      console.error('[upgradePlayerBusinessInDb Secondary Error]', secError.message);
+      console.error('[upgradePlayerBusinessInDb Dual RPC Error]', error.message);
+      throw new Error(`Error en la transacción RPC dual de Supabase: ${error.message}`);
     }
 
     const row = Array.isArray(data) ? data[0] : data;
-    return row ?? { success: true, message: 'Mejora combinada completada exitosamente.' };
+    return row ?? { success: false, message: 'No se obtuvo respuesta del servidor.' };
   }
 
   const { data, error } = await supabase.rpc('upgrade_player_business', {

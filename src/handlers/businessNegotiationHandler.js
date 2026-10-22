@@ -647,7 +647,8 @@ export async function handleAceptarTrato(msg, player) {
       primaryType: 'production',
       primaryValue: session.newProductionValue,
       secondaryType: 'storage',
-      secondaryValue: session.newStorageValue
+      secondaryValue: session.newStorageValue,
+      idempotencyKey: `negotiation:${player.id}:${session.businessId}:${session.createdAt}`
     } : null;
 
     const result = await upgradePlayerBusinessInDb(
@@ -667,7 +668,9 @@ export async function handleAceptarTrato(msg, player) {
 
     return heraldCard('🏗️ ℛ𝔢𝔞𝔩 ℭé𝔡𝔢𝔩𝔞 𝔡𝔢 𝔄𝔪𝔭𝔩𝔦𝔞𝔠𝔦ó𝔫 ℭ𝔢𝔯𝔱𝔦𝔬𝔦𝔠𝔞𝔡𝔞', [
       heraldStat('Concesión Real', `*${session.businessName}* (Nivel ${result.new_level})`),
-      heraldStat('Nueva ' + session.labelType, `*${result.new_value.toLocaleString('es-PY')}*`),
+      heraldStat('Nueva ' + session.labelType, session.upgradeType === 'dual'
+        ? `Producción *${result.new_production.toLocaleString('es-PY')}* · Almacén *${result.new_storage.toLocaleString('es-PY')}*`
+        : `*${result.new_value.toLocaleString('es-PY')}*`),
       heraldStat('Tasa Impositiva Abonada', `🪙 *-${session.currentOfferCost.toLocaleString('es-PY')} oro*`),
       heraldStat('Saldo Restante en Bolsa', `🪙 *${result.new_gold.toLocaleString('es-PY')} oro*`),
       '\n ¡El Real Fisco ha estampado el sello de la Corona y los maestros constructores han completado la obra!'
