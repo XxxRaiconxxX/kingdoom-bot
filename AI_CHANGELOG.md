@@ -1,4 +1,9 @@
-# AI Collaboration Log & Project Context - Kingdoom Bot
+### [Fecha: 22/10/2026] - [Autor: Hermes]
+*   **Archivos Modificados:** `src/handlers/treasure.js`, `test_treasure_daily_cap.js`.
+*   **Resumen de Tareas:** El scheduler del Tesoro Errante queda limitado exactamente a dos eventos diarios, en lugar del rango anterior de dos a cuatro.
+*   **Validacion:** `TREASURE_DAILY_MAX_TWO_OK`, `TEST_SUITE_OK=32` y `node --check` correctos.
+*   **Modelo IA:** `gpt-5.6-sol-900k` (OpenAI Codex) realizó la auditoría, implementación y validación.
+
 
 ### [Fecha: 21/10/2026] - [Autor: Hermes]
 *   **Archivos Modificados:** `src/supabase.js`, `src/handlers/businessNegotiationHandler.js`.
